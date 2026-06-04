@@ -227,6 +227,93 @@
     }
 
     .export-btn:hover { border-color: var(--green); color: var(--green); }
+
+    .value-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+
+    .value-box {
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .value-num { font-size: 18px; font-weight: 800; color: var(--green); }
+    .value-label { font-size: 10px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
+    .value-placeholder { color: var(--muted); font-size: 13px; text-align: center; padding: 12px 0; }
+
+    .recent-sales { margin-top: 10px; }
+    .sale-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      gap: 8px;
+    }
+    .sale-item:last-child { border-bottom: none; }
+    .sale-title { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sale-price { color: var(--text); font-weight: 700; white-space: nowrap; }
+    .sale-date { color: var(--muted); white-space: nowrap; font-size: 11px; }
+
+    .source-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .source-tab {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+    }
+    .source-tab.active { border-color: var(--green); color: var(--green); background: rgba(0,230,118,0.08); }
+    .source-tab.connect { border-color: #555; color: #888; }
+    .source-tab.connect:hover { border-color: #aaa; color: #ccc; }
+
+    .cl-modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .cl-modal-overlay.open { display: flex; }
+    .cl-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      max-width: 360px;
+      width: 90%;
+    }
+    .cl-modal h3 { font-size: 16px; margin-bottom: 8px; }
+    .cl-modal p { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+    .cl-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .cl-input:focus { outline: none; border-color: var(--green); }
+    .cl-modal-actions { display: flex; gap: 8px; }
+    .cl-save-btn {
+      flex: 1; padding: 10px;
+      background: var(--green); color: #000;
+      border: none; border-radius: 8px;
+      font-weight: 700; cursor: pointer; font-size: 14px;
+    }
+    .cl-cancel-btn {
+      padding: 10px 16px;
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 8px;
+      cursor: pointer; font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -280,6 +367,40 @@
       <div class="card-full" id="r-card"></div>
     </div>
 
+    <div class="panel-box" id="valuePanel">
+      <h2>Market Value</h2>
+      <div class="source-tabs">
+        <button class="source-tab active" id="tabEbay" onclick="switchTab('ebay')">eBay Sold</button>
+        <button class="source-tab connect" id="tabCL" onclick="openCLModal()">Card Ladder 🔗</button>
+      </div>
+      <div id="ebayContent">
+        <div class="value-placeholder" id="valuePlaceholder">Scan a card to see market value</div>
+        <div id="valueData" style="display:none">
+          <div class="value-grid">
+            <div class="value-box">
+              <div class="value-num" id="v-avg">—</div>
+              <div class="value-label">Avg</div>
+            </div>
+            <div class="value-box">
+              <div class="value-num" id="v-high">—</div>
+              <div class="value-label">High</div>
+            </div>
+            <div class="value-box">
+              <div class="value-num" id="v-low">—</div>
+              <div class="value-label">Low</div>
+            </div>
+          </div>
+          <div class="recent-sales" id="recentSales"></div>
+        </div>
+      </div>
+      <div id="clContent" style="display:none">
+        <div class="value-placeholder" id="clPlaceholder">Connect your Card Ladder account to see sales data</div>
+        <div id="clData" style="display:none">
+          <div class="recent-sales" id="clSales"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="panel-box">
       <h2>Session Stats</h2>
       <div class="stats-grid">
@@ -306,10 +427,76 @@
   </div>
 </div>
 
+<!-- Card Ladder Modal -->
+<div class="cl-modal-overlay" id="clModal">
+  <div class="cl-modal">
+    <h3>Connect Card Ladder</h3>
+    <p>Enter your Card Ladder API key or session token to pull sales data. You can find this in your Card Ladder account settings.</p>
+    <input class="cl-input" id="clTokenInput" type="password" placeholder="Paste your Card Ladder token..." />
+    <div class="cl-modal-actions">
+      <button class="cl-save-btn" onclick="saveCLToken()">Connect</button>
+      <button class="cl-cancel-btn" onclick="closeCLModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
   let scanHistory = [];
   let totalScanned = 0;
   let totalGraded = 0;
+  let clToken = localStorage.getItem('cl_token') || '';
+  let activeTab = 'ebay';
+
+  function switchTab(tab) {
+    activeTab = tab;
+    document.getElementById('tabEbay').classList.toggle('active', tab === 'ebay');
+    document.getElementById('tabCL').classList.toggle('active', tab === 'cl');
+    document.getElementById('ebayContent').style.display = tab === 'ebay' ? 'block' : 'none';
+    document.getElementById('clContent').style.display = tab === 'cl' ? 'block' : 'none';
+  }
+
+  function openCLModal() {
+    document.getElementById('clTokenInput').value = clToken;
+    document.getElementById('clModal').classList.add('open');
+  }
+
+  function closeCLModal() {
+    document.getElementById('clModal').classList.remove('open');
+  }
+
+  function saveCLToken() {
+    clToken = document.getElementById('clTokenInput').value.trim();
+    localStorage.setItem('cl_token', clToken);
+    document.getElementById('tabCL').textContent = clToken ? 'Card Ladder ✓' : 'Card Ladder 🔗';
+    document.getElementById('tabCL').classList.toggle('active', !!clToken);
+    closeCLModal();
+  }
+
+  function updateValuePanel(d) {
+    const hasEbay = d.ebay_avg != null;
+    document.getElementById('valuePlaceholder').style.display = hasEbay ? 'none' : 'block';
+    document.getElementById('valueData').style.display = hasEbay ? 'block' : 'none';
+
+    if (hasEbay) {
+      document.getElementById('v-avg').textContent  = '$' + d.ebay_avg;
+      document.getElementById('v-high').textContent = '$' + d.ebay_high;
+      document.getElementById('v-low').textContent  = '$' + d.ebay_low;
+
+      const sales = d.ebay_sales || [];
+      document.getElementById('recentSales').innerHTML = sales.length
+        ? '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">' + d.ebay_count + ' Recent Sales</div>'
+          + sales.map(s => `
+            <div class="sale-item">
+              <span class="sale-title">${s.title}</span>
+              <span class="sale-date">${s.date || ''}</span>
+              <span class="sale-price">$${s.price.toFixed(2)}</span>
+            </div>`).join('')
+        : '';
+    }
+  }
+
+  // Update CL tab label on load
+  if (clToken) document.getElementById('tabCL').textContent = 'Card Ladder ✓';
 
   // Start camera
   async function startCamera() {
@@ -366,6 +553,8 @@
         const cardEl = document.getElementById('r-card');
         cardEl.textContent = d.card || '';
         cardEl.style.display = d.card ? 'block' : 'none';
+
+        updateValuePanel(d);
 
         totalScanned++;
         if (d.grade && d.grade !== 'Raw') totalGraded++;

@@ -9,6 +9,7 @@ import json
 import time
 import threading
 import base64
+import requests
 from datetime import datetime
 from flask import Flask, render_template, Response, jsonify, request
 import cv2
@@ -20,6 +21,7 @@ from googleapiclient.discovery import build
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
 GOOGLE_CREDS_FILE = os.path.join(os.path.dirname(__file__), "google_creds.json")
 SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
+EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
 SHEET_TAB         = "Cards"
 # ───────────────────────────────────────────────────────────────────────────
 
@@ -99,6 +101,7 @@ def append_to_sheet(data):
         data.get("grade") or "",
         data.get("cert")  or "",
         data.get("card")  or "",
+        f"${data['ebay_avg']}" if data.get("ebay_avg") else "",
         "", "",
         "",  # Paid
         "",  # Tracking Number
@@ -118,6 +121,97 @@ def index():
 def video():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def search_ebay_sold(query, limit=10):
+    """Query eBay Finding API for completed/sold listings."""
+    if not EBAY_APP_ID:
+        return None, "eBay App ID not configured"
+    params = {
+        "OPERATION-NAME": "findCompletedItems",
+        "SERVICE-VERSION": "1.0.0",
+        "APP-NAME": EBAY_APP_ID,
+        "GLOBAL-ID": "EBAY-US",
+        "RESPONSE-DATA-FORMAT": "JSON",
+        "keywords": query,
+        "itemFilter(0).name": "SoldItemsOnly",
+        "itemFilter(0).value": "true",
+        "itemFilter(1).name": "ListingType",
+        "itemFilter(1).value": "AuctionWithBIN,FixedPrice,Auction",
+        "sortOrder": "EndTimeSoonest",
+        "paginationInput.entriesPerPage": str(limit),
+    }
+    try:
+        resp = requests.get(
+            "https://svcs.ebay.com/services/search/FindingService/v1",
+            params=params, timeout=8
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = (
+            data
+            .get("findCompletedItemsResponse", [{}])[0]
+            .get("searchResult", [{}])[0]
+            .get("item", [])
+        )
+        prices = []
+        sales = []
+        for item in results:
+            price_str = (
+                item.get("sellingStatus", [{}])[0]
+                    .get("currentPrice", [{}])[0]
+                    .get("__value__", None)
+            )
+            if price_str:
+                try:
+                    prices.append(float(price_str))
+                except ValueError:
+                    pass
+            end_time = (
+                item.get("listingInfo", [{}])[0]
+                    .get("endTime", [None])[0]
+            )
+            title = item.get("title", [None])[0]
+            url = item.get("viewItemURL", [None])[0]
+            if price_str and title:
+                sales.append({
+                    "title": title,
+                    "price": float(price_str) if price_str else None,
+                    "date": end_time[:10] if end_time else None,
+                    "url": url,
+                })
+        if not prices:
+            return {"sales": [], "avg": None, "high": None, "low": None, "count": 0}, None
+        return {
+            "sales": sales[:5],
+            "avg": round(sum(prices) / len(prices), 2),
+            "high": round(max(prices), 2),
+            "low": round(min(prices), 2),
+            "count": len(prices),
+        }, None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.route('/value', methods=['POST'])
+def value():
+    body = request.get_json()
+    card_desc = body.get("card", "")
+    name = body.get("name", "")
+    year = body.get("year", "")
+    grade = body.get("grade", "")
+
+    # Build search query from card data
+    query_parts = [p for p in [str(year) if year else "", name, grade] if p]
+    query = " ".join(query_parts) if query_parts else card_desc
+
+    if not query.strip():
+        return jsonify({"success": False, "error": "No card data to search"})
+
+    result, err = search_ebay_sold(query)
+    if err:
+        return jsonify({"success": False, "error": err})
+    return jsonify({"success": True, "ebay": result, "query": query})
+
 
 @app.route('/scan', methods=['POST'])
 def scan():
@@ -140,6 +234,18 @@ def scan():
                 return jsonify({'success': False, 'error': 'Could not capture image'})
 
         data = analyze_card(frame)
+
+        # Auto-fetch eBay value
+        query_parts = [p for p in [str(data.get("year", "")), data.get("name", ""), data.get("grade", "")] if p]
+        if query_parts:
+            ebay_result, _ = search_ebay_sold(" ".join(query_parts))
+            if ebay_result and ebay_result.get("avg"):
+                data["ebay_avg"] = ebay_result["avg"]
+                data["ebay_high"] = ebay_result["high"]
+                data["ebay_low"] = ebay_result["low"]
+                data["ebay_count"] = ebay_result["count"]
+                data["ebay_sales"] = ebay_result["sales"]
+
         append_to_sheet(data)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
