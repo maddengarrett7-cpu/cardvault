@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>CardVault — Sports Card Scanner</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --green: #00e676;
+      --green-dark: #00c853;
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface2: #1e1e1e;
+      --border: #2a2a2a;
+      --text: #ffffff;
+      --muted: #888;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .logo span { color: var(--green); }
+
+    .header-actions { display: flex; gap: 10px; }
+
+    .btn-outline {
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .btn-outline:hover { border-color: var(--green); color: var(--green); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+      padding: 20px 24px;
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; padding: 12px; }
+    }
+
+    .camera-panel { display: flex; flex-direction: column; gap: 14px; }
+
+    .camera-wrap {
+      position: relative;
+      background: #000;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+    }
+
+    #videoEl {
+      width: 100%;
+      display: block;
+      border-radius: 14px;
+    }
+
+    canvas { display: none; }
+
+    .card-guide {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 52%;
+      aspect-ratio: 2.5/3.5;
+      border: 2px dashed rgba(0,230,118,0.6);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+
+    .guide-label {
+      position: absolute;
+      bottom: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(0,230,118,0.7);
+      white-space: nowrap;
+    }
+
+    .scan-btn {
+      width: 100%;
+      padding: 20px;
+      font-size: 20px;
+      font-weight: 800;
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .scan-btn:hover { background: #00ff87; }
+    .scan-btn:active { transform: scale(0.98); }
+    .scan-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    .status-bar {
+      padding: 12px 16px;
+      background: var(--surface);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-size: 14px;
+      color: var(--muted);
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+    }
+
+    .status-bar.success { color: var(--green); border-color: var(--green-dark); }
+    .status-bar.error   { color: #ff5252; border-color: #b71c1c; }
+    .status-bar.loading { color: #ffab40; border-color: #e65100; }
+
+    .right-panel { display: flex; flex-direction: column; gap: 16px; }
+
+    .panel-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    .panel-box h2 {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .result-row:last-child { border-bottom: none; }
+    .result-label { color: var(--muted); }
+    .result-value { color: var(--text); font-weight: 600; text-align: right; }
+
+    .card-full {
+      margin-top: 12px;
+      padding: 12px;
+      background: var(--surface2);
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--green);
+      text-align: center;
+      line-height: 1.4;
+      display: none;
+    }
+
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .stat-box {
+      background: var(--surface2);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+
+    .stat-num { font-size: 26px; font-weight: 800; color: var(--green); }
+    .stat-label { font-size: 10px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+
+    .history-card { color: var(--text); font-weight: 600; }
+    .history-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .empty-state { color: var(--muted); font-size: 13px; text-align: center; padding: 16px 0; }
+
+    .export-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .export-btn:hover { border-color: var(--green); color: var(--green); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Card<span>Vault</span></div>
+  <div class="header-actions">
+    <button class="btn-outline" onclick="exportCSV()">⬇ CSV</button>
+    <a class="btn-outline" href="https://docs.google.com/spreadsheets/d/1EiomYJ5KfjTz5t2CxX9MvVWeQdt_Js00BtKJIIYhZI8" target="_blank">Open Sheet ↗</a>
+  </div>
+</header>
+
+<div class="layout">
+
+  <div class="camera-panel">
+    <div class="camera-wrap">
+      <video id="videoEl" autoplay playsinline muted></video>
+      <canvas id="canvasEl"></canvas>
+      <div class="card-guide">
+        <div class="guide-label">Align card here</div>
+      </div>
+    </div>
+
+    <button class="scan-btn" id="scanBtn" onclick="scanCard()">📷 &nbsp; SCAN CARD</button>
+
+    <div class="status-bar" id="statusBar">
+      Hold card inside the green frame, then press SCAN CARD
+    </div>
+  </div>
+
+  <div class="right-panel">
+
+    <div class="panel-box">
+      <h2>Last Scanned</h2>
+      <div class="result-row">
+        <span class="result-label">Player</span>
+        <span class="result-value" id="r-name">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Year</span>
+        <span class="result-value" id="r-year">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Grade</span>
+        <span class="result-value" id="r-grade">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Cert #</span>
+        <span class="result-value" id="r-cert">—</span>
+      </div>
+      <div class="card-full" id="r-card"></div>
+    </div>
+
+    <div class="panel-box">
+      <h2>Session Stats</h2>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-num" id="stat-total">0</div>
+          <div class="stat-label">Cards Scanned</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" id="stat-graded">0</div>
+          <div class="stat-label">Graded</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-box">
+      <h2>Scan History</h2>
+      <div class="history-list" id="historyList">
+        <div class="empty-state">No cards scanned yet</div>
+      </div>
+    </div>
+
+    <button class="export-btn" onclick="exportCSV()">⬇ Export to CSV</button>
+
+  </div>
+</div>
+
+<script>
+  let scanHistory = [];
+  let totalScanned = 0;
+  let totalGraded = 0;
+
+  // Start camera
+  async function startCamera() {
+    try {
+      const constraints = {
+        video: {
+          facingMode: { ideal: 'environment' }, // use back camera on phones
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      document.getElementById('videoEl').srcObject = stream;
+    } catch (e) {
+      document.getElementById('statusBar').textContent = '✗ Camera access denied — please allow camera in browser settings';
+      document.getElementById('statusBar').className = 'status-bar error';
+    }
+  }
+
+  function captureFrame() {
+    const video  = document.getElementById('videoEl');
+    const canvas = document.getElementById('canvasEl');
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+  }
+
+  async function scanCard() {
+    const btn    = document.getElementById('scanBtn');
+    const status = document.getElementById('statusBar');
+
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+    status.className = 'status-bar loading';
+    status.textContent = '🔍 Reading card with AI...';
+
+    try {
+      const imageData = captureFrame();
+      const res = await fetch('/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData })
+      });
+      const result = await res.json();
+
+      if (result.success) {
+        const d = result.data;
+        document.getElementById('r-name').textContent  = d.name  || '—';
+        document.getElementById('r-year').textContent  = d.year  || '—';
+        document.getElementById('r-grade').textContent = d.grade || '—';
+        document.getElementById('r-cert').textContent  = d.cert  || '—';
+
+        const cardEl = document.getElementById('r-card');
+        cardEl.textContent = d.card || '';
+        cardEl.style.display = d.card ? 'block' : 'none';
+
+        totalScanned++;
+        if (d.grade && d.grade !== 'Raw') totalGraded++;
+        document.getElementById('stat-total').textContent  = totalScanned;
+        document.getElementById('stat-graded').textContent = totalGraded;
+
+        scanHistory.unshift(d);
+        updateHistory();
+
+        status.className = 'status-bar success';
+        status.textContent = '✓ Logged to Google Sheet!';
+      } else {
+        status.className = 'status-bar error';
+        status.textContent = '✗ ' + result.error;
+      }
+    } catch (e) {
+      status.className = 'status-bar error';
+      status.textContent = '✗ Error: ' + e.message;
+    }
+
+    btn.textContent = '📷   SCAN CARD';
+    btn.disabled = false;
+  }
+
+  function updateHistory() {
+    const list = document.getElementById('historyList');
+    if (scanHistory.length === 0) {
+      list.innerHTML = '<div class="empty-state">No cards scanned yet</div>';
+      return;
+    }
+    list.innerHTML = scanHistory.map(d => `
+      <div class="history-item">
+        <div class="history-card">${d.card || d.name || 'Unknown Card'}</div>
+        <div class="history-meta">${d.grade || 'Raw'}${d.cert ? ' · Cert #' + d.cert : ''}</div>
+      </div>
+    `).join('');
+  }
+
+  function exportCSV() {
+    if (scanHistory.length === 0) { alert('No cards scanned yet!'); return; }
+    const headers = ['Name', 'Year', 'Grade', 'Cert Number', 'Card', 'Paid', 'Tracking Number'];
+    const rows = scanHistory.map(d => [d.name||'', d.year||'', d.grade||'', d.cert||'', d.card||'', '', '']);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cards-' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+  }
+
+  startCamera();
+</script>
+
+</body>
+</html>

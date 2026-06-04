@@ -1,0 +1,4 @@
+google-generativeai
+opencv-python
+google-auth
+google-api-python-client
