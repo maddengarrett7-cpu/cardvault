@@ -483,8 +483,12 @@
       document.getElementById('v-low').textContent  = '$' + d.ebay_low;
 
       const sales = d.ebay_sales || [];
+      const searchUrl = d.ebay_search_url || '#';
       document.getElementById('recentSales').innerHTML = sales.length
-        ? '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">' + d.ebay_count + ' Recent Sales</div>'
+        ? `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+             ${d.ebay_count} Recent Sales &nbsp;·&nbsp;
+             <a href="${searchUrl}" target="_blank" style="color:var(--green);text-decoration:none;">View on eBay ↗</a>
+           </div>`
           + sales.map(s => `
             <div class="sale-item">
               <span class="sale-title">${s.title}</span>
@@ -492,6 +496,23 @@
               <span class="sale-price">$${s.price.toFixed(2)}</span>
             </div>`).join('')
         : '';
+    }
+
+    // Card Ladder tab
+    const hasCL = d.cl_value != null || (d.cl_sales && d.cl_sales.length > 0);
+    document.getElementById('clPlaceholder').style.display = hasCL ? 'none' : 'block';
+    document.getElementById('clData').style.display = hasCL ? 'block' : 'none';
+    if (hasCL) {
+      const clSales = d.cl_sales || [];
+      document.getElementById('clSales').innerHTML =
+        (d.cl_value ? `<div style="text-align:center;margin-bottom:10px;"><span style="font-size:22px;font-weight:800;color:var(--green)">$${d.cl_value}</span><div style="font-size:10px;color:var(--muted);margin-top:2px;">CL VALUE</div></div>` : '')
+        + (d.cl_last_sale ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Last Sale: <strong style="color:var(--text)">$${d.cl_last_sale}</strong></div>` : '')
+        + clSales.map(s => `
+            <div class="sale-item">
+              <span class="sale-date">${s.date || ''}</span>
+              <span class="sale-price">$${s.price}</span>
+            </div>`).join('');
+      if (clToken) document.getElementById('tabCL').classList.add('active');
     }
   }
 
@@ -539,7 +560,7 @@
       const res = await fetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData })
+        body: JSON.stringify({ image: imageData, cl_token: clToken })
       });
       const result = await res.json();
 

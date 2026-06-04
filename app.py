@@ -122,71 +122,102 @@ def video():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+_EBAY_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 def search_ebay_sold(query, limit=10):
-    """Query eBay Finding API for completed/sold listings."""
-    if not EBAY_APP_ID:
-        return None, "eBay App ID not configured"
-    params = {
-        "OPERATION-NAME": "findCompletedItems",
-        "SERVICE-VERSION": "1.0.0",
-        "APP-NAME": EBAY_APP_ID,
-        "GLOBAL-ID": "EBAY-US",
-        "RESPONSE-DATA-FORMAT": "JSON",
-        "keywords": query,
-        "itemFilter(0).name": "SoldItemsOnly",
-        "itemFilter(0).value": "true",
-        "itemFilter(1).name": "ListingType",
-        "itemFilter(1).value": "AuctionWithBIN,FixedPrice,Auction",
-        "sortOrder": "EndTimeSoonest",
-        "paginationInput.entriesPerPage": str(limit),
-    }
+    """Scrape eBay completed/sold listings — no API key needed."""
+    from bs4 import BeautifulSoup
+    import re
+    url = (
+        "https://www.ebay.com/sch/i.html"
+        f"?_nkw={requests.utils.quote(query)}"
+        "&LH_Complete=1&LH_Sold=1&_sop=13&_ipg=25"
+    )
     try:
-        resp = requests.get(
-            "https://svcs.ebay.com/services/search/FindingService/v1",
-            params=params, timeout=8
-        )
+        resp = requests.get(url, headers=_EBAY_HEADERS, timeout=12)
         resp.raise_for_status()
-        data = resp.json()
-        results = (
-            data
-            .get("findCompletedItemsResponse", [{}])[0]
-            .get("searchResult", [{}])[0]
-            .get("item", [])
-        )
-        prices = []
-        sales = []
-        for item in results:
-            price_str = (
-                item.get("sellingStatus", [{}])[0]
-                    .get("currentPrice", [{}])[0]
-                    .get("__value__", None)
-            )
-            if price_str:
-                try:
-                    prices.append(float(price_str))
-                except ValueError:
-                    pass
-            end_time = (
-                item.get("listingInfo", [{}])[0]
-                    .get("endTime", [None])[0]
-            )
-            title = item.get("title", [None])[0]
-            url = item.get("viewItemURL", [None])[0]
-            if price_str and title:
-                sales.append({
-                    "title": title,
-                    "price": float(price_str) if price_str else None,
-                    "date": end_time[:10] if end_time else None,
-                    "url": url,
-                })
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        prices, sales = [], []
+        for item in soup.select(".s-item"):
+            title_el = item.select_one(".s-item__title")
+            price_el = item.select_one(".s-item__price")
+            date_el  = item.select_one(".s-item__ended-date, .POSITIVE")
+            link_el  = item.select_one("a.s-item__link")
+
+            if not title_el or not price_el:
+                continue
+            title = title_el.get_text(strip=True)
+            if title.lower().startswith("shop on ebay"):
+                continue
+
+            price_text = price_el.get_text(strip=True)
+            price_match = re.search(r"[\d,]+\.?\d*", price_text.replace(",", ""))
+            if not price_match:
+                continue
+            price = float(price_match.group().replace(",", ""))
+            prices.append(price)
+
+            date = date_el.get_text(strip=True) if date_el else None
+            sales.append({
+                "title": title,
+                "price": price,
+                "date": date,
+                "url": link_el["href"] if link_el else None,
+            })
+            if len(sales) >= limit:
+                break
+
         if not prices:
             return {"sales": [], "avg": None, "high": None, "low": None, "count": 0}, None
+
         return {
             "sales": sales[:5],
             "avg": round(sum(prices) / len(prices), 2),
             "high": round(max(prices), 2),
             "low": round(min(prices), 2),
             "count": len(prices),
+            "search_url": url,
+        }, None
+    except Exception as e:
+        return None, str(e)
+
+
+CL_SEARCH_URL = "https://search-zzvl7ri3bq-uc.a.run.app"
+
+def search_cardladder(query, year="", cl_token=""):
+    """Query the Card Ladder search API using the user's auth token."""
+    if not cl_token:
+        return None, "No Card Ladder token"
+    params = {"query": query, "year": str(year) if year else "", "limit": "5"}
+    headers = {"Authorization": f"Bearer {cl_token}", "Accept": "application/json"}
+    try:
+        resp = requests.get(f"{CL_SEARCH_URL}/search", params=params, headers=headers, timeout=8)
+        if resp.status_code in (401, 403):
+            return None, "Card Ladder token invalid or expired"
+        resp.raise_for_status()
+        data = resp.json()
+        card = (data.get("results") or data.get("cards") or [None])[0]
+        if not card:
+            return None, "No results found"
+        return {
+            "clValue": card.get("clValue") or card.get("value"),
+            "lastSalePrice": card.get("lastSalePrice") or card.get("lastPrice"),
+            "lastSaleDate": card.get("lastSaleDate") or card.get("lastSoldAt"),
+            "weeklyChange": card.get("weeklyPercentChange"),
+            "recentSales": [
+                {"date": s.get("date") or s.get("soldAt"), "price": s.get("price") or s.get("amount")}
+                for s in (card.get("recentSales") or card.get("sales") or [])
+            ],
+            "cardUrl": f"https://www.cardladder.com{card['url']}" if card.get("url") else None,
         }, None
     except Exception as e:
         return None, str(e)
@@ -195,22 +226,29 @@ def search_ebay_sold(query, limit=10):
 @app.route('/value', methods=['POST'])
 def value():
     body = request.get_json()
-    card_desc = body.get("card", "")
-    name = body.get("name", "")
-    year = body.get("year", "")
+    name  = body.get("name", "")
+    year  = body.get("year", "")
     grade = body.get("grade", "")
+    card  = body.get("card", "")
+    cl_token = body.get("cl_token", "")
 
-    # Build search query from card data
     query_parts = [p for p in [str(year) if year else "", name, grade] if p]
-    query = " ".join(query_parts) if query_parts else card_desc
+    query = " ".join(query_parts) if query_parts else card
 
     if not query.strip():
         return jsonify({"success": False, "error": "No card data to search"})
 
-    result, err = search_ebay_sold(query)
-    if err:
-        return jsonify({"success": False, "error": err})
-    return jsonify({"success": True, "ebay": result, "query": query})
+    ebay_result, ebay_err = search_ebay_sold(query)
+    cl_result, cl_err = search_cardladder(query, year, cl_token) if cl_token else (None, None)
+
+    return jsonify({
+        "success": True,
+        "query": query,
+        "ebay": ebay_result,
+        "ebay_error": ebay_err,
+        "cardladder": cl_result,
+        "cardladder_error": cl_err,
+    })
 
 
 @app.route('/scan', methods=['POST'])
@@ -235,16 +273,24 @@ def scan():
 
         data = analyze_card(frame)
 
-        # Auto-fetch eBay value
+        # Auto-fetch values
+        cl_token = body.get("cl_token", "") if body else ""
         query_parts = [p for p in [str(data.get("year", "")), data.get("name", ""), data.get("grade", "")] if p]
         if query_parts:
-            ebay_result, _ = search_ebay_sold(" ".join(query_parts))
+            q = " ".join(query_parts)
+            ebay_result, _ = search_ebay_sold(q)
             if ebay_result and ebay_result.get("avg"):
-                data["ebay_avg"] = ebay_result["avg"]
-                data["ebay_high"] = ebay_result["high"]
-                data["ebay_low"] = ebay_result["low"]
+                data["ebay_avg"]   = ebay_result["avg"]
+                data["ebay_high"]  = ebay_result["high"]
+                data["ebay_low"]   = ebay_result["low"]
                 data["ebay_count"] = ebay_result["count"]
                 data["ebay_sales"] = ebay_result["sales"]
+            if cl_token:
+                cl_result, _ = search_cardladder(q, data.get("year", ""), cl_token)
+                if cl_result:
+                    data["cl_value"]     = cl_result.get("clValue")
+                    data["cl_last_sale"] = cl_result.get("lastSalePrice")
+                    data["cl_sales"]     = cl_result.get("recentSales", [])
 
         append_to_sheet(data)
         return jsonify({'success': True, 'data': data})
