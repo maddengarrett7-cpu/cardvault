@@ -77,9 +77,20 @@ def analyze_card(frame):
             text = text[4:]
     return json.loads(text)
 
+def get_creds():
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    b64 = os.environ.get("GOOGLE_CREDS_B64", "")
+    if b64:
+        import json, tempfile
+        creds_json = base64.b64decode(b64).decode("utf-8")
+        creds_dict = json.loads(creds_json)
+        from google.oauth2.service_account import Credentials as SACredentials
+        return SACredentials.from_service_account_info(creds_dict, scopes=scopes)
+    return Credentials.from_service_account_file(GOOGLE_CREDS_FILE, scopes=scopes)
+
 def append_to_sheet(data):
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds  = Credentials.from_service_account_file(GOOGLE_CREDS_FILE, scopes=scopes)
+    creds  = get_creds()
     svc    = build("sheets", "v4", credentials=creds)
     row = [[
         data.get("name")  or "",
