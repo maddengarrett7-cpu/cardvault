@@ -96,12 +96,12 @@ def append_to_sheet(data):
     creds  = get_creds()
     svc    = build("sheets", "v4", credentials=creds)
     row = [[
+        "",               # Value (far left)
         data.get("name")  or "",
         data.get("year")  or "",
         data.get("grade") or "",
         data.get("cert")  or "",
         data.get("card")  or "",
-        f"${data['ebay_avg']}" if data.get("ebay_avg") else "",
         "", "",
         "",  # Paid
         "",  # Tracking Number

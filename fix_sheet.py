@@ -18,7 +18,7 @@ svc.spreadsheets().values().update(
     spreadsheetId='1EiomYJ5KfjTz5t2CxX9MvVWeQdt_Js00BtKJIIYhZI8',
     range='Cards!A1',
     valueInputOption='RAW',
-    body={'values': [['Name', 'Year', 'Grade', 'Cert Number', 'Card', '', '', 'Paid', 'Tracking Number']]}
+    body={'values': [['Value', 'Name', 'Year', 'Grade', 'Cert Number', 'Card', '', '', 'Paid', 'Tracking Number']]}
 ).execute()
 
 print('Sheet fixed! Ready to scan.')
