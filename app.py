@@ -115,6 +115,45 @@ def append_to_sheet(data):
         body={"values": row},
     ).execute()
 
+def lookup_psa_cert(cert_number):
+    """Fetch PSA cert info from PSA's public cert verification page."""
+    from bs4 import BeautifulSoup
+    cert = cert_number.replace(" ", "").strip()
+    url = f"https://www.psacard.com/cert/{cert}"
+    try:
+        resp = requests.get(url, headers=_EBAY_HEADERS, timeout=8)
+        if not resp.ok:
+            return None, f"PSA returned {resp.status_code}"
+        soup = BeautifulSoup(resp.text, "lxml")
+        result = {}
+        # PSA cert page has labeled fields
+        for row in soup.select("tr, .cert-row, [class*='cert']"):
+            text = row.get_text(" ", strip=True)
+            for label, key in [("Grade", "grade"), ("Subject", "subject"),
+                                ("Year", "year"), ("Brand", "brand"),
+                                ("Card Number", "card_number"), ("Variety", "variety")]:
+                if label in text:
+                    parts = text.split(label, 1)
+                    if len(parts) > 1:
+                        result[key] = parts[1].strip().split()[0] if parts[1].strip() else None
+        result["cert_url"] = url
+        return result if result else None, None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.route('/psa', methods=['POST'])
+def psa_lookup():
+    body = request.get_json()
+    cert = body.get("cert", "").strip()
+    if not cert:
+        return jsonify({"success": False, "error": "No cert number provided"})
+    result, err = lookup_psa_cert(cert)
+    if err:
+        return jsonify({"success": False, "error": err})
+    return jsonify({"success": True, "psa": result, "cert_url": f"https://www.psacard.com/cert/{cert}"})
+
+
 @app.route('/')
 def index():
     return render_template('index.html')

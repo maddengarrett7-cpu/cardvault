@@ -208,10 +208,31 @@
       border-radius: 8px;
       padding: 10px 12px;
       font-size: 13px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
     }
 
+    .history-thumb {
+      width: 42px;
+      height: 58px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #333;
+    }
+
+    .history-info { flex: 1; min-width: 0; }
     .history-card { color: var(--text); font-weight: 600; }
     .history-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .history-links { display: flex; gap: 8px; margin-top: 5px; }
+    .history-link {
+      font-size: 10px;
+      color: var(--green);
+      text-decoration: none;
+      opacity: 0.8;
+    }
+    .history-link:hover { opacity: 1; }
     .empty-state { color: var(--muted); font-size: 13px; text-align: center; padding: 16px 0; }
 
     .export-btn {
@@ -380,6 +401,10 @@
           <div class="stat-num" id="stat-graded">0</div>
           <div class="stat-label">Graded</div>
         </div>
+        <div class="stat-box" style="grid-column: span 2;">
+          <div class="stat-num" id="stat-value" style="font-size:22px;">$0.00</div>
+          <div class="stat-label">Total Est. Value</div>
+        </div>
       </div>
     </div>
 
@@ -400,6 +425,7 @@
   let scanHistory = [];
   let totalScanned = 0;
   let totalGraded = 0;
+  let totalValue = 0;
   let activeTab = 'ebay';
   let lastCardQuery = '';
 
@@ -496,6 +522,8 @@
 
       if (result.success) {
         const d = result.data;
+        d.photo = 'data:image/jpeg;base64,' + imageData; // save card photo
+
         document.getElementById('r-name').textContent  = d.name  || '—';
         document.getElementById('r-year').textContent  = d.year  || '—';
         document.getElementById('r-grade').textContent = d.grade || '—';
@@ -509,8 +537,10 @@
 
         totalScanned++;
         if (d.grade && d.grade !== 'Raw') totalGraded++;
+        if (d.ebay_avg) totalValue += d.ebay_avg;
         document.getElementById('stat-total').textContent  = totalScanned;
         document.getElementById('stat-graded').textContent = totalGraded;
+        document.getElementById('stat-value').textContent  = '$' + totalValue.toFixed(2);
 
         scanHistory.unshift(d);
         updateHistory();
@@ -536,18 +566,38 @@
       list.innerHTML = '<div class="empty-state">No cards scanned yet</div>';
       return;
     }
-    list.innerHTML = scanHistory.map(d => `
-      <div class="history-item">
-        <div class="history-card">${d.card || d.name || 'Unknown Card'}</div>
-        <div class="history-meta">${d.grade || 'Raw'}${d.cert ? ' · Cert #' + d.cert : ''}</div>
-      </div>
-    `).join('');
+    list.innerHTML = scanHistory.map(d => {
+      const psaUrl = d.cert
+        ? `https://www.psacard.com/cert/${d.cert.replace(/\s/g,'')}`
+        : null;
+      const clUrl = [d.year, d.name, d.grade].filter(Boolean).length
+        ? `https://www.cardladder.com/cards?q=${encodeURIComponent([d.year, d.name, d.grade].filter(Boolean).join(' '))}`
+        : null;
+      const ebayUrl = d.ebay_search_url || null;
+
+      return `
+        <div class="history-item">
+          ${d.photo ? `<img class="history-thumb" src="${d.photo}" alt="card">` : '<div class="history-thumb"></div>'}
+          <div class="history-info">
+            <div class="history-card">${d.card || d.name || 'Unknown Card'}</div>
+            <div class="history-meta">
+              ${d.grade || 'Raw'}${d.cert ? ' · Cert #' + d.cert : ''}
+              ${d.ebay_avg ? ' · <strong style="color:var(--green)">$' + d.ebay_avg + '</strong>' : ''}
+            </div>
+            <div class="history-links">
+              ${psaUrl ? `<a class="history-link" href="${psaUrl}" target="_blank">PSA ↗</a>` : ''}
+              ${clUrl  ? `<a class="history-link" href="${clUrl}"  target="_blank">Card Ladder ↗</a>` : ''}
+              ${ebayUrl? `<a class="history-link" href="${ebayUrl}" target="_blank">eBay ↗</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   function exportCSV() {
     if (scanHistory.length === 0) { alert('No cards scanned yet!'); return; }
-    const headers = ['Name', 'Year', 'Grade', 'Cert Number', 'Card', 'Paid', 'Tracking Number'];
-    const rows = scanHistory.map(d => [d.name||'', d.year||'', d.grade||'', d.cert||'', d.card||'', '', '']);
+    const headers = ['eBay Avg Value', 'Name', 'Year', 'Grade', 'Cert Number', 'Card', 'Paid', 'Tracking Number'];
+    const rows = scanHistory.map(d => [d.ebay_avg ? '$'+d.ebay_avg : '', d.name||'', d.year||'', d.grade||'', d.cert||'', d.card||'', '', '']);
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
