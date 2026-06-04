@@ -1,0 +1,7 @@
+google_creds.json
+run.sh
+CardVault.command
+*.env
+__pycache__/
+*.pyc
+.DS_Store
