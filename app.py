@@ -95,8 +95,10 @@ def append_to_sheet(data):
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds  = get_creds()
     svc    = build("sheets", "v4", credentials=creds)
+    ebay_avg = data.get("ebay_avg")
+    value = f"${ebay_avg:.2f}" if ebay_avg else ""
     row = [[
-        "",               # Value (far left)
+        value,            # Value (far left, from eBay avg)
         data.get("name")  or "",
         data.get("year")  or "",
         data.get("grade") or "",
