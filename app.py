@@ -82,6 +82,7 @@ def get_creds():
     b64 = os.environ.get("GOOGLE_CREDS_B64", "")
     if b64:
         import json, tempfile
+        b64 += "==" # fix padding
         creds_json = base64.b64decode(b64).decode("utf-8")
         creds_dict = json.loads(creds_json)
         from google.oauth2.service_account import Credentials as SACredentials
