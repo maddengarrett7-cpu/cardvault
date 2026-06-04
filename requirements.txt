@@ -1,4 +1,7 @@
+flask
+gunicorn
+opencv-python-headless
 google-generativeai
-opencv-python
 google-auth
 google-api-python-client
+numpy
