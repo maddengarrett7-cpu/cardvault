@@ -271,49 +271,6 @@
     .source-tab.connect { border-color: #555; color: #888; }
     .source-tab.connect:hover { border-color: #aaa; color: #ccc; }
 
-    .cl-modal-overlay {
-      display: none;
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-    }
-    .cl-modal-overlay.open { display: flex; }
-    .cl-modal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px;
-      max-width: 360px;
-      width: 90%;
-    }
-    .cl-modal h3 { font-size: 16px; margin-bottom: 8px; }
-    .cl-modal p { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
-    .cl-input {
-      width: 100%;
-      padding: 10px 12px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-size: 14px;
-      margin-bottom: 10px;
-    }
-    .cl-input:focus { outline: none; border-color: var(--green); }
-    .cl-modal-actions { display: flex; gap: 8px; }
-    .cl-save-btn {
-      flex: 1; padding: 10px;
-      background: var(--green); color: #000;
-      border: none; border-radius: 8px;
-      font-weight: 700; cursor: pointer; font-size: 14px;
-    }
-    .cl-cancel-btn {
-      padding: 10px 16px;
-      background: transparent; color: var(--muted);
-      border: 1px solid var(--border); border-radius: 8px;
-      cursor: pointer; font-size: 14px;
-    }
   </style>
 </head>
 <body>
@@ -371,7 +328,7 @@
       <h2>Market Value</h2>
       <div class="source-tabs">
         <button class="source-tab active" id="tabEbay" onclick="switchTab('ebay')">eBay Sold</button>
-        <button class="source-tab connect" id="tabCL" onclick="openCLModal()">Card Ladder 🔗</button>
+        <button class="source-tab" id="tabCL" onclick="switchTab('cl')">Card Ladder</button>
       </div>
       <div id="ebayContent">
         <div class="value-placeholder" id="valuePlaceholder">Scan a card to see market value</div>
@@ -394,9 +351,20 @@
         </div>
       </div>
       <div id="clContent" style="display:none">
-        <div class="value-placeholder" id="clPlaceholder">Connect your Card Ladder account to see sales data</div>
-        <div id="clData" style="display:none">
-          <div class="recent-sales" id="clSales"></div>
+        <div class="value-placeholder" id="clPlaceholder">Scan a card to search Card Ladder</div>
+        <div id="clLinkWrap" style="display:none; text-align:center; padding: 12px 0;">
+          <a id="clLink" href="#" target="_blank" style="
+            display: inline-block;
+            padding: 12px 20px;
+            background: var(--surface2);
+            border: 1px solid var(--green);
+            border-radius: 10px;
+            color: var(--green);
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+          ">View on Card Ladder ↗</a>
+          <div style="font-size:11px; color:var(--muted); margin-top:8px;" id="clCardName"></div>
         </div>
       </div>
     </div>
@@ -427,25 +395,13 @@
   </div>
 </div>
 
-<!-- Card Ladder Modal -->
-<div class="cl-modal-overlay" id="clModal">
-  <div class="cl-modal">
-    <h3>Connect Card Ladder</h3>
-    <p>Enter your Card Ladder API key or session token to pull sales data. You can find this in your Card Ladder account settings.</p>
-    <input class="cl-input" id="clTokenInput" type="password" placeholder="Paste your Card Ladder token..." />
-    <div class="cl-modal-actions">
-      <button class="cl-save-btn" onclick="saveCLToken()">Connect</button>
-      <button class="cl-cancel-btn" onclick="closeCLModal()">Cancel</button>
-    </div>
-  </div>
-</div>
 
 <script>
   let scanHistory = [];
   let totalScanned = 0;
   let totalGraded = 0;
-  let clToken = localStorage.getItem('cl_token') || '';
   let activeTab = 'ebay';
+  let lastCardQuery = '';
 
   function switchTab(tab) {
     activeTab = tab;
@@ -453,23 +409,6 @@
     document.getElementById('tabCL').classList.toggle('active', tab === 'cl');
     document.getElementById('ebayContent').style.display = tab === 'ebay' ? 'block' : 'none';
     document.getElementById('clContent').style.display = tab === 'cl' ? 'block' : 'none';
-  }
-
-  function openCLModal() {
-    document.getElementById('clTokenInput').value = clToken;
-    document.getElementById('clModal').classList.add('open');
-  }
-
-  function closeCLModal() {
-    document.getElementById('clModal').classList.remove('open');
-  }
-
-  function saveCLToken() {
-    clToken = document.getElementById('clTokenInput').value.trim();
-    localStorage.setItem('cl_token', clToken);
-    document.getElementById('tabCL').textContent = clToken ? 'Card Ladder ✓' : 'Card Ladder 🔗';
-    document.getElementById('tabCL').classList.toggle('active', !!clToken);
-    closeCLModal();
   }
 
   function updateValuePanel(d) {
@@ -498,26 +437,17 @@
         : '';
     }
 
-    // Card Ladder tab
-    const hasCL = d.cl_value != null || (d.cl_sales && d.cl_sales.length > 0);
-    document.getElementById('clPlaceholder').style.display = hasCL ? 'none' : 'block';
-    document.getElementById('clData').style.display = hasCL ? 'block' : 'none';
-    if (hasCL) {
-      const clSales = d.cl_sales || [];
-      document.getElementById('clSales').innerHTML =
-        (d.cl_value ? `<div style="text-align:center;margin-bottom:10px;"><span style="font-size:22px;font-weight:800;color:var(--green)">$${d.cl_value}</span><div style="font-size:10px;color:var(--muted);margin-top:2px;">CL VALUE</div></div>` : '')
-        + (d.cl_last_sale ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Last Sale: <strong style="color:var(--text)">$${d.cl_last_sale}</strong></div>` : '')
-        + clSales.map(s => `
-            <div class="sale-item">
-              <span class="sale-date">${s.date || ''}</span>
-              <span class="sale-price">$${s.price}</span>
-            </div>`).join('');
-      if (clToken) document.getElementById('tabCL').classList.add('active');
+    // Card Ladder tab — build search link from card data
+    const query = [d.year, d.name, d.grade].filter(Boolean).join(' ');
+    if (query) {
+      lastCardQuery = query;
+      const clUrl = 'https://www.cardladder.com/cards?q=' + encodeURIComponent(query);
+      document.getElementById('clLink').href = clUrl;
+      document.getElementById('clCardName').textContent = query;
+      document.getElementById('clPlaceholder').style.display = 'none';
+      document.getElementById('clLinkWrap').style.display = 'block';
     }
   }
-
-  // Update CL tab label on load
-  if (clToken) document.getElementById('tabCL').textContent = 'Card Ladder ✓';
 
   // Start camera
   async function startCamera() {
@@ -560,7 +490,7 @@
       const res = await fetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData, cl_token: clToken })
+        body: JSON.stringify({ image: imageData })
       });
       const result = await res.json();
 
