@@ -52,7 +52,7 @@ def generate_frames():
 
 def analyze_card(frame):
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+    model = genai.GenerativeModel("gemini-2.0-flash")
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
     image_data = buf.tobytes()
     prompt = (
