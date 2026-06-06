@@ -467,7 +467,7 @@
     const query = [d.year, d.name, d.grade].filter(Boolean).join(' ');
     if (query) {
       lastCardQuery = query;
-      const clUrl = 'https://www.cardladder.com/cards?q=' + encodeURIComponent(query);
+      const clUrl = 'https://www.cardladder.com/search?q=' + encodeURIComponent(query);
       document.getElementById('clLink').href = clUrl;
       document.getElementById('clCardName').textContent = query;
       document.getElementById('clPlaceholder').style.display = 'none';
@@ -571,7 +571,7 @@
         ? `https://www.psacard.com/cert/${d.cert.replace(/\s/g,'')}`
         : null;
       const clUrl = [d.year, d.name, d.grade].filter(Boolean).length
-        ? `https://www.cardladder.com/cards?q=${encodeURIComponent([d.year, d.name, d.grade].filter(Boolean).join(' '))}`
+        ? `https://www.cardladder.com/search?q=${encodeURIComponent([d.year, d.name, d.grade].filter(Boolean).join(' '))}`
         : null;
       const ebayUrl = d.ebay_search_url || null;
 
