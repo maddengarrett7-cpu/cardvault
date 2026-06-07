@@ -60,6 +60,7 @@ def analyze_card(frame):
         "return ONLY valid JSON with these exact keys:\n"
         "  name   - player's full name (string)\n"
         "  year   - card year as a 4-digit number (integer or null)\n"
+        "  brand  - card brand/set name, e.g. 'Prizm', 'Topps', 'Bowman', 'Donruss', 'Select' (string or null)\n"
         "  grade  - grading label, e.g. 'PSA 9', 'BGS 8.5', 'SGC 10', 'Raw' if ungraded (string)\n"
         "  cert   - the certification/serial number on the grading label (string or null)\n"
         "  card   - a single description formatted EXACTLY as: "
