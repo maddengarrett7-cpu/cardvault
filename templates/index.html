@@ -467,18 +467,7 @@
     const query = [d.year, d.name, d.grade].filter(Boolean).join(' ');
     if (query) {
       lastCardQuery = query;
-      const clUrl = (() => {
-        if (d.cert) {
-          const graderMatch = (d.grade || '').match(/(PSA|BGS|SGC)/i);
-          const gradeNum    = (d.grade || '').match(/[\d.]+/);
-          const grader      = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
-          const grade       = gradeNum ? 'g' + gradeNum[0].replace('.', '') : null;
-          const cert        = d.cert.replace(/\s/g, '');
-          const filters     = ['grader:' + grader, grade ? 'grade:' + grade : null, 'profileId:' + grader + '-' + cert].filter(Boolean).join('|');
-          return 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
-        }
-        return 'https://app.cardladder.com/search?q=' + encodeURIComponent([d.year, d.brand, d.name].filter(Boolean).join(' '));
-      })();
+      const clUrl = 'https://app.cardladder.com/search?q=' + encodeURIComponent([d.year, d.brand, d.name].filter(Boolean).join(' '));
       document.getElementById('clLink').href = clUrl;
       document.getElementById('clCardName').textContent = query;
       document.getElementById('clPlaceholder').style.display = 'none';
@@ -578,22 +567,9 @@
       return;
     }
     list.innerHTML = scanHistory.map(d => {
-      const psaUrl = d.cert
-        ? `https://www.psacard.com/cert/${d.cert.replace(/\s/g,'')}`
-        : null;
+      const psaUrl = null;
       const clUrl = [d.year, d.name, d.grade].filter(Boolean).length
-        ? (() => {
-        if (d.cert) {
-          const graderMatch = (d.grade || '').match(/(PSA|BGS|SGC)/i);
-          const gradeNum    = (d.grade || '').match(/[\d.]+/);
-          const grader      = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
-          const grade       = gradeNum ? 'g' + gradeNum[0].replace('.', '') : null;
-          const cert        = d.cert.replace(/\s/g, '');
-          const filters     = ['grader:' + grader, grade ? 'grade:' + grade : null, 'profileId:' + grader + '-' + cert].filter(Boolean).join('|');
-          return 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
-        }
-        return 'https://app.cardladder.com/search?q=' + encodeURIComponent([d.year, d.brand, d.name].filter(Boolean).join(' '));
-      })()
+        ? 'https://app.cardladder.com/search?q=' + encodeURIComponent([d.year, d.brand, d.name].filter(Boolean).join(' '))
         : null;
       const ebayUrl = d.ebay_search_url || null;
 
