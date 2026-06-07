@@ -467,16 +467,7 @@
     const query = [d.year, d.name, d.grade].filter(Boolean).join(' ');
     if (query) {
       lastCardQuery = query;
-      // Build Card Ladder sales history URL with grade/grader filters
-      let clFilters = [];
-      if (d.grade) {
-        const gradeMatch = d.grade.match(/(PSA|BGS|SGC)/i);
-        const gradeNum  = d.grade.match(/[\d.]+/);
-        if (gradeMatch) clFilters.push('grader:' + gradeMatch[1].toLowerCase());
-        if (gradeNum)   clFilters.push('grade:g' + gradeNum[0].replace('.',''));
-      }
-      const clBase = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.year, d.name].filter(Boolean).join(' '));
-      const clUrl  = clFilters.length ? clBase + '&filters=' + encodeURIComponent(clFilters.join('|')) : clBase;
+      const clUrl = 'https://app.cardladder.com/search?q=' + encodeURIComponent([d.year, d.name, d.grade].filter(Boolean).join(' '));
       document.getElementById('clLink').href = clUrl;
       document.getElementById('clCardName').textContent = query;
       document.getElementById('clPlaceholder').style.display = 'none';
@@ -580,7 +571,7 @@
         ? `https://www.psacard.com/cert/${d.cert.replace(/\s/g,'')}`
         : null;
       const clUrl = [d.year, d.name, d.grade].filter(Boolean).length
-        ? (() => { const gm = (d.grade||'').match(/(PSA|BGS|SGC)/i); const gn = (d.grade||'').match(/[\d.]+/); const f = [gm?'grader:'+gm[1].toLowerCase():'', gn?'grade:g'+gn[0].replace('.',''):''].filter(Boolean); const base = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q='+encodeURIComponent([d.year,d.name].filter(Boolean).join(' ')); return f.length ? base+'&filters='+encodeURIComponent(f.join('|')) : base; })()
+        ? 'https://app.cardladder.com/search?q=' + encodeURIComponent([d.year, d.name, d.grade].filter(Boolean).join(' '))
         : null;
       const ebayUrl = d.ebay_search_url || null;
 
