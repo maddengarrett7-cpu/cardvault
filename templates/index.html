@@ -523,17 +523,43 @@
     });
   }
 
-  function saveSettings() {
+  async function saveSettings() {
     const val = document.getElementById('sheetUrlInput').value.trim();
     if (!val) { alert('Please paste your Google Sheet URL.'); return; }
     userSheetUrl = val;
     localStorage.setItem('sheet_url', userSheetUrl);
+
+    // Detect columns from sheet headers
+    try {
+      const res  = await fetch('/sheet/headers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheet_id: userSheetUrl })
+      });
+      const data = await res.json();
+      if (data.success && data.headers.length > 0) {
+        const mapped = Object.keys(data.mapping);
+        const preview = mapped.length
+          ? `Detected columns: ${mapped.join(', ')}`
+          : 'Sheet connected — using default column order';
+        closeSettings();
+        updateSheetBtn();
+        const status = document.getElementById('statusBar');
+        status.className = 'status-bar success';
+        status.textContent = `✓ Sheet connected! ${preview}`;
+        setTimeout(() => {
+          status.className = 'status-bar';
+          status.textContent = 'Hold card inside the green frame, then press SCAN CARD';
+        }, 4000);
+        return;
+      }
+    } catch (_) {}
+
     closeSettings();
     updateSheetBtn();
-    // Show success in status bar
     const status = document.getElementById('statusBar');
     status.className = 'status-bar success';
-    status.textContent = '✓ Google Sheet connected! Scans will now log to your sheet.';
+    status.textContent = '✓ Google Sheet connected!';
     setTimeout(() => {
       status.className = 'status-bar';
       status.textContent = 'Hold card inside the green frame, then press SCAN CARD';

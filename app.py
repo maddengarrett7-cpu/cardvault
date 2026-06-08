@@ -100,24 +100,85 @@ def extract_sheet_id(sheet_url_or_id):
         return match.group(1)
     return sheet_url_or_id.strip()
 
+# Keyword map: field -> list of header keywords that match it
+FIELD_KEYWORDS = {
+    "card":  ["card", "description", "title", "full", "listing"],
+    "name":  ["name", "player", "athlete"],
+    "year":  ["year", "yr", "season"],
+    "brand": ["brand", "set", "series", "product"],
+    "grade": ["grade", "condition", "psa", "bgs", "sgc", "slab"],
+    "cert":  ["cert", "certification", "serial", "slab #", "cert #", "id"],
+    "value": ["value", "price", "ebay", "avg", "market", "worth", "$"],
+    "paid":  ["paid", "cost", "bought", "purchase"],
+    "tracking": ["tracking", "track", "ship"],
+}
+
+def detect_column_mapping(headers):
+    """Map field names to column indices based on header keywords."""
+    mapping = {}
+    for col_idx, header in enumerate(headers):
+        h = header.lower().strip()
+        for field, keywords in FIELD_KEYWORDS.items():
+            if field not in mapping and any(kw in h for kw in keywords):
+                mapping[field] = col_idx
+    return mapping
+
+def build_row(data, mapping, num_cols):
+    """Build a row array aligned to the sheet's existing columns."""
+    ebay_avg = data.get("ebay_avg")
+    values = {
+        "card":  data.get("card")  or "",
+        "name":  data.get("name")  or "",
+        "year":  str(data.get("year") or ""),
+        "brand": data.get("brand") or "",
+        "grade": data.get("grade") or "",
+        "cert":  data.get("cert")  or "",
+        "value": f"${ebay_avg:.2f}" if ebay_avg else "",
+        "paid":  "",
+        "tracking": "",
+    }
+    row = [""] * num_cols
+    for field, col_idx in mapping.items():
+        if col_idx < num_cols and field in values:
+            row[col_idx] = values[field]
+    return row
+
+def get_sheet_headers(sheet_id, svc):
+    """Read the first row of the sheet to detect headers."""
+    try:
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=f"{SHEET_TAB}!1:1"
+        ).execute()
+        rows = result.get("values", [])
+        return rows[0] if rows else []
+    except Exception:
+        return []
+
 def append_to_sheet(data, custom_sheet_id=None):
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds  = get_creds()
     svc    = build("sheets", "v4", credentials=creds)
     sheet_id = custom_sheet_id or SPREADSHEET_ID
-    ebay_avg = data.get("ebay_avg")
-    value = f"${ebay_avg:.2f}" if ebay_avg else ""
-    row = [[
-        value,
-        data.get("name")  or "",
-        data.get("year")  or "",
-        data.get("grade") or "",
-        data.get("cert")  or "",
-        data.get("card")  or "",
-        "", "",
-        "",  # Paid
-        "",  # Tracking Number
-    ]]
+
+    headers = get_sheet_headers(sheet_id, svc)
+
+    if headers:
+        mapping = detect_column_mapping(headers)
+        row = [build_row(data, mapping, len(headers))]
+    else:
+        # No headers found — use default column order
+        ebay_avg = data.get("ebay_avg")
+        value = f"${ebay_avg:.2f}" if ebay_avg else ""
+        row = [[
+            value,
+            data.get("name")  or "",
+            data.get("year")  or "",
+            data.get("grade") or "",
+            data.get("cert")  or "",
+            data.get("card")  or "",
+        ]]
+
     svc.spreadsheets().values().append(
         spreadsheetId=sheet_id,
         range=f"{SHEET_TAB}!A1",
@@ -150,6 +211,23 @@ def lookup_psa_cert(cert_number):
         return result if result else None, None
     except Exception as e:
         return None, str(e)
+
+
+@app.route('/sheet/headers', methods=['POST'])
+def sheet_headers():
+    body = request.get_json()
+    sheet_url = body.get("sheet_id", "")
+    if not sheet_url:
+        return jsonify({"success": False, "error": "No sheet URL provided"})
+    sheet_id = extract_sheet_id(sheet_url)
+    try:
+        creds = get_creds()
+        svc   = build("sheets", "v4", credentials=creds)
+        headers = get_sheet_headers(sheet_id, svc)
+        mapping = detect_column_mapping(headers)
+        return jsonify({"success": True, "headers": headers, "mapping": mapping})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 
 @app.route('/psa', methods=['POST'])
