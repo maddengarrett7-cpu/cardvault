@@ -249,6 +249,19 @@
 
     .export-btn:hover { border-color: var(--green); color: var(--green); }
 
+    .cl-modal { position: relative; }
+    .cl-save-btn { flex: 1; padding: 10px; background: var(--green); color: #000; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
+    .cl-cancel-btn { padding: 10px 16px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 14px; }
+    .cl-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+    .cl-modal-overlay.open { display: flex; }
+    .cl-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; max-width: 360px; width: 90%; position: relative; }
+    .cl-input { width: 100%; padding: 10px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; margin-bottom: 10px; }
+    .cl-input:focus { outline: none; border-color: var(--green); }
+
+    .step-dot { width: 28px; height: 28px; border-radius: 50%; background: var(--surface2); border: 2px solid var(--border); color: var(--muted); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .step-dot.active { background: var(--green); border-color: var(--green); color: #000; }
+    .step-dot.done { background: var(--green-dark); border-color: var(--green-dark); color: #000; }
+
     .value-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px; }
 
     .value-box {
@@ -422,21 +435,62 @@
 </div>
 
 
-<!-- Settings Modal -->
+<!-- Connect Sheet Modal -->
 <div class="cl-modal-overlay" id="settingsModal">
-  <div class="cl-modal">
-    <h3>⚙ Settings</h3>
-    <p>Paste your Google Sheet URL below. Cards will be logged to your sheet on every scan.</p>
-    <input class="cl-input" id="sheetUrlInput" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
-    <p style="font-size:12px; color:var(--muted); margin-bottom:6px;">First, share your sheet with this email (Editor access):</p>
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
-      <code style="font-size:11px; background:var(--surface2); padding:6px 10px; border-radius:6px; color:var(--green); flex:1; word-break:break-all;">card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com</code>
-      <button onclick="copyServiceEmail()" style="padding:6px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); cursor:pointer; font-size:12px; white-space:nowrap;">Copy</button>
+  <div class="cl-modal" style="max-width:420px;">
+
+    <!-- Step indicators -->
+    <div style="display:flex; gap:8px; margin-bottom:20px; align-items:center;">
+      <div class="step-dot active" id="dot1">1</div>
+      <div style="flex:1; height:2px; background:var(--border);" id="line1"></div>
+      <div class="step-dot" id="dot2">2</div>
+      <div style="flex:1; height:2px; background:var(--border);" id="line2"></div>
+      <div class="step-dot" id="dot3">3</div>
     </div>
-    <div class="cl-modal-actions">
-      <button class="cl-save-btn" onclick="saveSettings()">Save</button>
-      <button class="cl-cancel-btn" onclick="closeSettings()">Cancel</button>
+
+    <!-- Step 1: Create or open sheet -->
+    <div id="step1">
+      <h3 style="margin-bottom:8px;">📄 Open or Create a Sheet</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.6;">
+        First, open Google Sheets and either create a new spreadsheet or open an existing one you want to use.
+      </p>
+      <a href="https://sheets.new" target="_blank" style="display:block; text-align:center; padding:12px; background:var(--surface2); border:1px solid var(--green); border-radius:10px; color:var(--green); font-weight:700; font-size:14px; text-decoration:none; margin-bottom:10px;">
+        + Create New Google Sheet ↗
+      </a>
+      <p style="text-align:center; font-size:12px; color:var(--muted); margin-bottom:16px;">or open an existing one in your browser</p>
+      <button class="cl-save-btn" onclick="goStep(2)">Next →</button>
     </div>
+
+    <!-- Step 2: Share with service account -->
+    <div id="step2" style="display:none;">
+      <h3 style="margin-bottom:8px;">🔗 Share Your Sheet</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:12px; line-height:1.6;">
+        In your Google Sheet, click <strong style="color:var(--text)">Share</strong> (top right), paste this email, and give it <strong style="color:var(--text)">Editor</strong> access:
+      </p>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:20px;">
+        <code id="serviceEmail" style="font-size:11px; background:var(--surface2); padding:8px 10px; border-radius:6px; color:var(--green); flex:1; word-break:break-all; line-height:1.5;">card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com</code>
+        <button onclick="copyServiceEmail()" id="copyBtn" style="padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); cursor:pointer; font-size:12px; white-space:nowrap;">Copy</button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="cl-cancel-btn" onclick="goStep(1)">← Back</button>
+        <button class="cl-save-btn" onclick="goStep(3)">Done, Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Paste URL -->
+    <div id="step3" style="display:none;">
+      <h3 style="margin-bottom:8px;">🔑 Paste Your Sheet URL</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:12px; line-height:1.6;">
+        Copy the URL from your browser while your sheet is open and paste it below:
+      </p>
+      <input class="cl-input" id="sheetUrlInput" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
+      <div style="display:flex; gap:8px; margin-top:4px;">
+        <button class="cl-cancel-btn" onclick="goStep(2)">← Back</button>
+        <button class="cl-save-btn" onclick="saveSettings()">Connect Sheet ✓</button>
+      </div>
+    </div>
+
+    <button onclick="closeSettings()" style="position:absolute; top:16px; right:16px; background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; line-height:1;">×</button>
   </div>
 </div>
 
@@ -451,6 +505,7 @@
 
   function openSettings() {
     document.getElementById('sheetUrlInput').value = userSheetUrl;
+    goStep(userSheetUrl ? 3 : 1);
     document.getElementById('settingsModal').classList.add('open');
   }
 
@@ -458,17 +513,39 @@
     document.getElementById('settingsModal').classList.remove('open');
   }
 
+  function goStep(n) {
+    [1,2,3].forEach(i => {
+      document.getElementById('step'+i).style.display = i === n ? 'block' : 'none';
+      const dot = document.getElementById('dot'+i);
+      dot.classList.remove('active','done');
+      if (i < n) dot.classList.add('done');
+      if (i === n) dot.classList.add('active');
+    });
+  }
+
   function saveSettings() {
-    userSheetUrl = document.getElementById('sheetUrlInput').value.trim();
+    const val = document.getElementById('sheetUrlInput').value.trim();
+    if (!val) { alert('Please paste your Google Sheet URL.'); return; }
+    userSheetUrl = val;
     localStorage.setItem('sheet_url', userSheetUrl);
     closeSettings();
     updateSheetBtn();
-    alert(userSheetUrl ? '✓ Sheet saved! Scans will now log to your sheet.' : 'Sheet URL cleared.');
+    // Show success in status bar
+    const status = document.getElementById('statusBar');
+    status.className = 'status-bar success';
+    status.textContent = '✓ Google Sheet connected! Scans will now log to your sheet.';
+    setTimeout(() => {
+      status.className = 'status-bar';
+      status.textContent = 'Hold card inside the green frame, then press SCAN CARD';
+    }, 3000);
   }
 
   function copyServiceEmail() {
     navigator.clipboard.writeText('card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com');
-    alert('Copied to clipboard!');
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; }, 2000);
   }
 
   function openUserSheet() {
