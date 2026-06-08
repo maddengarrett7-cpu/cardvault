@@ -92,14 +92,23 @@ def get_creds():
         return SACredentials.from_service_account_info(creds_dict, scopes=scopes)
     return Credentials.from_service_account_file(GOOGLE_CREDS_FILE, scopes=scopes)
 
-def append_to_sheet(data):
+def extract_sheet_id(sheet_url_or_id):
+    """Accept a full Google Sheets URL or raw ID and return just the ID."""
+    import re
+    match = re.search(r'/spreadsheets/d/([a-zA-Z0-9_-]+)', sheet_url_or_id)
+    if match:
+        return match.group(1)
+    return sheet_url_or_id.strip()
+
+def append_to_sheet(data, custom_sheet_id=None):
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds  = get_creds()
     svc    = build("sheets", "v4", credentials=creds)
+    sheet_id = custom_sheet_id or SPREADSHEET_ID
     ebay_avg = data.get("ebay_avg")
     value = f"${ebay_avg:.2f}" if ebay_avg else ""
     row = [[
-        value,            # Value (far left, from eBay avg)
+        value,
         data.get("name")  or "",
         data.get("year")  or "",
         data.get("grade") or "",
@@ -110,7 +119,7 @@ def append_to_sheet(data):
         "",  # Tracking Number
     ]]
     svc.spreadsheets().values().append(
-        spreadsheetId=SPREADSHEET_ID,
+        spreadsheetId=sheet_id,
         range=f"{SHEET_TAB}!A1",
         valueInputOption="USER_ENTERED",
         body={"values": row},
@@ -334,7 +343,9 @@ def scan():
                     data["cl_last_sale"] = cl_result.get("lastSalePrice")
                     data["cl_sales"]     = cl_result.get("recentSales", [])
 
-        append_to_sheet(data)
+        custom_sheet = body.get("sheet_id", "") if body else ""
+        custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
+        append_to_sheet(data, custom_sheet_id)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

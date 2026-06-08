@@ -300,7 +300,8 @@
   <div class="logo">Scan<span>ly</span></div>
   <div class="header-actions">
     <button class="btn-outline" onclick="exportCSV()">⬇ CSV</button>
-    <a class="btn-outline" href="https://docs.google.com/spreadsheets/d/1EiomYJ5KfjTz5t2CxX9MvVWeQdt_Js00BtKJIIYhZI8" target="_blank">Open Sheet ↗</a>
+    <button class="btn-outline" id="openSheetBtn" onclick="openUserSheet()">Open Sheet ↗</button>
+    <button class="btn-outline" onclick="openSettings()">⚙ Settings</button>
   </div>
 </header>
 
@@ -421,6 +422,24 @@
 </div>
 
 
+<!-- Settings Modal -->
+<div class="cl-modal-overlay" id="settingsModal">
+  <div class="cl-modal">
+    <h3>⚙ Settings</h3>
+    <p>Paste your Google Sheet URL below. Cards will be logged to your sheet on every scan.</p>
+    <input class="cl-input" id="sheetUrlInput" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
+    <p style="font-size:12px; color:var(--muted); margin-bottom:6px;">First, share your sheet with this email (Editor access):</p>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
+      <code style="font-size:11px; background:var(--surface2); padding:6px 10px; border-radius:6px; color:var(--green); flex:1; word-break:break-all;">card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com</code>
+      <button onclick="copyServiceEmail()" style="padding:6px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); cursor:pointer; font-size:12px; white-space:nowrap;">Copy</button>
+    </div>
+    <div class="cl-modal-actions">
+      <button class="cl-save-btn" onclick="saveSettings()">Save</button>
+      <button class="cl-cancel-btn" onclick="closeSettings()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
   let scanHistory = [];
   let totalScanned = 0;
@@ -428,6 +447,41 @@
   let totalValue = 0;
   let activeTab = 'ebay';
   let lastCardQuery = '';
+  let userSheetUrl = localStorage.getItem('sheet_url') || '';
+
+  function openSettings() {
+    document.getElementById('sheetUrlInput').value = userSheetUrl;
+    document.getElementById('settingsModal').classList.add('open');
+  }
+
+  function closeSettings() {
+    document.getElementById('settingsModal').classList.remove('open');
+  }
+
+  function saveSettings() {
+    userSheetUrl = document.getElementById('sheetUrlInput').value.trim();
+    localStorage.setItem('sheet_url', userSheetUrl);
+    closeSettings();
+    updateSheetBtn();
+    alert(userSheetUrl ? '✓ Sheet saved! Scans will now log to your sheet.' : 'Sheet URL cleared.');
+  }
+
+  function copyServiceEmail() {
+    navigator.clipboard.writeText('card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com');
+    alert('Copied to clipboard!');
+  }
+
+  function openUserSheet() {
+    const url = userSheetUrl || 'https://docs.google.com/spreadsheets/d/1EiomYJ5KfjTz5t2CxX9MvVWeQdt_Js00BtKJIIYhZI8';
+    window.open(url, '_blank');
+  }
+
+  function updateSheetBtn() {
+    const btn = document.getElementById('openSheetBtn');
+    btn.textContent = userSheetUrl ? 'Open My Sheet ↗' : 'Open Sheet ↗';
+  }
+
+  updateSheetBtn();
 
   function switchTab(tab) {
     activeTab = tab;
@@ -516,7 +570,7 @@
       const res = await fetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData })
+        body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
       });
       const result = await res.json();
 
@@ -546,7 +600,7 @@
         updateHistory();
 
         status.className = 'status-bar success';
-        status.textContent = '✓ Logged to Google Sheet!';
+        status.textContent = userSheetUrl ? '✓ Logged to your Google Sheet!' : '✓ Logged to Google Sheet!';
       } else {
         status.className = 'status-bar error';
         status.textContent = '✗ ' + result.error;
