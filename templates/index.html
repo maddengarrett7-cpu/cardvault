@@ -549,16 +549,32 @@
 
 <!-- Upgrade Modal -->
 <div class="cl-modal-overlay" id="upgradeModal">
-  <div class="cl-modal" style="text-align:center;">
+  <div class="cl-modal" style="text-align:center; max-width:400px;">
     <div style="font-size:40px; margin-bottom:12px;">⚡</div>
-    <h3 style="margin-bottom:8px;">You've hit the free limit</h3>
+    <h3 style="margin-bottom:6px;">You've hit the free limit</h3>
     <p style="font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6;">
       Free plan includes <strong style="color:var(--text)">10 scans/day</strong>.<br>
-      Upgrade to <strong style="color:var(--green)">SlabScan Pro</strong> for unlimited scans, eBay values, and more.
+      Upgrade to <strong style="color:var(--green)">SlabScan Pro</strong> for unlimited scans & eBay values.
     </p>
-    <a href="/account" style="display:block; padding:14px; background:var(--green); color:#000; border-radius:12px; font-weight:800; font-size:16px; text-decoration:none; margin-bottom:10px;">
-      Upgrade to Pro — $9.99/mo
-    </a>
+
+    <!-- Plan toggle -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+      <div id="planMonthly" onclick="selectPlan('monthly')" style="border:2px solid var(--green); border-radius:12px; padding:14px; cursor:pointer; background:rgba(0,230,118,0.06);">
+        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Monthly</div>
+        <div style="font-size:22px; font-weight:800; color:var(--text);">$7.99</div>
+        <div style="font-size:11px; color:var(--muted);">per month</div>
+      </div>
+      <div id="planAnnual" onclick="selectPlan('annual')" style="border:2px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; position:relative;">
+        <div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--green); color:#000; font-size:10px; font-weight:800; padding:2px 8px; border-radius:20px; white-space:nowrap;">SAVE $37</div>
+        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Annual</div>
+        <div style="font-size:22px; font-weight:800; color:var(--text);">$59</div>
+        <div style="font-size:11px; color:var(--muted);">per year</div>
+      </div>
+    </div>
+
+    <button onclick="startCheckout()" style="width:100%; padding:14px; background:var(--green); color:#000; border:none; border-radius:12px; font-weight:800; font-size:16px; cursor:pointer; margin-bottom:10px;">
+      Upgrade to Pro
+    </button>
     <button onclick="document.getElementById('upgradeModal').classList.remove('open')" style="width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); cursor:pointer; font-size:14px;">
       Maybe Later
     </button>
@@ -951,6 +967,30 @@
     a.href = URL.createObjectURL(blob);
     a.download = 'cards-' + new Date().toISOString().slice(0,10) + '.csv';
     a.click();
+  }
+
+  let selectedPlan = 'monthly';
+
+  function selectPlan(plan) {
+    selectedPlan = plan;
+    document.getElementById('planMonthly').style.borderColor = plan === 'monthly' ? 'var(--green)' : 'var(--border)';
+    document.getElementById('planMonthly').style.background  = plan === 'monthly' ? 'rgba(0,230,118,0.06)' : 'transparent';
+    document.getElementById('planAnnual').style.borderColor  = plan === 'annual'  ? 'var(--green)' : 'var(--border)';
+    document.getElementById('planAnnual').style.background   = plan === 'annual'  ? 'rgba(0,230,118,0.06)' : 'transparent';
+  }
+
+  async function startCheckout() {
+    try {
+      const res = await fetch('/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: selectedPlan })
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch(e) {
+      alert('Error starting checkout. Please try again.');
+    }
   }
 
   function toggleMenu() {

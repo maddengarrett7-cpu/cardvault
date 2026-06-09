@@ -32,7 +32,8 @@ SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
 EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
 SHEET_TAB         = "Cards"
 STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
-STRIPE_PRICE_ID       = os.environ.get("STRIPE_PRICE_ID", "")
+STRIPE_PRICE_ID        = os.environ.get("STRIPE_PRICE_ID", "")
+STRIPE_ANNUAL_PRICE_ID = os.environ.get("STRIPE_ANNUAL_PRICE_ID", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 stripe.api_key = STRIPE_SECRET_KEY
 
@@ -419,10 +420,13 @@ def create_checkout_session():
         else:
             customer_id = user['stripe_customer_id']
 
+        plan = request.get_json().get('plan', 'monthly') if request.get_json() else 'monthly'
+        price_id = STRIPE_ANNUAL_PRICE_ID if plan == 'annual' else STRIPE_PRICE_ID
+
         checkout = stripe.checkout.Session.create(
             customer=customer_id,
             payment_method_types=['card'],
-            line_items=[{'price': STRIPE_PRICE_ID, 'quantity': 1}],
+            line_items=[{'price': price_id, 'quantity': 1}],
             mode='subscription',
             success_url=request.host_url + 'account?success=1',
             cancel_url=request.host_url + 'account?cancelled=1',

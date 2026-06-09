@@ -187,7 +187,7 @@
       </div>
       <div class="row">
         <span class="row-label">Plan</span>
-        <span class="row-value">SlabScan Pro — $9.99/month</span>
+        <span class="row-value">SlabScan Pro</span>
       </div>
       <form action="/create-portal-session" method="POST" style="margin-top:16px;">
         <button type="submit" class="manage-btn">Manage Subscription ↗</button>
@@ -196,16 +196,46 @@
     {% else %}
     <div class="upgrade-box">
       <h3>Upgrade to <span style="color:var(--green)">Pro</span></h3>
-      <p>Unlimited scans, live eBay values, Card Ladder comps, and Google Sheets sync — all for $9.99/month.</p>
-      <button class="upgrade-btn" onclick="startCheckout()">Upgrade to Pro — $9.99/mo</button>
+      <p>Unlimited scans, live eBay values, and Google Sheets sync.</p>
+
+      <!-- Plan selector -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
+        <div id="planMonthly" onclick="selectPlan('monthly')" style="border:2px solid var(--green); border-radius:12px; padding:14px; cursor:pointer; background:rgba(0,230,118,0.06);">
+          <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Monthly</div>
+          <div style="font-size:24px; font-weight:800;">$7.99</div>
+          <div style="font-size:11px; color:var(--muted);">per month</div>
+        </div>
+        <div id="planAnnual" onclick="selectPlan('annual')" style="border:2px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; position:relative;">
+          <div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--green); color:#000; font-size:10px; font-weight:800; padding:2px 8px; border-radius:20px; white-space:nowrap;">SAVE $37</div>
+          <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Annual</div>
+          <div style="font-size:24px; font-weight:800;">$59</div>
+          <div style="font-size:11px; color:var(--muted);">per year</div>
+        </div>
+      </div>
+
+      <button class="upgrade-btn" onclick="startCheckout()">Upgrade to Pro</button>
     </div>
     {% endif %}
 
   </div>
 
   <script>
+    let selectedPlan = 'monthly';
+
+    function selectPlan(plan) {
+      selectedPlan = plan;
+      document.getElementById('planMonthly').style.borderColor = plan === 'monthly' ? 'var(--green)' : 'var(--border)';
+      document.getElementById('planMonthly').style.background  = plan === 'monthly' ? 'rgba(0,230,118,0.06)' : 'transparent';
+      document.getElementById('planAnnual').style.borderColor  = plan === 'annual'  ? 'var(--green)' : 'var(--border)';
+      document.getElementById('planAnnual').style.background   = plan === 'annual'  ? 'rgba(0,230,118,0.06)' : 'transparent';
+    }
+
     async function startCheckout() {
-      const res  = await fetch('/create-checkout-session', { method: 'POST' });
+      const res  = await fetch('/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: selectedPlan })
+      });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
       else alert('Error: ' + (data.error || 'Unknown error'));
