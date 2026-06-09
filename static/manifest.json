@@ -1,6 +1,6 @@
 {
-  "name": "Scanly — Sports Card Scanner",
-  "short_name": "Scanly",
+  "name": "SlabScan — Sports Card Scanner",
+  "short_name": "SlabScan",
   "description": "Scan and value your sports cards instantly",
   "start_url": "/",
   "display": "standalone",

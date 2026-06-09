@@ -1,4 +1,4 @@
-const CACHE = 'scanly-v1';
+const CACHE = 'slabscan-v1';
 const ASSETS = ['/', '/static/manifest.json'];
 
 self.addEventListener('install', e => {
