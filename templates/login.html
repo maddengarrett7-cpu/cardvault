@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SlabScan — {{ 'Sign Up' if mode == 'signup' else 'Log In' }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#00e676">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --green: #00e676;
+      --green-dark: #00c853;
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface2: #1e1e1e;
+      --border: #2a2a2a;
+      --text: #ffffff;
+      --muted: #888;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px;
+      width: 100%;
+      max-width: 420px;
+    }
+    .logo {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .logo span { color: var(--green); }
+    .tagline {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    .tabs {
+      display: flex;
+      background: var(--surface2);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 28px;
+    }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      color: var(--muted);
+    }
+    .tab.active {
+      background: var(--surface);
+      color: var(--text);
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 15px;
+      margin-bottom: 16px;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--green);
+    }
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .btn:hover { background: #00ff87; }
+    .error {
+      background: rgba(255,82,82,0.1);
+      border: 1px solid rgba(255,82,82,0.3);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #ff5252;
+      margin-bottom: 16px;
+    }
+    .free-note {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 20px;
+      line-height: 1.6;
+    }
+    .free-note strong { color: var(--green); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Slab<span>Scan</span></div>
+    <div class="tagline">Sports Card Scanner</div>
+
+    <div class="tabs">
+      <a href="/login" class="tab {{ 'active' if mode == 'login' else '' }}">Log In</a>
+      <a href="/signup" class="tab {{ 'active' if mode == 'signup' else '' }}">Sign Up</a>
+    </div>
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST">
+      <label>Email</label>
+      <input type="email" name="email" placeholder="you@example.com" required autofocus>
+      <label>Password</label>
+      <input type="password" name="password" placeholder="••••••••" required>
+      <button type="submit" class="btn">
+        {{ 'Create Account' if mode == 'signup' else 'Log In' }}
+      </button>
+    </form>
+
+    {% if mode == 'signup' %}
+    <div class="free-note">
+      Free plan includes <strong>20 scans/day</strong>.<br>
+      Upgrade to <strong>Pro</strong> for unlimited scans — $9.99/mo.
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>

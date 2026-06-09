@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SlabScan — Account</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#00e676">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --green: #00e676;
+      --green-dark: #00c853;
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface2: #1e1e1e;
+      --border: #2a2a2a;
+      --text: #ffffff;
+      --muted: #888;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .logo { font-size: 22px; font-weight: 800; }
+    .logo span { color: var(--green); }
+    .header-actions { display: flex; gap: 10px; }
+    .btn-outline {
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-outline:hover { border-color: var(--green); color: var(--green); }
+    .container { max-width: 600px; margin: 40px auto; padding: 0 24px; }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .panel h2 {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .row:last-child { border-bottom: none; }
+    .row-label { color: var(--muted); }
+    .row-value { font-weight: 600; }
+    .badge-pro {
+      background: var(--green);
+      color: #000;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .badge-free {
+      background: var(--surface2);
+      color: var(--muted);
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+    }
+    .upgrade-box {
+      background: linear-gradient(135deg, #0a1a0a, #0d2a0d);
+      border: 1px solid var(--green);
+      border-radius: 16px;
+      padding: 28px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .upgrade-box h3 { font-size: 22px; margin-bottom: 8px; }
+    .upgrade-box p { color: var(--muted); font-size: 14px; margin-bottom: 20px; line-height: 1.6; }
+    .upgrade-btn {
+      display: inline-block;
+      padding: 14px 32px;
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      width: 100%;
+    }
+    .upgrade-btn:hover { background: #00ff87; }
+    .manage-btn {
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .manage-btn:hover { border-color: var(--green); color: var(--green); }
+    .success-msg {
+      background: rgba(0,230,118,0.1);
+      border: 1px solid rgba(0,230,118,0.3);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--green);
+      margin-bottom: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Slab<span>Scan</span></div>
+    <div class="header-actions">
+      <a href="/" class="btn-outline">← Scanner</a>
+      <a href="/logout" class="btn-outline">Log Out</a>
+    </div>
+  </header>
+
+  <div class="container">
+
+    {% if request.args.get('success') %}
+    <div class="success-msg">🎉 You're now on SlabScan Pro! Enjoy unlimited scans.</div>
+    {% endif %}
+
+    <div class="panel">
+      <h2>Account</h2>
+      <div class="row">
+        <span class="row-label">Email</span>
+        <span class="row-value">{{ user.email }}</span>
+      </div>
+      <div class="row">
+        <span class="row-label">Plan</span>
+        <span class="row-value">
+          {% if user.subscription_status == 'pro' %}
+          <span class="badge-pro">PRO</span>
+          {% else %}
+          <span class="badge-free">FREE</span>
+          {% endif %}
+        </span>
+      </div>
+      {% if user.subscription_status == 'free' %}
+      <div class="row">
+        <span class="row-label">Daily Scans</span>
+        <span class="row-value">{{ user.scans_today }} / 20</span>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if user.subscription_status == 'pro' %}
+    <div class="panel">
+      <h2>Subscription</h2>
+      <div class="row">
+        <span class="row-label">Status</span>
+        <span class="row-value" style="color:var(--green)">Active</span>
+      </div>
+      <div class="row">
+        <span class="row-label">Plan</span>
+        <span class="row-value">SlabScan Pro — $9.99/month</span>
+      </div>
+      <form action="/create-portal-session" method="POST" style="margin-top:16px;">
+        <button type="submit" class="manage-btn">Manage Subscription ↗</button>
+      </form>
+    </div>
+    {% else %}
+    <div class="upgrade-box">
+      <h3>Upgrade to <span style="color:var(--green)">Pro</span></h3>
+      <p>Unlimited scans, live eBay values, Card Ladder comps, and Google Sheets sync — all for $9.99/month.</p>
+      <button class="upgrade-btn" onclick="startCheckout()">Upgrade to Pro — $9.99/mo</button>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <script>
+    async function startCheckout() {
+      const res  = await fetch('/create-checkout-session', { method: 'POST' });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  </script>
+</body>
+</html>

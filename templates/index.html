@@ -326,6 +326,9 @@
     <button class="btn-outline" id="openSheetBtn" onclick="openUserSheet()">Open Sheet ↗</button>
     <button class="btn-outline" onclick="openSettings()">⚙ Settings</button>
     <button class="btn-outline" id="installBtn" style="display:none; border-color:#00e676; color:#00e676;" onclick="installApp()">⬇ Install App</button>
+    <a href="/account" class="btn-outline" style="{% if user.subscription_status == 'pro' %}border-color:var(--green);color:var(--green);{% endif %}">
+      {% if user.subscription_status == 'pro' %}⚡ Pro{% else %}👤 Account{% endif %}
+    </a>
   </div>
 </header>
 
@@ -445,6 +448,24 @@
   </div>
 </div>
 
+
+<!-- Upgrade Modal -->
+<div class="cl-modal-overlay" id="upgradeModal">
+  <div class="cl-modal" style="text-align:center;">
+    <div style="font-size:40px; margin-bottom:12px;">⚡</div>
+    <h3 style="margin-bottom:8px;">You've hit the free limit</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6;">
+      Free plan includes <strong style="color:var(--text)">20 scans/day</strong>.<br>
+      Upgrade to <strong style="color:var(--green)">SlabScan Pro</strong> for unlimited scans, eBay values, and more.
+    </p>
+    <a href="/account" style="display:block; padding:14px; background:var(--green); color:#000; border-radius:12px; font-weight:800; font-size:16px; text-decoration:none; margin-bottom:10px;">
+      Upgrade to Pro — $9.99/mo
+    </a>
+    <button onclick="document.getElementById('upgradeModal').classList.remove('open')" style="width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); cursor:pointer; font-size:14px;">
+      Maybe Later
+    </button>
+  </div>
+</div>
 
 <!-- Connect Sheet Modal -->
 <div class="cl-modal-overlay" id="settingsModal">
@@ -687,6 +708,15 @@
         body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
       });
       const result = await res.json();
+
+      if (result.limit_reached) {
+        status.className = 'status-bar error';
+        status.textContent = '✗ ' + result.error;
+        document.getElementById('upgradeModal').classList.add('open');
+        btn.textContent = '📷   SCAN CARD';
+        btn.disabled = false;
+        return;
+      }
 
       if (result.success) {
         const d = result.data;

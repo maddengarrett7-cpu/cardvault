@@ -10,12 +10,17 @@ import time
 import threading
 import base64
 import requests
+import stripe
 from datetime import datetime
-from flask import Flask, render_template, Response, jsonify, request
+from functools import wraps
+from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
 import cv2
 import google.generativeai as genai
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from database import init_db, get_user_by_email, get_user_by_id, create_user, \
+    update_stripe_customer, update_subscription, check_and_increment_scans
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
@@ -23,9 +28,23 @@ GOOGLE_CREDS_FILE = os.path.join(os.path.dirname(__file__), "google_creds.json")
 SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
 EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
 SHEET_TAB         = "Cards"
+STRIPE_SECRET_KEY    = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PRICE_ID      = os.environ.get("STRIPE_PRICE_ID", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+stripe.api_key = STRIPE_SECRET_KEY
 # ───────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "slabscan-dev-secret")
+init_db()
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
 
 # Shared camera instance
 camera = None
@@ -243,8 +262,105 @@ def psa_lookup():
 
 
 @app.route('/')
+@login_required
 def index():
-    return render_template('index.html')
+    user = get_user_by_id(session['user_id'])
+    return render_template('index.html', user=user)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email    = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        user = get_user_by_email(email)
+        if user and check_password_hash(user['password_hash'], password):
+            session['user_id'] = user['id']
+            return redirect(url_for('index'))
+        return render_template('login.html', error='Invalid email or password', mode='login')
+    return render_template('login.html', mode='login')
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        email    = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        if not email or not password or len(password) < 6:
+            return render_template('login.html', error='Please enter a valid email and password (min 6 chars)', mode='signup')
+        user = create_user(email, generate_password_hash(password))
+        if not user:
+            return render_template('login.html', error='An account with that email already exists', mode='signup')
+        session['user_id'] = user['id']
+        return redirect(url_for('index'))
+    return render_template('login.html', mode='signup')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/create-checkout-session', methods=['POST'])
+@login_required
+def create_checkout_session():
+    user = get_user_by_id(session['user_id'])
+    try:
+        # Create or reuse Stripe customer
+        if not user['stripe_customer_id']:
+            customer = stripe.Customer.create(email=user['email'])
+            update_stripe_customer(user['id'], customer.id)
+            customer_id = customer.id
+        else:
+            customer_id = user['stripe_customer_id']
+
+        checkout = stripe.checkout.Session.create(
+            customer=customer_id,
+            payment_method_types=['card'],
+            line_items=[{'price': STRIPE_PRICE_ID, 'quantity': 1}],
+            mode='subscription',
+            success_url=request.host_url + 'account?success=1',
+            cancel_url=request.host_url + 'account?cancelled=1',
+        )
+        return jsonify({'url': checkout.url})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/create-portal-session', methods=['POST'])
+@login_required
+def create_portal_session():
+    user = get_user_by_id(session['user_id'])
+    if not user['stripe_customer_id']:
+        return jsonify({'error': 'No subscription found'}), 400
+    portal = stripe.billing_portal.Session.create(
+        customer=user['stripe_customer_id'],
+        return_url=request.host_url + 'account',
+    )
+    return redirect(portal.url)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    payload = request.data
+    sig_header = request.headers.get('Stripe-Signature')
+    try:
+        if STRIPE_WEBHOOK_SECRET:
+            event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        else:
+            event = json.loads(payload)
+    except Exception:
+        return 'Invalid', 400
+
+    if event['type'] in ('customer.subscription.created', 'customer.subscription.updated'):
+        sub = event['data']['object']
+        status = 'pro' if sub['status'] == 'active' else 'free'
+        update_subscription(sub['customer'], status)
+    elif event['type'] == 'customer.subscription.deleted':
+        update_subscription(event['data']['object']['customer'], 'free')
+
+    return 'OK', 200
+
+@app.route('/account')
+@login_required
+def account():
+    user = get_user_by_id(session['user_id'])
+    return render_template('account.html', user=user)
 
 @app.route('/video')
 def video():
@@ -381,7 +497,16 @@ def value():
 
 
 @app.route('/scan', methods=['POST'])
+@login_required
 def scan():
+    # Check scan limits
+    allowed, scans_used, limit = check_and_increment_scans(session['user_id'])
+    if not allowed:
+        return jsonify({
+            'success': False,
+            'limit_reached': True,
+            'error': f'Free limit reached ({limit} scans/day). Upgrade to SlabScan Pro for unlimited scans.'
+        })
     try:
         # Accept image from browser camera
         body = request.get_json()
