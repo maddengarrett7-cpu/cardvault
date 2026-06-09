@@ -18,9 +18,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import cv2
 import google.generativeai as genai
 from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials as OAuthCredentials
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from database import init_db, get_user_by_email, get_user_by_id, create_user, \
-    update_stripe_customer, update_subscription, check_and_increment_scans
+    update_stripe_customer, update_subscription, check_and_increment_scans, \
+    save_google_tokens, save_google_sheet_id, clear_google_tokens
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
@@ -28,10 +31,18 @@ GOOGLE_CREDS_FILE = os.path.join(os.path.dirname(__file__), "google_creds.json")
 SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
 EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
 SHEET_TAB         = "Cards"
-STRIPE_SECRET_KEY    = os.environ.get("STRIPE_SECRET_KEY", "")
-STRIPE_PRICE_ID      = os.environ.get("STRIPE_PRICE_ID", "")
+STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PRICE_ID       = os.environ.get("STRIPE_PRICE_ID", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 stripe.api_key = STRIPE_SECRET_KEY
+
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_OAUTH_SCOPES  = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+]
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://scanly-production-8403.up.railway.app")
 # ───────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
@@ -174,11 +185,32 @@ def get_sheet_headers(sheet_id, svc):
     except Exception:
         return []
 
-def append_to_sheet(data, custom_sheet_id=None):
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds  = get_creds()
-    svc    = build("sheets", "v4", credentials=creds)
-    sheet_id = custom_sheet_id or SPREADSHEET_ID
+def get_user_sheets_service(user):
+    """Build a Sheets service using the user's OAuth tokens if available, else service account."""
+    if user and user.get("google_access_token"):
+        creds = OAuthCredentials(
+            token=user["google_access_token"],
+            refresh_token=user["google_refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            scopes=GOOGLE_OAUTH_SCOPES,
+        )
+        return build("sheets", "v4", credentials=creds)
+    return build("sheets", "v4", credentials=get_creds())
+
+def append_to_sheet(data, custom_sheet_id=None, user=None):
+    user = user or {}
+    svc = get_user_sheets_service(user)
+
+    # Use user's saved sheet, then custom passed in, then fallback
+    sheet_id = (
+        custom_sheet_id
+        or user.get("google_sheet_id")
+        or SPREADSHEET_ID
+    )
+    if not sheet_id:
+        return  # No sheet configured — skip silently
 
     headers = get_sheet_headers(sheet_id, svc)
 
@@ -186,7 +218,6 @@ def append_to_sheet(data, custom_sheet_id=None):
         mapping = detect_column_mapping(headers)
         row = [build_row(data, mapping, len(headers))]
     else:
-        # No headers found — use default column order
         ebay_avg = data.get("ebay_avg")
         value = f"${ebay_avg:.2f}" if ebay_avg else ""
         row = [[
@@ -297,6 +328,83 @@ def signup():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+# ── Google OAuth ─────────────────────────────────────────────────────────────
+
+def make_oauth_flow():
+    return Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [f"{APP_BASE_URL}/oauth/callback"],
+            }
+        },
+        scopes=GOOGLE_OAUTH_SCOPES,
+        redirect_uri=f"{APP_BASE_URL}/oauth/callback",
+    )
+
+@app.route('/connect-sheets')
+@login_required
+def connect_sheets():
+    flow = make_oauth_flow()
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes="true",
+    )
+    session["oauth_state"] = state
+    return redirect(auth_url)
+
+@app.route('/oauth/callback')
+@login_required
+def oauth_callback():
+    flow = make_oauth_flow()
+    try:
+        flow.fetch_token(authorization_response=request.url.replace("http://", "https://"))
+        creds = flow.credentials
+        save_google_tokens(session["user_id"], creds.token, creds.refresh_token)
+
+        # Auto-create a SlabScan sheet for the user
+        svc = build("sheets", "v4", credentials=creds)
+        drive_svc = build("drive", "v3", credentials=creds)
+        spreadsheet = svc.spreadsheets().create(body={
+            "properties": {"title": "SlabScan Collection"},
+            "sheets": [{"properties": {"title": "Cards"}}]
+        }).execute()
+        sheet_id = spreadsheet["spreadsheetId"]
+        save_google_sheet_id(session["user_id"], sheet_id)
+
+        # Write header row
+        svc.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range="Cards!A1",
+            valueInputOption="RAW",
+            body={"values": [["Est. Value", "Name", "Year", "Grade", "Cert #", "Card", "Set", "Rarity", "Card #", "Paid", "Tracking #", "Date Scanned"]]}
+        ).execute()
+
+        return redirect("/?sheets=connected")
+    except Exception as e:
+        return redirect(f"/?sheets=error&msg={str(e)}")
+
+@app.route('/disconnect-sheets', methods=['POST'])
+@login_required
+def disconnect_sheets():
+    clear_google_tokens(session["user_id"])
+    return jsonify({"success": True})
+
+@app.route('/sheets-status')
+@login_required
+def sheets_status():
+    user = get_user_by_id(session["user_id"])
+    connected = bool(user and user.get("google_access_token"))
+    sheet_id = user.get("google_sheet_id") if user else None
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}" if sheet_id else None
+    return jsonify({"connected": connected, "sheet_url": sheet_url})
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.route('/create-checkout-session', methods=['POST'])
 @login_required
@@ -582,9 +690,10 @@ def scan():
                     data["cl_last_sale"] = cl_result.get("lastSalePrice")
                     data["cl_sales"]     = cl_result.get("recentSales", [])
 
+        user = get_user_by_id(session['user_id'])
         custom_sheet = body.get("sheet_id", "") if body else ""
         custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
-        append_to_sheet(data, custom_sheet_id)
+        append_to_sheet(data, custom_sheet_id, user=user)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

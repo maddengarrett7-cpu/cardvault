@@ -20,9 +20,22 @@ def init_db():
             stripe_customer_id TEXT,
             subscription_status TEXT DEFAULT 'free',
             scans_today INTEGER DEFAULT 0,
-            scans_date TEXT DEFAULT ''
+            scans_date TEXT DEFAULT '',
+            google_access_token TEXT,
+            google_refresh_token TEXT,
+            google_sheet_id TEXT
         )
     """)
+    # Migrate existing DBs — add columns if missing
+    for col, definition in [
+        ("google_access_token", "TEXT"),
+        ("google_refresh_token", "TEXT"),
+        ("google_sheet_id", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -49,6 +62,30 @@ def create_user(email, password_hash):
         return None
     finally:
         conn.close()
+
+def save_google_tokens(user_id, access_token, refresh_token):
+    conn = get_db()
+    conn.execute(
+        "UPDATE users SET google_access_token = ?, google_refresh_token = ? WHERE id = ?",
+        (access_token, refresh_token, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+def save_google_sheet_id(user_id, sheet_id):
+    conn = get_db()
+    conn.execute("UPDATE users SET google_sheet_id = ? WHERE id = ?", (sheet_id, user_id))
+    conn.commit()
+    conn.close()
+
+def clear_google_tokens(user_id):
+    conn = get_db()
+    conn.execute(
+        "UPDATE users SET google_access_token = NULL, google_refresh_token = NULL, google_sheet_id = NULL WHERE id = ?",
+        (user_id,)
+    )
+    conn.commit()
+    conn.close()
 
 def update_stripe_customer(user_id, customer_id):
     conn = get_db()
