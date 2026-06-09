@@ -434,21 +434,39 @@
 
     <div class="panel-box">
       <h2>Last Scanned</h2>
-      <div class="result-row">
-        <span class="result-label">Player</span>
+      <!-- Sports fields -->
+      <div class="result-row" id="row-name">
+        <span class="result-label" id="label-name">Player</span>
         <span class="result-value" id="r-name">—</span>
       </div>
-      <div class="result-row">
+      <div class="result-row" id="row-year">
         <span class="result-label">Year</span>
         <span class="result-value" id="r-year">—</span>
       </div>
-      <div class="result-row">
+      <div class="result-row" id="row-set">
+        <span class="result-label">Set</span>
+        <span class="result-value" id="r-set">—</span>
+      </div>
+      <div class="result-row" id="row-grade">
         <span class="result-label">Grade</span>
         <span class="result-value" id="r-grade">—</span>
       </div>
-      <div class="result-row">
+      <div class="result-row" id="row-cert">
         <span class="result-label">Cert #</span>
         <span class="result-value" id="r-cert">—</span>
+      </div>
+      <!-- TCG-only fields -->
+      <div class="result-row" id="row-cardnum" style="display:none">
+        <span class="result-label">Card #</span>
+        <span class="result-value" id="r-cardnum">—</span>
+      </div>
+      <div class="result-row" id="row-rarity" style="display:none">
+        <span class="result-label">Rarity</span>
+        <span class="result-value" id="r-rarity">—</span>
+      </div>
+      <div class="result-row" id="row-hp" style="display:none">
+        <span class="result-label">HP</span>
+        <span class="result-value" id="r-hp">—</span>
       </div>
       <div class="card-full" id="r-card"></div>
     </div>
@@ -813,10 +831,24 @@
         const d = result.data;
         d.photo = 'data:image/jpeg;base64,' + imageData; // save card photo
 
-        document.getElementById('r-name').textContent  = d.name  || '—';
-        document.getElementById('r-year').textContent  = d.year  || '—';
-        document.getElementById('r-grade').textContent = d.grade || '—';
-        document.getElementById('r-cert').textContent  = d.cert  || '—';
+        const isTCG = d.card_type === 'tcg';
+
+        // Toggle label and TCG-only rows
+        document.getElementById('label-name').textContent = isTCG ? 'Card Name' : 'Player';
+        document.getElementById('row-year').style.display    = isTCG ? 'none' : 'flex';
+        document.getElementById('row-cardnum').style.display = isTCG ? 'flex' : 'none';
+        document.getElementById('row-rarity').style.display  = isTCG ? 'flex' : 'none';
+        document.getElementById('row-hp').style.display      = (isTCG && d.hp) ? 'flex' : 'none';
+
+        // Populate fields
+        document.getElementById('r-name').textContent    = d.name  || '—';
+        document.getElementById('r-year').textContent    = d.year  || '—';
+        document.getElementById('r-set').textContent     = d.set   || '—';
+        document.getElementById('r-grade').textContent   = d.grade || '—';
+        document.getElementById('r-cert').textContent    = d.cert  || '—';
+        document.getElementById('r-cardnum').textContent = d.card_number || '—';
+        document.getElementById('r-rarity').textContent  = d.rarity || '—';
+        document.getElementById('r-hp').textContent      = d.hp ? d.hp + ' HP' : '—';
 
         const cardEl = document.getElementById('r-card');
         cardEl.textContent = d.card || '';
@@ -872,7 +904,10 @@
           <div class="history-info">
             <div class="history-card">${d.card || d.name || 'Unknown Card'}</div>
             <div class="history-meta">
-              ${d.grade || 'Raw'}${d.cert ? ' · Cert #' + d.cert : ''}
+              ${d.card_type === 'tcg'
+                ? `${d.set || ''}${d.card_number ? ' · #' + d.card_number : ''}${d.rarity ? ' · ' + d.rarity : ''} · ${d.grade || 'Raw'}`
+                : `${d.grade || 'Raw'}${d.cert ? ' · Cert #' + d.cert : ''}`
+              }
               ${d.ebay_avg ? ' · <strong style="color:var(--green)">$' + d.ebay_avg + '</strong>' : ''}
             </div>
             <div class="history-links">
