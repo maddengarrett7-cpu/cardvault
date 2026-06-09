@@ -120,7 +120,27 @@
     }
 
     @media (max-width: 768px) {
-      .layout { grid-template-columns: 1fr; padding: 12px; }
+      .layout { grid-template-columns: 1fr; padding: 12px; padding-bottom: 90px; }
+
+      /* Sticky scan button at bottom */
+      .scan-btn-wrap {
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        padding: 12px 16px;
+        background: var(--bg);
+        border-top: 1px solid var(--border);
+        z-index: 100;
+      }
+
+      /* Hide the inline scan button on mobile */
+      .scan-btn-inline { display: none; }
+
+      /* Expand history list on mobile */
+      .history-list { max-height: none; }
+    }
+
+    @media (min-width: 769px) {
+      .scan-btn-wrap { display: none; }
     }
 
     .camera-panel { display: flex; flex-direction: column; gap: 14px; }
@@ -402,7 +422,8 @@
       </div>
     </div>
 
-    <button class="scan-btn" id="scanBtn" onclick="scanCard()">📷 &nbsp; SCAN CARD</button>
+    <!-- Inline scan button (desktop only) -->
+    <button class="scan-btn scan-btn-inline" id="scanBtn" onclick="scanCard()">📷 &nbsp; SCAN CARD</button>
 
     <div class="status-bar" id="statusBar">
       Hold card inside the green frame, then press SCAN CARD
@@ -585,6 +606,11 @@
   </div>
 </div>
 
+<!-- Sticky scan button (mobile only) -->
+<div class="scan-btn-wrap">
+  <button class="scan-btn" id="scanBtnMobile" onclick="scanCard()">📷 &nbsp; SCAN CARD</button>
+</div>
+
 <script>
   let scanHistory = [];
   let totalScanned = 0;
@@ -750,12 +776,19 @@
     return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
   }
 
+  function setScanBtns(disabled, text) {
+    ['scanBtn', 'scanBtnMobile'].forEach(id => {
+      const b = document.getElementById(id);
+      if (!b) return;
+      b.disabled = disabled;
+      b.textContent = text;
+    });
+  }
+
   async function scanCard() {
-    const btn    = document.getElementById('scanBtn');
     const status = document.getElementById('statusBar');
 
-    btn.disabled = true;
-    btn.textContent = 'Analyzing...';
+    setScanBtns(true, 'Analyzing...');
     status.className = 'status-bar loading';
     status.textContent = '🔍 Reading card with AI...';
 
@@ -772,8 +805,7 @@
         status.className = 'status-bar error';
         status.textContent = '✗ ' + result.error;
         document.getElementById('upgradeModal').classList.add('open');
-        btn.textContent = '📷   SCAN CARD';
-        btn.disabled = false;
+        setScanBtns(false, '📷   SCAN CARD');
         return;
       }
 
@@ -791,6 +823,11 @@
         cardEl.style.display = d.card ? 'block' : 'none';
 
         updateValuePanel(d);
+
+        // Auto-scroll to results on mobile
+        if (window.innerWidth <= 768) {
+          document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
 
         totalScanned++;
         if (d.grade && d.grade !== 'Raw') totalGraded++;
@@ -813,8 +850,7 @@
       status.textContent = '✗ Error: ' + e.message;
     }
 
-    btn.textContent = '📷   SCAN CARD';
-    btn.disabled = false;
+    setScanBtns(false, '📷   SCAN CARD');
   }
 
   function updateHistory() {
