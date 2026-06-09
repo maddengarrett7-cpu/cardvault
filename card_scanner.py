@@ -30,16 +30,26 @@ def analyze_card(frame) -> dict:
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
     image_data = buf.tobytes()
     prompt = (
-        "This is a sports card. Extract the following fields and "
+        "This is a sports card — it may be a graded slab (in a plastic case with a label) "
+        "or a raw ungraded card. Extract the following fields and "
         "return ONLY valid JSON with these exact keys:\n"
         "  name   - player's full name (string)\n"
         "  year   - card year as a 4-digit number (integer or null)\n"
-        "  grade  - grading label, e.g. 'PSA 9', 'BGS 8.5', 'SGC 10', 'Raw' if ungraded (string)\n"
-        "  card   - a single description formatted EXACTLY as: "
-        "YEAR BRAND PLAYER_NAME CARD_DETAIL GRADE. "
-        "Example: '2026 Prizm Cam Ward Red Sparkle PSA 10'. "
-        "If ungraded use 'Raw' at the end. Skip parts that cannot be determined.\n"
-        "  cert   - the certification/serial number printed on the grading label (string or null)\n\n"
+        "  brand  - card manufacturer/brand, e.g. 'Topps', 'Panini', 'Upper Deck', 'Bowman' (string or null)\n"
+        "  set    - specific set or product name, e.g. 'Prizm', 'Chrome', 'Stadium Club', "
+        "'Select', 'Optic', 'Heritage' (string or null)\n"
+        "  parallel - parallel or variant name if visible, e.g. 'Silver', 'Red', 'Gold Refractor', "
+        "'Holo', 'Base' (string or null)\n"
+        "  grade  - if in a graded slab use the label, e.g. 'PSA 9', 'BGS 8.5', 'SGC 10'. "
+        "If raw/ungraded use 'Raw' (string)\n"
+        "  cert   - certification/serial number on the grading label (string or null, null if raw)\n"
+        "  card   - a single human-readable description formatted as: "
+        "YEAR BRAND SET PLAYER_NAME PARALLEL GRADE. "
+        "Examples: '2021 Panini Prizm Silver Luka Doncic PSA 10', "
+        "'2023 Topps Chrome Trevor Lawrence Base Raw'. "
+        "Skip parts that cannot be determined.\n\n"
+        "For raw cards: read the card face directly for name, year, brand, set, and parallel. "
+        "For graded slabs: read the label on the plastic case. "
         "If a field cannot be determined, use null."
     )
     response = model.generate_content([

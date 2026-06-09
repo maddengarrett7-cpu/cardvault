@@ -529,7 +529,23 @@ def scan():
 
         # Auto-fetch values
         cl_token = body.get("cl_token", "") if body else ""
-        query_parts = [p for p in [str(data.get("year", "")), data.get("name", ""), data.get("grade", "")] if p]
+        is_raw = (data.get("grade", "").lower() == "raw" or not data.get("grade"))
+        if is_raw:
+            # For raw cards: year + brand + set + player + parallel (no grade)
+            query_parts = [p for p in [
+                str(data.get("year", "")),
+                data.get("brand", ""),
+                data.get("set", ""),
+                data.get("name", ""),
+                data.get("parallel", ""),
+            ] if p]
+        else:
+            # For graded slabs: year + player + grade (proven to work well)
+            query_parts = [p for p in [
+                str(data.get("year", "")),
+                data.get("name", ""),
+                data.get("grade", ""),
+            ] if p]
         if query_parts:
             q = " ".join(query_parts)
             ebay_result, _ = search_ebay_sold(q)
