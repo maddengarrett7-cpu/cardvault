@@ -72,7 +72,7 @@ def check_and_increment_scans(user_id):
 
     user = dict(user)
     today = str(date.today())
-    FREE_LIMIT = 20
+    FREE_LIMIT = 10
 
     # Pro users — unlimited
     if user['subscription_status'] == 'pro':
