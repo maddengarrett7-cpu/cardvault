@@ -47,7 +47,7 @@
     .logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
     .logo span { color: var(--green); }
 
-    .header-actions { display: flex; gap: 10px; }
+    .header-actions { display: flex; gap: 10px; align-items: center; }
 
     .btn-outline {
       padding: 8px 14px;
@@ -63,6 +63,52 @@
     }
 
     .btn-outline:hover { border-color: var(--green); color: var(--green); }
+
+    /* Hamburger menu */
+    .menu-btn {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 11px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .mobile-menu {
+      display: none;
+      position: absolute;
+      top: 60px;
+      right: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px;
+      z-index: 200;
+      min-width: 180px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    .mobile-menu.open { display: flex; flex-direction: column; gap: 4px; }
+
+    .mobile-menu .btn-outline {
+      width: 100%;
+      justify-content: flex-start;
+      padding: 11px 14px;
+      font-size: 14px;
+      border-radius: 8px;
+      border-color: transparent;
+    }
+
+    .mobile-menu .btn-outline:hover { border-color: var(--green); background: rgba(0,230,118,0.06); }
+
+    @media (max-width: 768px) {
+      .menu-btn { display: block; }
+      .header-actions .btn-outline,
+      .header-actions a.btn-outline { display: none; }
+    }
 
     .layout {
       display: grid;
@@ -319,7 +365,7 @@
 </head>
 <body>
 
-<header>
+<header style="position:relative;">
   <div class="logo">Slab<span>Scan</span></div>
   <div class="header-actions">
     <button class="btn-outline" onclick="exportCSV()">⬇ CSV</button>
@@ -327,6 +373,19 @@
     <button class="btn-outline" onclick="openSettings()">⚙ Settings</button>
     <button class="btn-outline" id="installBtn" style="display:none; border-color:#00e676; color:#00e676;" onclick="installApp()">⬇ Install App</button>
     <a href="/account" class="btn-outline" style="{% if user.subscription_status == 'pro' %}border-color:var(--green);color:var(--green);{% endif %}">
+      {% if user.subscription_status == 'pro' %}⚡ Pro{% else %}👤 Account{% endif %}
+    </a>
+    <!-- Hamburger (mobile only) -->
+    <button class="menu-btn" onclick="toggleMenu()" id="menuBtn">☰</button>
+  </div>
+
+  <!-- Mobile dropdown menu -->
+  <div class="mobile-menu" id="mobileMenu">
+    <button class="btn-outline" onclick="exportCSV(); closeMenu()">⬇ Export CSV</button>
+    <button class="btn-outline" id="mobileSheetBtn" onclick="openUserSheet(); closeMenu()">Open Sheet ↗</button>
+    <button class="btn-outline" onclick="openSettings(); closeMenu()">⚙ Settings</button>
+    <button class="btn-outline" id="mobileInstallBtn" style="display:none; color:#00e676;" onclick="installApp(); closeMenu()">⬇ Install App</button>
+    <a href="/account" class="btn-outline" style="{% if user.subscription_status == 'pro' %}color:var(--green);{% endif %}">
       {% if user.subscription_status == 'pro' %}⚡ Pro{% else %}👤 Account{% endif %}
     </a>
   </div>
@@ -802,6 +861,21 @@
     a.click();
   }
 
+  function toggleMenu() {
+    document.getElementById('mobileMenu').classList.toggle('open');
+  }
+
+  function closeMenu() {
+    document.getElementById('mobileMenu').classList.remove('open');
+  }
+
+  // Close menu when tapping outside
+  document.addEventListener('click', e => {
+    const menu = document.getElementById('mobileMenu');
+    const btn = document.getElementById('menuBtn');
+    if (!menu.contains(e.target) && !btn.contains(e.target)) closeMenu();
+  });
+
   startCamera();
 
   // Register service worker for PWA
@@ -816,6 +890,7 @@
     e.preventDefault();
     deferredPrompt = e;
     document.getElementById('installBtn').style.display = 'inline-flex';
+    document.getElementById('mobileInstallBtn').style.display = 'block';
   });
 
   function installApp() {
