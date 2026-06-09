@@ -221,13 +221,13 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
     else:
         ebay_avg = data.get("ebay_avg")
         value = f"${ebay_avg:.2f}" if ebay_avg else ""
+        # Default: Card | | | Cert # | Value
         row = [[
+            data.get("card") or "",
+            "",
+            "",
+            data.get("cert") or "",
             value,
-            data.get("name")  or "",
-            data.get("year")  or "",
-            data.get("grade") or "",
-            data.get("cert")  or "",
-            data.get("card")  or "",
         ]]
 
     svc.spreadsheets().values().append(
@@ -383,7 +383,7 @@ def oauth_callback():
             spreadsheetId=sheet_id,
             range="Cards!A1",
             valueInputOption="RAW",
-            body={"values": [["Est. Value", "Name", "Year", "Grade", "Cert #", "Card", "Set", "Rarity", "Card #", "Paid", "Tracking #", "Date Scanned"]]}
+            body={"values": [["Card", "", "", "Cert #", "Value"]]}
         ).execute()
 
         return redirect("/?sheets=connected")
