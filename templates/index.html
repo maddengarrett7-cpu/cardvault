@@ -386,11 +386,11 @@
 <body>
 
 <header style="position:relative;">
-  <div class="logo">Slab<span>Scan</span></div>
+  <div class="logo">Card<span>Scan</span></div>
   <div class="header-actions">
     <button class="btn-outline" onclick="exportCSV()">⬇ CSV</button>
     <button class="btn-outline" id="openSheetBtn" onclick="openUserSheet()" style="display:none">Open Sheet ↗</button>
-    <button class="btn-outline" id="connectSheetsBtn" onclick="connectSheets()">📊 Connect Sheets</button>
+    <button class="btn-outline" id="connectSheetsBtn" onclick="openSettings()">📊 Connect Sheets</button>
     <button class="btn-outline" id="installBtn" style="display:none; border-color:#00e676; color:#00e676;" onclick="installApp()">⬇ Install App</button>
     <a href="/account" class="btn-outline" style="{% if user.subscription_status == 'pro' %}border-color:var(--green);color:var(--green);{% endif %}">
       {% if user.subscription_status == 'pro' %}⚡ Pro{% else %}👤 Account{% endif %}
@@ -403,7 +403,7 @@
   <div class="mobile-menu" id="mobileMenu">
     <button class="btn-outline" onclick="exportCSV(); closeMenu()">⬇ Export CSV</button>
     <button class="btn-outline" id="mobileOpenSheetBtn" onclick="openUserSheet(); closeMenu()" style="display:none">Open Sheet ↗</button>
-    <button class="btn-outline" id="mobileConnectSheetsBtn" onclick="connectSheets(); closeMenu()">📊 Connect Sheets</button>
+    <button class="btn-outline" id="mobileConnectSheetsBtn" onclick="openSettings(); closeMenu()">📊 Connect Sheets</button>
     <button class="btn-outline" id="mobileInstallBtn" style="display:none; color:#00e676;" onclick="installApp(); closeMenu()">⬇ Install App</button>
     <a href="/account" class="btn-outline" style="{% if user.subscription_status == 'pro' %}color:var(--green);{% endif %}">
       {% if user.subscription_status == 'pro' %}⚡ Pro{% else %}👤 Account{% endif %}
@@ -652,43 +652,28 @@
   let totalValue = 0;
   let activeTab = 'ebay';
   let lastCardQuery = '';
-  let userSheetUrl = '';
+  let userSheetUrl = localStorage.getItem('sheet_url') || '';
 
-  function connectSheets() {
-    window.location.href = '/connect-sheets';
-  }
-
-  async function checkSheetsStatus() {
-    try {
-      const res = await fetch('/sheets-status');
-      const data = await res.json();
-      if (data.connected && data.sheet_url) {
-        userSheetUrl = data.sheet_url;
-        // Show "Open Sheet" and hide "Connect Sheets"
-        ['openSheetBtn','mobileOpenSheetBtn'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.style.display = 'inline-flex';
-        });
-        ['connectSheetsBtn','mobileConnectSheetsBtn'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.style.display = 'none';
-        });
-      }
-    } catch(_) {}
-  }
-
-  checkSheetsStatus();
-
-  // Handle redirect back from OAuth — show sheet URL prompt
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('sheets') === 'connected') {
-    history.replaceState({}, '', '/');
-    // Show settings modal so user can paste their sheet URL
+  function openSettings() {
+    document.getElementById('sheetUrlInput').value = userSheetUrl;
+    goStep(userSheetUrl ? 3 : 1);
     document.getElementById('settingsModal').classList.add('open');
-    goStep(1);
-    const status = document.getElementById('statusBar');
-    status.className = 'status-bar success';
-    status.textContent = '✓ Google connected! Now paste your Sheet URL below.';
+  }
+
+  function closeSettings() {
+    document.getElementById('settingsModal').classList.remove('open');
+  }
+
+  // Show Open Sheet button if already connected
+  if (userSheetUrl) {
+    ['openSheetBtn','mobileOpenSheetBtn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'inline-flex';
+    });
+    ['connectSheetsBtn','mobileConnectSheetsBtn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '📊 My Sheet';
+    });
   }
 
   function goStep(n) {
@@ -734,7 +719,14 @@
     } catch (_) {}
 
     closeSettings();
-    updateSheetBtn();
+    ['openSheetBtn','mobileOpenSheetBtn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'inline-flex';
+    });
+    ['connectSheetsBtn','mobileConnectSheetsBtn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '📊 My Sheet';
+    });
     const status = document.getElementById('statusBar');
     status.className = 'status-bar success';
     status.textContent = '✓ Google Sheet connected!';
