@@ -679,18 +679,16 @@
 
   checkSheetsStatus();
 
-  // Handle redirect back from OAuth
+  // Handle redirect back from OAuth — show sheet URL prompt
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('sheets') === 'connected') {
+    history.replaceState({}, '', '/');
+    // Show settings modal so user can paste their sheet URL
+    document.getElementById('settingsModal').classList.add('open');
+    goStep(1);
     const status = document.getElementById('statusBar');
     status.className = 'status-bar success';
-    status.textContent = '✓ Google Sheets connected! Your cards will sync automatically.';
-    setTimeout(() => {
-      status.className = 'status-bar';
-      status.textContent = 'Hold card inside the green frame, then press SCAN CARD';
-    }, 5000);
-    history.replaceState({}, '', '/');
-    checkSheetsStatus();
+    status.textContent = '✓ Google connected! Now paste your Sheet URL below.';
   }
 
   function goStep(n) {

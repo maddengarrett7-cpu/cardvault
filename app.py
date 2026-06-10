@@ -41,7 +41,6 @@ GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_OAUTH_SCOPES  = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
 ]
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://scanly-production-8403.up.railway.app")
 # ───────────────────────────────────────────────────────────────────────────
@@ -372,25 +371,6 @@ def oauth_callback():
         flow.fetch_token(authorization_response=request.url.replace("http://", "https://"))
         creds = flow.credentials
         save_google_tokens(session["user_id"], creds.token, creds.refresh_token)
-
-        # Auto-create a SlabScan sheet for the user
-        svc = build("sheets", "v4", credentials=creds)
-        drive_svc = build("drive", "v3", credentials=creds)
-        spreadsheet = svc.spreadsheets().create(body={
-            "properties": {"title": "SlabScan Collection"},
-            "sheets": [{"properties": {"title": "Cards"}}]
-        }).execute()
-        sheet_id = spreadsheet["spreadsheetId"]
-        save_google_sheet_id(session["user_id"], sheet_id)
-
-        # Write header row
-        svc.spreadsheets().values().update(
-            spreadsheetId=sheet_id,
-            range="Cards!A1",
-            valueInputOption="RAW",
-            body={"values": [["Card", "", "", "Cert #", "Value"]]}
-        ).execute()
-
         return redirect("/?sheets=connected")
     except Exception as e:
         return redirect(f"/?sheets=error&msg={str(e)}")
