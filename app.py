@@ -468,6 +468,10 @@ def webhook():
 
     return 'OK', 200
 
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
 @app.route('/account')
 @login_required
 def account():
