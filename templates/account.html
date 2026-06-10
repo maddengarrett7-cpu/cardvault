@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SlabScan — Account</title>
+  <title>CardScan — Account</title>
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#00e676">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
@@ -141,7 +141,7 @@
 </head>
 <body>
   <header>
-    <div class="logo">Slab<span>Scan</span></div>
+    <div class="logo">Card<span>Scan</span></div>
     <div class="header-actions">
       <a href="/" class="btn-outline">← Scanner</a>
       <a href="/logout" class="btn-outline">Log Out</a>
@@ -151,7 +151,7 @@
   <div class="container">
 
     {% if request.args.get('success') %}
-    <div class="success-msg">🎉 You're now on SlabScan Pro! Enjoy unlimited scans.</div>
+    <div class="success-msg">🎉 You're now on CardScan Pro! Enjoy unlimited scans.</div>
     {% endif %}
 
     <div class="panel">
@@ -187,7 +187,7 @@
       </div>
       <div class="row">
         <span class="row-label">Plan</span>
-        <span class="row-value">SlabScan Pro</span>
+        <span class="row-value">CardScan Pro</span>
       </div>
       <form action="/create-portal-session" method="POST" style="margin-top:16px;">
         <button type="submit" class="manage-btn">Manage Subscription ↗</button>

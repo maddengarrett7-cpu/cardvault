@@ -3,11 +3,11 @@
 *Last updated: 2026-06-09*
 
 ## Product Overview
-**One-liner:** SlabScan is a mobile-first sports card scanner that instantly identifies graded cards and pulls live eBay market values.
+**One-liner:** SlabScan is a mobile-first card scanner that instantly identifies sports cards and Pokémon/TCG cards — graded or raw — and pulls live eBay market values.
 **What it does:** Point your phone camera at any graded sports card slab and SlabScan uses AI to read the player, year, brand, and grade — then fetches real eBay sold prices (avg/high/low + recent sales) so you know exactly what it's worth. Syncs your collection to Google Sheets automatically.
 **Product category:** Sports card collection management / card valuation tool
 **Product type:** PWA (installable web app), SaaS
-**Business model:** Freemium subscription — Free tier (10 scans/day), Pro at $9.99/mo (unlimited scans + full eBay data)
+**Business model:** Freemium subscription — Free tier (10 scans/day), Pro at $7.99/mo or $59/yr (unlimited scans + full eBay data)
 
 ## Target Audience
 **Target users:** Sports card collectors, hobbyists, flippers, and dealers — anyone who buys, sells, or manages a graded card collection
@@ -62,7 +62,7 @@
 | "Does it work on all graded cards?" | Works on PSA, BGS, SGC, and other major graders — AI reads the label |
 | "Why pay $9.99/mo?" | One good deal at a show more than pays for it; unlimited scans vs. 10/day free |
 
-**Anti-persona:** Collectors who only collect raw cards (ungraded) — the AI is optimized for slab labels
+**Anti-persona:** Collectors who don't care about market value and just want a digital catalog
 
 ## Switching Dynamics
 **Push:** Wasting time on manual eBay lookups; missing deals at shows because pricing is too slow

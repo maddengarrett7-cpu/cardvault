@@ -294,10 +294,15 @@ def psa_lookup():
 
 
 @app.route('/')
-@login_required
 def index():
+    if 'user_id' not in session:
+        return render_template('landing.html')
     user = get_user_by_id(session['user_id'])
     return render_template('index.html', user=user)
+
+@app.route('/home')
+def landing():
+    return render_template('landing.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():

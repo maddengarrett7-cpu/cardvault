@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CardScan — Scan Any Card. Know What It's Worth.</title>
+  <meta name="description" content="Point your phone at any sports card or Pokémon slab and instantly get live eBay market values. Auto-syncs to Google Sheets. Free to try.">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --green: #00e676;
+      --green-dark: #00c853;
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface2: #1e1e1e;
+      --border: #2a2a2a;
+      --text: #ffffff;
+      --muted: #888;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .logo { font-size: 22px; font-weight: 800; }
+    .logo span { color: var(--green); }
+    .header-btns { display: flex; gap: 10px; }
+    .btn { padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; }
+    .btn-outline { border: 1px solid var(--border); background: transparent; color: var(--text); }
+    .btn-primary { background: var(--green); color: #000; border: none; }
+
+    .hero { text-align: center; padding: 80px 24px 60px; max-width: 700px; margin: 0 auto; }
+    .hero h1 { font-size: 52px; font-weight: 900; line-height: 1.1; margin-bottom: 20px; letter-spacing: -1px; }
+    .hero h1 span { color: var(--green); }
+    .hero p { font-size: 20px; color: #aaa; margin-bottom: 36px; line-height: 1.6; }
+    .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero-btns .btn { font-size: 16px; padding: 14px 28px; }
+
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1000px; margin: 60px auto; padding: 0 24px; }
+    .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+    .feature-icon { font-size: 32px; margin-bottom: 14px; }
+    .feature h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .feature p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+    .how { text-align: center; padding: 60px 24px; background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .how h2 { font-size: 36px; font-weight: 800; margin-bottom: 48px; }
+    .steps { display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; }
+    .step { max-width: 200px; }
+    .step-num { width: 40px; height: 40px; background: var(--green); color: #000; border-radius: 50%; font-weight: 800; font-size: 18px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+    .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .step p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+    .pricing { text-align: center; padding: 80px 24px; max-width: 800px; margin: 0 auto; }
+    .pricing h2 { font-size: 36px; font-weight: 800; margin-bottom: 48px; }
+    .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 600px; margin: 0 auto 40px; }
+    .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; text-align: left; }
+    .plan.pro { border-color: var(--green); }
+    .plan-name { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; }
+    .plan-price { font-size: 36px; font-weight: 900; margin-bottom: 4px; }
+    .plan-price span { font-size: 16px; font-weight: 400; color: var(--muted); }
+    .plan-features { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+    .plan-feature { font-size: 14px; color: #ccc; display: flex; gap: 8px; align-items: flex-start; }
+    .plan-feature::before { content: "✓"; color: var(--green); font-weight: 700; flex-shrink: 0; }
+
+    .cta { text-align: center; padding: 80px 24px; }
+    .cta h2 { font-size: 36px; font-weight: 800; margin-bottom: 16px; }
+    .cta p { color: var(--muted); margin-bottom: 32px; font-size: 18px; }
+
+    footer { border-top: 1px solid var(--border); padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
+    footer a { color: var(--muted); text-decoration: none; margin: 0 12px; }
+    footer a:hover { color: var(--green); }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 36px; }
+      .features { grid-template-columns: 1fr; }
+      .plans { grid-template-columns: 1fr; }
+      .steps { gap: 30px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Card<span>Scan</span></div>
+  <div class="header-btns">
+    <a href="/login" class="btn btn-outline">Log In</a>
+    <a href="/signup" class="btn btn-primary">Try Free</a>
+  </div>
+</header>
+
+<div class="hero">
+  <h1>Scan any card.<br><span>Know what it's worth.</span></h1>
+  <p>Point your phone at any sports card or Pokémon slab and instantly get live eBay market values. Syncs to Google Sheets automatically.</p>
+  <div class="hero-btns">
+    <a href="/signup" class="btn btn-primary">Start for Free</a>
+    <a href="/login" class="btn btn-outline">Log In</a>
+  </div>
+</div>
+
+<div class="features">
+  <div class="feature">
+    <div class="feature-icon">📷</div>
+    <h3>AI Card Recognition</h3>
+    <p>Point your camera at any graded slab or raw card. Our AI reads the player, year, brand, grade, and cert number instantly — no typing required.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">💰</div>
+    <h3>Live eBay Values</h3>
+    <p>Get real sold comps from eBay — average, high, and low prices from recent sales. The same data you'd look up manually, in one tap.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">📊</div>
+    <h3>Google Sheets Sync</h3>
+    <p>Every card you scan automatically logs to your Google Sheet. Connect once and your collection tracks itself — no spreadsheet work needed.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">🃏</div>
+    <h3>Sports Cards & Pokémon</h3>
+    <p>Works on PSA, BGS, SGC graded slabs, raw sports cards, and Pokémon/TCG cards. Detects card type automatically.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">📱</div>
+    <h3>Works on Any Phone</h3>
+    <p>CardScan is a PWA — no app store download needed. Open it in your browser and install it to your home screen in seconds.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">⚡</div>
+    <h3>Built for Shows & Flipping</h3>
+    <p>Know what a card is worth before the seller finishes their pitch. Fast enough to use at card shows, flea markets, and estate sales.</p>
+  </div>
+</div>
+
+<div class="how">
+  <h2>How it works</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <h3>Point & Scan</h3>
+      <p>Hold your card in front of the camera and tap Scan Card</p>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <h3>AI Reads the Card</h3>
+      <p>CardScan identifies the player, year, brand, grade, and cert number</p>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <h3>Get eBay Values</h3>
+      <p>Live sold comps pull automatically — avg, high, and low prices</p>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <h3>Syncs to Sheets</h3>
+      <p>Card data logs to your Google Sheet automatically — zero manual entry</p>
+    </div>
+  </div>
+</div>
+
+<div class="pricing">
+  <h2>Simple pricing</h2>
+  <div class="plans">
+    <div class="plan">
+      <div class="plan-name">Free</div>
+      <div class="plan-price">$0</div>
+      <div class="plan-features">
+        <div class="plan-feature">10 scans per day</div>
+        <div class="plan-feature">AI card recognition</div>
+        <div class="plan-feature">eBay value lookup</div>
+        <div class="plan-feature">Google Sheets sync</div>
+      </div>
+    </div>
+    <div class="plan pro">
+      <div class="plan-name" style="color:var(--green)">Pro</div>
+      <div class="plan-price">$7.99 <span>/mo</span></div>
+      <div class="plan-features">
+        <div class="plan-feature">Unlimited scans</div>
+        <div class="plan-feature">AI card recognition</div>
+        <div class="plan-feature">eBay value lookup</div>
+        <div class="plan-feature">Google Sheets sync</div>
+        <div class="plan-feature">$59/yr option (save $37)</div>
+      </div>
+    </div>
+  </div>
+  <p style="color:var(--muted); font-size:14px;">One good deal at a card show pays for months of Pro.</p>
+</div>
+
+<div class="cta">
+  <h2>Ready to scan?</h2>
+  <p>Free to start. No credit card required.</p>
+  <a href="/signup" class="btn btn-primary" style="font-size:18px; padding:16px 40px;">Start for Free</a>
+</div>
+
+<footer>
+  <a href="/login">Log In</a>
+  <a href="/signup">Sign Up</a>
+  <a href="/privacy">Privacy Policy</a>
+  <p style="margin-top:16px;">© 2026 CardScan. All rights reserved.</p>
+</footer>
+
+</body>
+</html>
