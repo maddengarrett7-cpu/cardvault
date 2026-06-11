@@ -833,7 +833,7 @@
         const gradeNumMatch = gradeStr.match(/(\d+\.?\d*)$/);
         const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
         const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
-        const cert = d.cert.replace(/\s+/g, '');
+        const cert = d.cert.replace(/\s+/g, '').replace(/^[a-zA-Z]+-?/i, '');
         const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
         clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
       } else {
@@ -988,7 +988,7 @@
         const gradeNumMatch = gradeStr.match(/(\d+\.?\d*)$/);
         const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
         const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
-        const cert = d.cert.replace(/\s+/g, '');
+        const cert = d.cert.replace(/\s+/g, '').replace(/^[a-zA-Z]+-?/i, '');
         const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
         clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
       } else if (d.name) {
