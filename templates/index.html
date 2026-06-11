@@ -650,6 +650,18 @@
         <button class="cl-cancel-btn" onclick="goStep(2)">← Back</button>
         <button class="cl-save-btn" onclick="saveSettings()">Connect Sheet ✓</button>
       </div>
+
+      <!-- Card Ladder Token -->
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--surface2);">
+        <h3 style="margin-bottom:6px;">📊 Card Ladder Token <span style="font-size:11px; color:var(--muted); font-weight:400;">(optional)</span></h3>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.5;">
+          Paste your Card Ladder auth token to pull live CL values on every scan.<br>
+          Get it from <a href="https://app.cardladder.com" target="_blank" style="color:var(--green);">app.cardladder.com</a> → open DevTools → Application → Local Storage → find <code style="background:var(--surface2);padding:1px 4px;border-radius:3px;">token</code>.
+        </p>
+        <input class="cl-input" id="clTokenInput" type="password" placeholder="Paste Card Ladder token..." />
+        <button class="cl-save-btn" style="margin-top:6px; width:100%;" onclick="saveCLToken()">Save Token ✓</button>
+        <div id="clTokenStatus" style="font-size:11px; color:var(--green); margin-top:4px; display:none;">✓ Token saved</div>
+      </div>
     </div>
 
     <button onclick="closeSettings()" style="position:absolute; top:16px; right:16px; background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; line-height:1;">×</button>
@@ -669,9 +681,19 @@
   let activeTab = 'ebay';
   let lastCardQuery = '';
   let userSheetUrl = localStorage.getItem('sheet_url') || '';
+  let clToken = localStorage.getItem('cl_token') || '';
+
+  function saveCLToken() {
+    const val = document.getElementById('clTokenInput').value.trim();
+    clToken = val;
+    localStorage.setItem('cl_token', val);
+    document.getElementById('clTokenStatus').style.display = 'block';
+    setTimeout(() => document.getElementById('clTokenStatus').style.display = 'none', 2000);
+  }
 
   function openSettings() {
     document.getElementById('sheetUrlInput').value = userSheetUrl;
+    document.getElementById('clTokenInput').value = clToken;
     goStep(userSheetUrl ? 3 : 1);
     document.getElementById('settingsModal').classList.add('open');
   }
@@ -867,7 +889,7 @@
       const res = await fetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData })
+        body: JSON.stringify({ image: imageData, cl_token: clToken, sheet_id: userSheetUrl })
       });
       const result = await res.json();
 
