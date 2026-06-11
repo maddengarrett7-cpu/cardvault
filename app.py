@@ -16,7 +16,8 @@ from functools import wraps
 from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 import cv2
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 from google.oauth2.service_account import Credentials
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from google_auth_oauthlib.flow import Flow
@@ -81,33 +82,45 @@ def generate_frames():
         time.sleep(0.03)
 
 def analyze_card(frame):
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    client = genai.Client(api_key=GEMINI_API_KEY)
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
     image_data = buf.tobytes()
     prompt = (
-        "This is a sports card. Extract the following fields and "
-        "return ONLY valid JSON with these exact keys:\n"
-        "  name   - player's full name (string)\n"
-        "  year   - card year as a 4-digit number (integer or null)\n"
-        "  brand  - card brand/set name, e.g. 'Prizm', 'Topps', 'Bowman', 'Donruss', 'Select' (string or null)\n"
-        "  grade  - grading label, e.g. 'PSA 9', 'BGS 8.5', 'SGC 10', 'Raw' if ungraded (string)\n"
-        "  cert   - the certification/serial number on the grading label (string or null)\n"
-        "  card   - a single description formatted EXACTLY as: "
-        "YEAR BRAND PLAYER_NAME CARD_DETAIL GRADE. "
-        "Example: '2026 Prizm Cam Ward Red Sparkle PSA 10'. "
-        "If ungraded use 'Raw' at the end. Skip parts that cannot be determined.\n\n"
-        "If a field cannot be determined, use null."
+        "You are scanning a trading card. First determine the card type:\n"
+        "  - 'sports' — NBA, NFL, MLB, NHL player cards (Topps, Panini, Upper Deck, Bowman, etc.)\n"
+        "  - 'tcg'    — Pokemon, Magic: The Gathering, Yu-Gi-Oh, or other trading card games\n\n"
+        "Return ONLY valid JSON with these exact keys (use null for anything you cannot determine):\n\n"
+        "  card_type  - 'sports' or 'tcg' (string)\n"
+        "  name       - player name (sports) or Pokemon/card name (tcg) (string)\n"
+        "  year       - card year as 4-digit number (integer or null)\n"
+        "  brand      - manufacturer: e.g. 'Topps', 'Panini', 'Pokemon', 'Wizards of the Coast' (string or null)\n"
+        "  set        - set/product name: e.g. 'Prizm', 'Chrome', 'Base Set', 'Scarlet & Violet' (string or null)\n"
+        "  parallel   - parallel or variant: e.g. 'Silver', 'Holo', 'Reverse Holo', 'Gold Refractor' (string or null)\n"
+        "  grade      - grading label if in a slab: 'PSA 9', 'BGS 8.5', 'CGC 10'. If raw use 'Raw' (string)\n"
+        "  cert       - cert/serial number on grading label (string or null)\n"
+        "  rarity     - TCG rarity symbol/text only: e.g. 'Rare Holo', 'Common', 'Ultra Rare', 'Secret Rare' (string or null, null for sports)\n"
+        "  card_number - TCG card number printed on card e.g. '4/102', '025/198' (string or null, null for sports)\n"
+        "  hp         - TCG HP value as integer e.g. 120 (integer or null, null for sports)\n"
+        "  card       - single human-readable description:\n"
+        "               Sports: 'YEAR BRAND SET PLAYER PARALLEL GRADE' e.g. '2021 Panini Prizm Silver Luka Doncic PSA 10'\n"
+        "               TCG:    'POKEMON SET CARD_NUMBER RARITY GRADE' e.g. 'Charizard Base Set 4/102 Holo Rare PSA 9'\n\n"
+        "For raw cards read the card face. For graded slabs read the label. Skip unknown parts.\n"
+        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
     )
-    response = model.generate_content([
-        prompt,
-        {"mime_type": "image/jpeg", "data": image_data}
-    ])
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            prompt,
+            genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg"),
+        ],
+    )
     text = response.text.strip()
+    # Strip markdown code fences if present
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
             text = text[4:]
+    text = text.strip()
     return json.loads(text)
 
 def get_creds():
