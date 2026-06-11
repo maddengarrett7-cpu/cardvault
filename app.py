@@ -104,7 +104,12 @@ def analyze_card(frame):
         "  card       - single human-readable description:\n"
         "               Sports: 'YEAR BRAND SET PLAYER PARALLEL GRADE' e.g. '2021 Panini Prizm Silver Luka Doncic PSA 10'\n"
         "               TCG:    'POKEMON SET CARD_NUMBER RARITY GRADE' e.g. 'Charizard Base Set 4/102 Holo Rare PSA 9'\n\n"
-        "For raw cards read the card face. For graded slabs read the label. Skip unknown parts.\n"
+        "For raw cards: carefully read ALL text printed on the card face including the year (usually bottom or top), "
+        "the brand/manufacturer logo (Topps, Panini, Upper Deck, Bowman, Donruss, Select, Mosaic, Optic, etc.), "
+        "the set name (Prizm, Chrome, Finest, Heritage, etc.), any parallel/color indicator "
+        "(Silver, Gold, Red, Blue, Holo, Refractor, Prizm, etc.), and the player name. "
+        "For graded slabs: read the label carefully for all fields including the cert number.\n"
+        "Do NOT leave fields null if the information is visible on the card — look carefully at all text, logos, and design elements.\n"
         "Return ONLY the JSON object — no markdown, no code fences, no extra text."
     )
     response = client.models.generate_content(
