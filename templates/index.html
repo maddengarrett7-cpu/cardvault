@@ -499,19 +499,35 @@
       </div>
       <div id="clContent" style="display:none">
         <div class="value-placeholder" id="clPlaceholder">Scan a card to search Card Ladder</div>
-        <div id="clLinkWrap" style="display:none; text-align:center; padding: 12px 0;">
-          <a id="clLink" href="#" target="_blank" style="
-            display: inline-block;
-            padding: 12px 20px;
-            background: var(--surface2);
-            border: 1px solid var(--green);
-            border-radius: 10px;
-            color: var(--green);
-            font-size: 14px;
-            font-weight: 700;
-            text-decoration: none;
-          ">View on Card Ladder ↗</a>
-          <div style="font-size:11px; color:var(--muted); margin-top:8px;" id="clCardName"></div>
+        <div id="clLinkWrap" style="display:none;">
+          <!-- CL value data -->
+          <div id="clValueData" style="display:none; margin-bottom:12px;">
+            <div class="value-grid">
+              <div class="value-box">
+                <div class="value-num" id="cl-value">—</div>
+                <div class="value-label">CL Value</div>
+              </div>
+              <div class="value-box">
+                <div class="value-num" id="cl-last">—</div>
+                <div class="value-label">Last Sale</div>
+              </div>
+            </div>
+          </div>
+          <!-- Open in new tab button -->
+          <div style="text-align:center; padding: 8px 0;">
+            <a id="clLink" href="#" target="_blank" rel="noopener noreferrer" onclick="window.open(this.href,'_blank'); return false;" style="
+              display: inline-block;
+              padding: 10px 18px;
+              background: var(--surface2);
+              border: 1px solid var(--green);
+              border-radius: 10px;
+              color: var(--green);
+              font-size: 13px;
+              font-weight: 700;
+              text-decoration: none;
+            ">Open Card Ladder ↗</a>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-top:6px; text-align:center;" id="clCardName"></div>
         </div>
       </div>
     </div>
@@ -782,7 +798,7 @@
         : '';
     }
 
-    // Card Ladder tab — build search link from card data
+    // Card Ladder tab — show values + search link
     const query = [d.year, d.name, d.grade].filter(Boolean).join(' ');
     if (query) {
       lastCardQuery = query;
@@ -791,6 +807,15 @@
       document.getElementById('clCardName').textContent = query;
       document.getElementById('clPlaceholder').style.display = 'none';
       document.getElementById('clLinkWrap').style.display = 'block';
+
+      // Populate CL value fields if available
+      if (d.cl_value || d.cl_last_sale) {
+        document.getElementById('cl-value').textContent = d.cl_value ? '$' + d.cl_value : '—';
+        document.getElementById('cl-last').textContent  = d.cl_last_sale ? '$' + d.cl_last_sale : '—';
+        document.getElementById('clValueData').style.display = 'block';
+      } else {
+        document.getElementById('clValueData').style.display = 'none';
+      }
     }
   }
 
