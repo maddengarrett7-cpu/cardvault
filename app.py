@@ -473,17 +473,26 @@ def admin_set_pro(secret):
     """One-time route to set the owner account to Pro."""
     if secret != os.environ.get("ADMIN_SECRET", ""):
         return "Forbidden", 403
-    conn = __import__('sqlite3').connect(os.environ.get("DB_PATH", "slabscan.db"))
-    conn.execute(
-        "UPDATE users SET subscription_status = 'pro' WHERE email = ?",
-        (OWNER_EMAIL,)
-    )
-    conn.commit()
-    rows = conn.execute("SELECT email, subscription_status FROM users WHERE email = ?", (OWNER_EMAIL,)).fetchone()
-    conn.close()
-    if rows:
-        return f"✅ {rows[0]} is now: {rows[1]}"
-    return "User not found", 404
+    user = get_user_by_email(OWNER_EMAIL)
+    if not user:
+        return "User not found — please sign up first", 404
+    from database import get_db
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            # Postgres
+            cur = db.cursor()
+            cur.execute("UPDATE users SET subscription_status = 'pro' WHERE email = %s", (OWNER_EMAIL,))
+            db.commit()
+            cur.close()
+        else:
+            # SQLite
+            db.execute("UPDATE users SET subscription_status = 'pro' WHERE email = ?", (OWNER_EMAIL,))
+            db.commit()
+        db.close()
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+    return f"✅ {OWNER_EMAIL} is now Pro!"
 
 @app.route('/privacy')
 def privacy():
