@@ -834,7 +834,7 @@
         const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
         const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
         const cert = d.cert.replace(/\s+/g, '');
-        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
+        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${cert}`;
         clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
       } else {
         clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '));
@@ -989,7 +989,7 @@
         const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
         const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
         const cert = d.cert.replace(/\s+/g, '');
-        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
+        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${cert}`;
         clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
       } else if (d.name) {
         clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '));
