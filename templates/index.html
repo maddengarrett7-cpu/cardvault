@@ -245,6 +245,9 @@
     .result-row:last-child { border-bottom: none; }
     .result-label { color: var(--muted); }
     .result-value { color: var(--text); font-weight: 600; text-align: right; }
+    .result-value.editable { cursor: pointer; border-bottom: 1px dashed var(--muted); }
+    .result-value.editable:hover { color: var(--green); }
+    .result-value input.edit-input { background: var(--surface2); border: 1px solid var(--green); border-radius: 6px; color: var(--text); font-size: 14px; font-weight: 600; padding: 2px 8px; text-align: right; width: 160px; outline: none; }
 
     .card-full {
       margin-top: 12px;
@@ -433,42 +436,42 @@
   <div class="right-panel">
 
     <div class="panel-box">
-      <h2>Last Scanned</h2>
+      <h2>Last Scanned <span style="font-size:11px;color:var(--muted);font-weight:400;">— tap any field to edit</span></h2>
       <!-- Sports fields -->
       <div class="result-row" id="row-name">
         <span class="result-label" id="label-name">Player</span>
-        <span class="result-value" id="r-name">—</span>
+        <span class="result-value editable" id="r-name" onclick="editField('r-name')" title="Tap to edit">—</span>
       </div>
       <div class="result-row" id="row-year">
         <span class="result-label">Year</span>
-        <span class="result-value" id="r-year">—</span>
+        <span class="result-value editable" id="r-year" onclick="editField('r-year')" title="Tap to edit">—</span>
       </div>
       <div class="result-row" id="row-set">
         <span class="result-label">Set</span>
-        <span class="result-value" id="r-set">—</span>
+        <span class="result-value editable" id="r-set" onclick="editField('r-set')" title="Tap to edit">—</span>
       </div>
       <div class="result-row" id="row-grade">
         <span class="result-label">Grade</span>
-        <span class="result-value" id="r-grade">—</span>
+        <span class="result-value editable" id="r-grade" onclick="editField('r-grade')" title="Tap to edit">—</span>
       </div>
       <div class="result-row" id="row-cert">
         <span class="result-label">Cert #</span>
-        <span class="result-value" id="r-cert">—</span>
+        <span class="result-value editable" id="r-cert" onclick="editField('r-cert')" title="Tap to edit">—</span>
       </div>
       <!-- TCG-only fields -->
       <div class="result-row" id="row-cardnum" style="display:none">
         <span class="result-label">Card #</span>
-        <span class="result-value" id="r-cardnum">—</span>
+        <span class="result-value editable" id="r-cardnum" onclick="editField('r-cardnum')" title="Tap to edit">—</span>
       </div>
       <div class="result-row" id="row-rarity" style="display:none">
         <span class="result-label">Rarity</span>
-        <span class="result-value" id="r-rarity">—</span>
+        <span class="result-value editable" id="r-rarity" onclick="editField('r-rarity')" title="Tap to edit">—</span>
       </div>
       <div class="result-row" id="row-hp" style="display:none">
         <span class="result-label">HP</span>
-        <span class="result-value" id="r-hp">—</span>
+        <span class="result-value editable" id="r-hp" onclick="editField('r-hp')" title="Tap to edit">—</span>
       </div>
-      <div class="card-full" id="r-card"></div>
+      <div class="card-full editable" id="r-card" onclick="editField('r-card')" title="Tap to edit"></div>
     </div>
 
     <div class="panel-box" id="valuePanel">
@@ -883,6 +886,34 @@
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
     return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+  }
+
+  function editField(id) {
+    const el = document.getElementById(id);
+    if (!el || el.querySelector('input')) return;
+    const current = el.textContent.trim();
+    const input = document.createElement('input');
+    input.className = 'edit-input';
+    input.value = current === '—' ? '' : current;
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    function save() {
+      const val = input.value.trim() || '—';
+      el.textContent = val;
+      // Update lastScan data so history/sheets stay in sync
+      if (scanHistory.length > 0) {
+        const fieldMap = {
+          'r-name': 'name', 'r-year': 'year', 'r-set': 'set',
+          'r-grade': 'grade', 'r-cert': 'cert', 'r-card': 'card',
+          'r-cardnum': 'card_number', 'r-rarity': 'rarity', 'r-hp': 'hp'
+        };
+        if (fieldMap[id]) scanHistory[0][fieldMap[id]] = val === '—' ? null : val;
+      }
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
   }
 
   function setScanBtns(disabled, text) {
