@@ -186,7 +186,7 @@ def build_row(data, mapping, num_cols):
         "year":  str(data.get("year") or ""),
         "brand": data.get("brand") or "",
         "grade": data.get("grade") or "",
-        "cert":  data.get("cert")  or "",
+        "cert":  data.get("cert")  or "Raw",
         "value": f"${ebay_avg:.2f}" if ebay_avg else "",
         "paid":  "",
         "tracking": "",
@@ -261,7 +261,7 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
             data.get("card") or "",
             "",
             "",
-            data.get("cert") or "",
+            data.get("cert") or "Raw",
             value,
         ]]
 
