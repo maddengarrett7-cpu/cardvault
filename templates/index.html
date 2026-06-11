@@ -824,7 +824,21 @@
     const query = [d.year, d.name, d.grade].filter(Boolean).join(' ');
     if (query) {
       lastCardQuery = query;
-      const clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '));
+
+      // Build Card Ladder URL — use cert# for graded, name search for raw
+      let clUrl;
+      if (d.cert && d.grade && d.grade.toLowerCase() !== 'raw') {
+        const gradeStr = d.grade || '';
+        const graderMatch = gradeStr.match(/^(psa|bgs|sgc|cgc)/i);
+        const gradeNumMatch = gradeStr.match(/(\d+\.?\d*)$/);
+        const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
+        const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
+        const cert = d.cert.replace(/\s+/g, '');
+        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
+        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
+      } else {
+        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '));
+      }
       document.getElementById('clLink').href = clUrl;
       document.getElementById('clCardName').textContent = query;
       document.getElementById('clPlaceholder').style.display = 'none';
@@ -967,9 +981,19 @@
     }
     list.innerHTML = scanHistory.map(d => {
       const psaUrl = null;
-      const clUrl = [d.year, d.name, d.grade].filter(Boolean).length
-        ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '))
-        : null;
+      let clUrl = null;
+      if (d.cert && d.grade && d.grade.toLowerCase() !== 'raw') {
+        const gradeStr = d.grade || '';
+        const graderMatch = gradeStr.match(/^(psa|bgs|sgc|cgc)/i);
+        const gradeNumMatch = gradeStr.match(/(\d+\.?\d*)$/);
+        const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
+        const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
+        const cert = d.cert.replace(/\s+/g, '');
+        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
+        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
+      } else if (d.name) {
+        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '));
+      }
       const ebayUrl = d.ebay_search_url || null;
 
       return `
