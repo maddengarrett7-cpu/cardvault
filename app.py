@@ -466,6 +466,25 @@ def webhook():
 
     return 'OK', 200
 
+OWNER_EMAIL = "maddengarrett7@gmail.com"
+
+@app.route('/admin/set-pro/<secret>')
+def admin_set_pro(secret):
+    """One-time route to set the owner account to Pro."""
+    if secret != os.environ.get("ADMIN_SECRET", ""):
+        return "Forbidden", 403
+    conn = __import__('sqlite3').connect(os.environ.get("DB_PATH", "slabscan.db"))
+    conn.execute(
+        "UPDATE users SET subscription_status = 'pro' WHERE email = ?",
+        (OWNER_EMAIL,)
+    )
+    conn.commit()
+    rows = conn.execute("SELECT email, subscription_status FROM users WHERE email = ?", (OWNER_EMAIL,)).fetchone()
+    conn.close()
+    if rows:
+        return f"✅ {rows[0]} is now: {rows[1]}"
+    return "User not found", 404
+
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
