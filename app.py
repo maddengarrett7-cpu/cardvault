@@ -31,7 +31,7 @@ GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
 GOOGLE_CREDS_FILE = os.path.join(os.path.dirname(__file__), "google_creds.json")
 SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
 EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
-SHEET_TAB         = "Cards"
+SHEET_TAB         = "Sheet1"  # fallback, auto-detected at runtime
 STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_PRICE_ID        = os.environ.get("STRIPE_PRICE_ID", "")
 STRIPE_ANNUAL_PRICE_ID = os.environ.get("STRIPE_ANNUAL_PRICE_ID", "")
@@ -197,12 +197,24 @@ def build_row(data, mapping, num_cols):
             row[col_idx] = values[field]
     return row
 
+def get_first_sheet_tab(sheet_id, svc):
+    """Get the name of the first tab in the spreadsheet."""
+    try:
+        meta = svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
+        sheets = meta.get("sheets", [])
+        if sheets:
+            return sheets[0]["properties"]["title"]
+    except Exception:
+        pass
+    return SHEET_TAB
+
 def get_sheet_headers(sheet_id, svc):
     """Read the first row of the sheet to detect headers."""
+    tab = get_first_sheet_tab(sheet_id, svc)
     try:
         result = svc.spreadsheets().values().get(
             spreadsheetId=sheet_id,
-            range=f"{SHEET_TAB}!1:1"
+            range=f"{tab}!1:1"
         ).execute()
         rows = result.get("values", [])
         return rows[0] if rows else []
@@ -236,6 +248,7 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
     if not sheet_id:
         return  # No sheet configured — skip silently
 
+    tab = get_first_sheet_tab(sheet_id, svc)
     headers = get_sheet_headers(sheet_id, svc)
 
     if headers:
@@ -244,7 +257,6 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
     else:
         ebay_avg = data.get("ebay_avg")
         value = f"${ebay_avg:.2f}" if ebay_avg else ""
-        # Default: Card | | | Cert # | Value
         row = [[
             data.get("card") or "",
             "",
@@ -255,7 +267,7 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
 
     svc.spreadsheets().values().append(
         spreadsheetId=sheet_id,
-        range=f"{SHEET_TAB}!A1",
+        range=f"{tab}!A1",
         valueInputOption="USER_ENTERED",
         body={"values": row},
     ).execute()
