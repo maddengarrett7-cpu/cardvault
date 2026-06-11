@@ -527,6 +527,10 @@
               text-decoration: none;
             ">Open Card Ladder ↗</a>
           </div>
+          <div id="clCertDisplay" style="display:none; margin-top:10px; text-align:center; background:var(--surface2); border-radius:8px; padding:10px;">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">CERT # — tap to copy</div>
+            <div id="clCertNum" onclick="navigator.clipboard.writeText(this.textContent); this.textContent='✓ Copied!'; setTimeout(()=>{ this.textContent=this.dataset.cert; },1500);" style="font-size:20px; font-weight:800; color:var(--green); cursor:pointer; letter-spacing:1px;"></div>
+          </div>
           <div style="font-size:11px; color:var(--muted); margin-top:6px; text-align:center;" id="clCardName"></div>
         </div>
       </div>
@@ -827,20 +831,19 @@
 
       // Build Card Ladder URL — use cert# for graded, name search for raw
       let clUrl;
-      if (d.cert && d.grade && d.grade.toLowerCase() !== 'raw') {
-        const gradeStr = d.grade || '';
-        const graderMatch = gradeStr.match(/^(psa|bgs|sgc|cgc)/i);
-        const gradeNumMatch = gradeStr.match(/(\d+\.?\d*)$/);
-        const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
-        const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
-        const cert = d.cert.replace(/\s+/g, '').replace(/^[a-zA-Z]+-?/i, '');
-        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
-        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
-      } else {
-        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '));
-      }
+      clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date';
       document.getElementById('clLink').href = clUrl;
       document.getElementById('clCardName').textContent = query;
+      // Show cert number for easy copy-paste
+      if (d.cert) {
+        const certEl = document.getElementById('clCertNum');
+        const certVal = d.cert.replace(/\s+/g, '');
+        certEl.textContent = certVal;
+        certEl.dataset.cert = certVal;
+        document.getElementById('clCertDisplay').style.display = 'block';
+      } else {
+        document.getElementById('clCertDisplay').style.display = 'none';
+      }
       document.getElementById('clPlaceholder').style.display = 'none';
       document.getElementById('clLinkWrap').style.display = 'block';
 
@@ -982,18 +985,7 @@
     list.innerHTML = scanHistory.map(d => {
       const psaUrl = null;
       let clUrl = null;
-      if (d.cert && d.grade && d.grade.toLowerCase() !== 'raw') {
-        const gradeStr = d.grade || '';
-        const graderMatch = gradeStr.match(/^(psa|bgs|sgc|cgc)/i);
-        const gradeNumMatch = gradeStr.match(/(\d+\.?\d*)$/);
-        const grader = graderMatch ? graderMatch[1].toLowerCase() : 'psa';
-        const gradeNum = gradeNumMatch ? gradeNumMatch[1] : '10';
-        const cert = d.cert.replace(/\s+/g, '').replace(/^[a-zA-Z]+-?/i, '');
-        const filters = `grader:${grader}|grade:g${gradeNum}|profileId:${grader}-${cert}`;
-        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=' + encodeURIComponent(filters);
-      } else if (d.name) {
-        clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent([d.name, d.parallel, d.set, d.brand].filter(Boolean).join(' '));
-      }
+      clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date';
       const ebayUrl = d.ebay_search_url || null;
 
       return `

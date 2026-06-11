@@ -580,6 +580,40 @@ def search_ebay_sold(query, limit=10):
 
 CL_SEARCH_URL = "https://search-zzvl7ri3bq-uc.a.run.app"
 
+@app.route('/cl-redirect')
+def cl_redirect():
+    """Look up a card on Card Ladder by cert number via PSA, then redirect to CL sales page."""
+    from bs4 import BeautifulSoup
+    cert   = request.args.get('cert', '').strip()
+    grader = request.args.get('grader', 'psa').lower()
+    grade  = request.args.get('grade', '10').replace('.', '')
+
+    if not cert:
+        return redirect('https://app.cardladder.com/sales-history')
+
+    # Step 1: look up card name from PSA cert page
+    card_name = None
+    try:
+        psa_url = f"https://www.psacard.com/cert/{cert}"
+        resp = requests.get(psa_url, headers=_EBAY_HEADERS, timeout=8)
+        if resp.ok:
+            soup = BeautifulSoup(resp.text, "lxml")
+            # Try to find the subject/card name
+            for el in soup.select('td, .cert-item, [class*="subject"], [class*="name"]'):
+                text = el.get_text(strip=True)
+                if len(text) > 5 and not text.isdigit():
+                    card_name = text
+                    break
+    except Exception:
+        pass
+
+    # Step 2: build Card Ladder URL
+    grade_param = f"g{grade}"
+    filters = f"grader:{grader}|grade:{grade_param}|profileId:{grader}-{cert}"
+    cl_url = f"https://app.cardladder.com/sales-history?direction=desc&sort=date&filters={requests.utils.quote(filters)}"
+
+    return redirect(cl_url)
+
 def search_cardladder(query, year="", cl_token=""):
     """Query the Card Ladder search API using the user's auth token."""
     if not cl_token:
