@@ -808,9 +808,9 @@ def admin_dashboard():
             total_users = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM users WHERE subscription_status = 'pro'")
             pro_users = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM users WHERE scans_date = CURRENT_DATE")
+            cur.execute("SELECT COUNT(*) FROM users WHERE scans_date = CURRENT_DATE::text")
             active_today = cur.fetchone()[0]
-            cur.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = CURRENT_DATE")
+            cur.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = CURRENT_DATE::text")
             scans_today = cur.fetchone()[0] or 0
             cur.execute("SELECT email, subscription_status, scans_today, created_at FROM users ORDER BY created_at DESC LIMIT 20")
             recent_users = cur.fetchall()
