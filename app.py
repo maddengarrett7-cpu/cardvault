@@ -790,6 +790,68 @@ def scan():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    if session.get('user_id'):
+        user = get_user_by_id(session['user_id'])
+        if not user or user['email'] != OWNER_EMAIL:
+            return "Forbidden", 403
+    else:
+        return redirect(url_for('login'))
+
+    from database import get_db
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("SELECT COUNT(*) FROM users")
+            total_users = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM users WHERE subscription_status = 'pro'")
+            pro_users = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM users WHERE scans_date = CURRENT_DATE")
+            active_today = cur.fetchone()[0]
+            cur.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = CURRENT_DATE")
+            scans_today = cur.fetchone()[0] or 0
+            cur.execute("SELECT email, subscription_status, scans_today, created_at FROM users ORDER BY created_at DESC LIMIT 20")
+            recent_users = cur.fetchall()
+            cur.close()
+        else:
+            from datetime import date
+            today = str(date.today())
+            total_users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            pro_users = db.execute("SELECT COUNT(*) FROM users WHERE subscription_status = 'pro'").fetchone()[0]
+            active_today = db.execute("SELECT COUNT(*) FROM users WHERE scans_date = ?", (today,)).fetchone()[0]
+            scans_today = db.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = ?", (today,)).fetchone()[0] or 0
+            recent_users = db.execute("SELECT email, subscription_status, scans_today, created_at FROM users ORDER BY created_at DESC LIMIT 20").fetchall()
+        db.close()
+    except Exception as e:
+        return f"Error: {e}", 500
+
+    rows = ''.join([f"<tr><td>{u[0]}</td><td>{'🟢 Pro' if u[1]=='pro' else '⚪ Free'}</td><td>{u[2]}</td><td>{u[3]}</td></tr>" for u in recent_users])
+    return f"""<!DOCTYPE html><html>
+<head><title>CardScan Admin</title>
+<style>body{{font-family:system-ui;background:#0d0d0d;color:#fff;padding:40px;max-width:900px;margin:0 auto}}
+h1{{color:#00ff87}}
+.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:24px 0}}
+.stat{{background:#1a1a1a;border-radius:12px;padding:20px;text-align:center}}
+.stat-num{{font-size:36px;font-weight:800;color:#00ff87}}
+.stat-label{{color:#888;font-size:13px;margin-top:4px}}
+table{{width:100%;border-collapse:collapse;margin-top:24px}}
+th{{text-align:left;color:#888;font-size:12px;padding:8px;border-bottom:1px solid #333}}
+td{{padding:10px 8px;border-bottom:1px solid #1a1a1a;font-size:14px}}
+</style></head>
+<body>
+<h1>📊 CardScan Dashboard</h1>
+<div class="stats">
+  <div class="stat"><div class="stat-num">{total_users}</div><div class="stat-label">Total Users</div></div>
+  <div class="stat"><div class="stat-num">{pro_users}</div><div class="stat-label">Pro Users</div></div>
+  <div class="stat"><div class="stat-num">{active_today}</div><div class="stat-label">Active Today</div></div>
+  <div class="stat"><div class="stat-num">{scans_today}</div><div class="stat-label">Scans Today</div></div>
+</div>
+<h2 style="color:#888;font-size:14px;text-transform:uppercase;letter-spacing:1px;">Recent Users</h2>
+<table><tr><th>Email</th><th>Plan</th><th>Scans Today</th><th>Joined</th></tr>{rows}</table>
+</body></html>"""
+
 @app.route('/scan-price', methods=['POST'])
 @login_required
 def scan_price():
