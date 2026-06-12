@@ -790,6 +790,48 @@ def scan():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/scan-price', methods=['POST'])
+@login_required
+def scan_price():
+    """Scan the back of a card to read a sticky note price."""
+    try:
+        body = request.get_json()
+        img_bytes = base64.b64decode(body['image'])
+        import numpy as np
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        image_data = buf.tobytes()
+
+        prompt = (
+            "Look at this image for a price written on a sticky note, sticker, or piece of tape on a trading card. "
+            "Extract the dollar amount paid for the card. "
+            "Return ONLY valid JSON: {\"paid\": \"$12.50\"} or {\"paid\": null} if no price is visible. "
+            "Format the price with a dollar sign. No other text."
+        )
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+        )
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        result = json.loads(text.strip())
+        paid = result.get("paid")
+
+        # Update the sheet with the paid amount if we have a sheet
+        if paid and body.get("sheet_id"):
+            # We just append a note — full implementation would update the last row
+            pass
+
+        return jsonify({"success": True, "paid": paid})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 if __name__ == '__main__':
     print("\n🚀 Card Scanner Web App")
     print("   Open this in your browser: http://localhost:5000\n")

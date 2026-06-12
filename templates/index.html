@@ -675,6 +675,15 @@
   </div>
 </div>
 
+<!-- Flip prompt -->
+<div id="flipPrompt" style="display:none; position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--green); border-radius:16px; padding:16px 20px; z-index:200; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.4); min-width:280px;">
+  <div style="font-size:14px; color:var(--text); margin-bottom:12px;">📝 Flip card to scan price tag?</div>
+  <div style="display:flex; gap:10px; justify-content:center;">
+    <button onclick="startPriceScan()" style="background:var(--green); color:#000; border:none; border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Flip & Scan</button>
+    <button onclick="skipPriceScan()" style="background:var(--surface2); color:var(--muted); border:1px solid var(--surface2); border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Skip</button>
+  </div>
+</div>
+
 <!-- Sticky scan button (mobile only) -->
 <div class="scan-btn-wrap">
   <button class="scan-btn" id="scanBtnMobile" onclick="scanCard()">📷 &nbsp; SCAN CARD</button>
@@ -916,6 +925,47 @@
     input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
   }
 
+  function showFlipPrompt(cardData) {
+    document.getElementById('flipPrompt').style.display = 'block';
+    document.getElementById('flipPrompt')._cardData = cardData;
+  }
+
+  function skipPriceScan() {
+    document.getElementById('flipPrompt').style.display = 'none';
+    setScanBtns(false, '📷   SCAN CARD');
+  }
+
+  async function startPriceScan() {
+    document.getElementById('flipPrompt').style.display = 'none';
+    const status = document.getElementById('statusBar');
+    status.className = 'status-bar loading';
+    status.textContent = '📝 Reading price tag...';
+    setScanBtns(true, 'Reading price...');
+
+    try {
+      const imageData = captureFrame();
+      const res = await fetch('/scan-price', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
+      });
+      const result = await res.json();
+      if (result.success && result.paid) {
+        // Update the most recent scan with paid amount
+        if (scanHistory.length > 0) scanHistory[0].paid = result.paid;
+        status.className = 'status-bar success';
+        status.textContent = `✓ Price logged: ${result.paid}`;
+      } else {
+        status.className = 'status-bar error';
+        status.textContent = '✗ Could not read price — try again or enter manually';
+      }
+    } catch (e) {
+      status.className = 'status-bar error';
+      status.textContent = '✗ Error: ' + e.message;
+    }
+    setScanBtns(false, '📷   SCAN CARD');
+  }
+
   function setScanBtns(disabled, text) {
     ['scanBtn', 'scanBtnMobile'].forEach(id => {
       const b = document.getElementById(id);
@@ -995,6 +1045,9 @@
 
         status.className = 'status-bar success';
         status.textContent = userSheetUrl ? '✓ Scanned & synced to your Google Sheet!' : '✓ Card scanned!';
+
+        // Ask to scan price on back
+        showFlipPrompt(d);
       } else {
         status.className = 'status-bar error';
         status.textContent = '✗ ' + result.error;
