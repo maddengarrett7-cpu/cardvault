@@ -790,6 +790,30 @@ def scan():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/admin/reset-password/<secret>')
+def admin_reset_password(secret):
+    if secret != os.environ.get("ADMIN_SECRET", ""):
+        return "Forbidden", 403
+    from database import get_db
+    from werkzeug.security import generate_password_hash
+    new_password = "CardScan2024!"
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("UPDATE users SET password_hash = %s WHERE email = %s",
+                       (generate_password_hash(new_password), OWNER_EMAIL))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("UPDATE users SET password_hash = ? WHERE email = ?",
+                      (generate_password_hash(new_password), OWNER_EMAIL))
+            db.commit()
+        db.close()
+    except Exception as e:
+        return f"Error: {e}", 500
+    return f"✅ Password reset! Login with: {OWNER_EMAIL} / {new_password}"
+
 @app.route('/admin/dashboard')
 def admin_dashboard():
     if session.get('user_id'):
