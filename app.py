@@ -544,62 +544,136 @@ _EBAY_HEADERS = {
 }
 
 def search_ebay_sold(query, limit=10):
-    """Scrape eBay completed/sold listings — no API key needed."""
-    from bs4 import BeautifulSoup
+    """Search eBay sold listings using the Browse API."""
     import re
-    url = (
+    search_url = (
         "https://www.ebay.com/sch/i.html"
         f"?_nkw={requests.utils.quote(query)}"
         "&LH_Complete=1&LH_Sold=1&_sop=13&_ipg=25"
     )
-    try:
-        resp = requests.get(url, headers=_EBAY_HEADERS, timeout=12)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "lxml")
 
+    # Try official eBay Browse API first
+    if EBAY_APP_ID:
+        try:
+            api_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+            params = {
+                "q": query,
+                "filter": "soldItems:true,conditionIds:{1000|1500|2000|2500|3000}",
+                "sort": "endDateDesc",
+                "limit": str(limit),
+            }
+            headers = {
+                "Authorization": f"Bearer {get_ebay_token()}",
+                "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+                "Content-Type": "application/json",
+            }
+            resp = requests.get(api_url, params=params, headers=headers, timeout=10)
+            if resp.ok:
+                data = resp.json()
+                items = data.get("itemSummaries", [])
+                prices, sales = [], []
+                for item in items:
+                    price_info = item.get("price", {})
+                    price = float(price_info.get("value", 0))
+                    if not price:
+                        continue
+                    prices.append(price)
+                    sales.append({
+                        "title": item.get("title", ""),
+                        "price": price,
+                        "date": item.get("itemEndDate", "")[:10] if item.get("itemEndDate") else None,
+                        "url": item.get("itemWebUrl"),
+                    })
+                if prices:
+                    return {
+                        "sales": sales[:5],
+                        "avg": round(sum(prices) / len(prices), 2),
+                        "high": round(max(prices), 2),
+                        "low": round(min(prices), 2),
+                        "count": len(prices),
+                        "search_url": search_url,
+                    }, None
+        except Exception:
+            pass
+
+    # Fallback: scrape with improved headers
+    from bs4 import BeautifulSoup
+    import re as re2
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+        }
+        resp = requests.get(search_url, headers=headers, timeout=12)
+        if not resp.ok:
+            return {"sales": [], "avg": None, "high": None, "low": None, "count": 0}, f"eBay returned {resp.status_code}"
+        soup = BeautifulSoup(resp.text, "lxml")
         prices, sales = [], []
         for item in soup.select(".s-item"):
             title_el = item.select_one(".s-item__title")
             price_el = item.select_one(".s-item__price")
             date_el  = item.select_one(".s-item__ended-date, .POSITIVE")
             link_el  = item.select_one("a.s-item__link")
-
             if not title_el or not price_el:
                 continue
             title = title_el.get_text(strip=True)
             if title.lower().startswith("shop on ebay"):
                 continue
-
             price_text = price_el.get_text(strip=True)
-            price_match = re.search(r"[\d,]+\.?\d*", price_text.replace(",", ""))
+            price_match = re2.search(r"[\d,]+\.?\d*", price_text.replace(",", ""))
             if not price_match:
                 continue
             price = float(price_match.group().replace(",", ""))
             prices.append(price)
-
-            date = date_el.get_text(strip=True) if date_el else None
             sales.append({
                 "title": title,
                 "price": price,
-                "date": date,
+                "date": date_el.get_text(strip=True) if date_el else None,
                 "url": link_el["href"] if link_el else None,
             })
             if len(sales) >= limit:
                 break
-
         if not prices:
             return {"sales": [], "avg": None, "high": None, "low": None, "count": 0}, None
-
         return {
             "sales": sales[:5],
             "avg": round(sum(prices) / len(prices), 2),
             "high": round(max(prices), 2),
             "low": round(min(prices), 2),
             "count": len(prices),
-            "search_url": url,
+            "search_url": search_url,
         }, None
     except Exception as e:
         return None, str(e)
+
+_ebay_token_cache = {"token": None, "expires": 0}
+
+def get_ebay_token():
+    """Get an eBay OAuth app token, cached."""
+    import time
+    now = time.time()
+    if _ebay_token_cache["token"] and now < _ebay_token_cache["expires"]:
+        return _ebay_token_cache["token"]
+    EBAY_CLIENT_SECRET = os.environ.get("EBAY_CLIENT_SECRET", "")
+    if not EBAY_APP_ID or not EBAY_CLIENT_SECRET:
+        return ""
+    import base64
+    credentials = base64.b64encode(f"{EBAY_APP_ID}:{EBAY_CLIENT_SECRET}".encode()).decode()
+    resp = requests.post(
+        "https://api.ebay.com/identity/v1/oauth2/token",
+        headers={"Authorization": f"Basic {credentials}", "Content-Type": "application/x-www-form-urlencoded"},
+        data="grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope",
+        timeout=10,
+    )
+    if resp.ok:
+        data = resp.json()
+        _ebay_token_cache["token"] = data.get("access_token", "")
+        _ebay_token_cache["expires"] = now + data.get("expires_in", 7200) - 60
+        return _ebay_token_cache["token"]
+    return ""
 
 
 CL_SEARCH_URL = "https://search-zzvl7ri3bq-uc.a.run.app"
