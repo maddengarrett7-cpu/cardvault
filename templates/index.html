@@ -608,55 +608,42 @@
 <div class="cl-modal-overlay" id="settingsModal">
   <div class="cl-modal" style="max-width:420px;">
 
-    <!-- Step indicators -->
-    <div style="display:flex; gap:8px; margin-bottom:20px; align-items:center;">
-      <div class="step-dot active" id="dot1">1</div>
-      <div style="flex:1; height:2px; background:var(--border);" id="line1"></div>
-      <div class="step-dot" id="dot2">2</div>
-      <div style="flex:1; height:2px; background:var(--border);" id="line2"></div>
-      <div class="step-dot" id="dot3">3</div>
-    </div>
+    <h3 style="margin-bottom:6px;">📊 Connect Google Sheets</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6;">
+      Every card you scan will automatically sync to your sheet. Two quick steps:
+    </p>
 
-    <!-- Step 1: Create or open sheet -->
-    <div id="step1">
-      <h3 style="margin-bottom:8px;">📄 Open or Create a Sheet</h3>
-      <p style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.6;">
-        First, open Google Sheets and either create a new spreadsheet or open an existing one you want to use.
-      </p>
-      <a href="https://sheets.new" target="_blank" style="display:block; text-align:center; padding:12px; background:var(--surface2); border:1px solid var(--green); border-radius:10px; color:var(--green); font-weight:700; font-size:14px; text-decoration:none; margin-bottom:10px;">
-        + Create New Google Sheet ↗
-      </a>
-      <p style="text-align:center; font-size:12px; color:var(--muted); margin-bottom:16px;">or open an existing one in your browser</p>
-      <button class="cl-save-btn" onclick="goStep(2)">Next →</button>
-    </div>
-
-    <!-- Step 2: Share with service account -->
-    <div id="step2" style="display:none;">
-      <h3 style="margin-bottom:8px;">🔗 Share Your Sheet</h3>
-      <p style="font-size:13px; color:var(--muted); margin-bottom:12px; line-height:1.6;">
-        In your Google Sheet, click <strong style="color:var(--text)">Share</strong> (top right), paste this email, and give it <strong style="color:var(--text)">Editor</strong> access:
-      </p>
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:20px;">
-        <code id="serviceEmail" style="font-size:11px; background:var(--surface2); padding:8px 10px; border-radius:6px; color:var(--green); flex:1; word-break:break-all; line-height:1.5;">card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com</code>
-        <button onclick="copyServiceEmail()" id="copyBtn" style="padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); cursor:pointer; font-size:12px; white-space:nowrap;">Copy</button>
+    <!-- Step 1: Share -->
+    <div style="background:var(--surface2); border-radius:10px; padding:14px; margin-bottom:12px;">
+      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px;">1. Share your sheet with this email</div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <code id="serviceEmail" style="font-size:11px; background:var(--surface); padding:8px 10px; border-radius:6px; color:var(--green); flex:1; word-break:break-all; line-height:1.5;">card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com</code>
+        <button onclick="copyServiceEmail()" id="copyBtn" style="padding:8px 12px; background:var(--green); border:none; border-radius:6px; color:#000; cursor:pointer; font-size:12px; font-weight:700; white-space:nowrap;">Copy</button>
       </div>
-      <div style="display:flex; gap:8px;">
-        <button class="cl-cancel-btn" onclick="goStep(1)">← Back</button>
-        <button class="cl-save-btn" onclick="goStep(3)">Done, Next →</button>
-      </div>
+      <p style="font-size:11px; color:var(--muted); margin-top:8px;">In Google Sheets → Share → paste email → set Editor → Send</p>
     </div>
 
-    <!-- Step 3: Paste URL -->
-    <div id="step3" style="display:none;">
-      <h3 style="margin-bottom:8px;">🔑 Paste Your Sheet URL</h3>
-      <p style="font-size:13px; color:var(--muted); margin-bottom:12px; line-height:1.6;">
-        Copy the URL from your browser while your sheet is open and paste it below:
-      </p>
+    <!-- Step 2: Paste URL -->
+    <div style="background:var(--surface2); border-radius:10px; padding:14px; margin-bottom:16px;">
+      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px;">2. Paste your sheet URL</div>
       <input class="cl-input" id="sheetUrlInput" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
-      <div style="display:flex; gap:8px; margin-top:4px;">
-        <button class="cl-cancel-btn" onclick="goStep(2)">← Back</button>
-        <button class="cl-save-btn" onclick="saveSettings()">Connect Sheet ✓</button>
-      </div>
+    </div>
+
+    <div style="display:flex; gap:8px;">
+      <button class="cl-cancel-btn" onclick="closeSettings()">Cancel</button>
+      <button class="cl-save-btn" onclick="saveSettings()">Connect Sheet ✓</button>
+    </div>
+
+    <!-- Card Ladder Token -->
+    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--surface2);">
+      <h3 style="margin-bottom:6px; font-size:14px;">📊 Card Ladder Token <span style="font-size:11px; color:var(--muted); font-weight:400;">(optional)</span></h3>
+      <p style="font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.5;">
+        Paste your Card Ladder auth token to pull live CL values on every scan.
+      </p>
+      <input class="cl-input" id="clTokenInput" type="password" placeholder="Paste Card Ladder token..." />
+      <button class="cl-save-btn" style="margin-top:6px; width:100%;" onclick="saveCLToken()">Save Token ✓</button>
+      <div id="clTokenStatus" style="font-size:11px; color:var(--green); margin-top:4px; display:none;">✓ Token saved</div>
+    </div>
 
       <!-- Card Ladder Token -->
       <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--surface2);">
@@ -710,7 +697,6 @@
   function openSettings() {
     document.getElementById('sheetUrlInput').value = userSheetUrl;
     document.getElementById('clTokenInput').value = clToken;
-    goStep(userSheetUrl ? 3 : 1);
     document.getElementById('settingsModal').classList.add('open');
   }
 
@@ -730,15 +716,7 @@
     });
   }
 
-  function goStep(n) {
-    [1,2,3].forEach(i => {
-      document.getElementById('step'+i).style.display = i === n ? 'block' : 'none';
-      const dot = document.getElementById('dot'+i);
-      dot.classList.remove('active','done');
-      if (i < n) dot.classList.add('done');
-      if (i === n) dot.classList.add('active');
-    });
-  }
+  function goStep(n) { /* no-op, steps removed */ }
 
   async function saveSettings() {
     const val = document.getElementById('sheetUrlInput').value.trim();
