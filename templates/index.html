@@ -636,28 +636,8 @@
       <button class="cl-save-btn" onclick="saveSettings()">Connect Sheet ✓</button>
     </div>
 
-    <!-- Card Ladder Token -->
-    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--surface2);">
-      <h3 style="margin-bottom:6px; font-size:14px;">📊 Card Ladder Token <span style="font-size:11px; color:var(--muted); font-weight:400;">(optional)</span></h3>
-      <p style="font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.5;">
-        Paste your Card Ladder auth token to pull live CL values on every scan.
-      </p>
-      <input class="cl-input" id="clTokenInput" type="password" placeholder="Paste Card Ladder token..." />
-      <button class="cl-save-btn" style="margin-top:6px; width:100%;" onclick="saveCLToken()">Save Token ✓</button>
-      <div id="clTokenStatus" style="font-size:11px; color:var(--green); margin-top:4px; display:none;">✓ Token saved</div>
-    </div>
-
-      <!-- Card Ladder Token -->
-      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--surface2);">
-        <h3 style="margin-bottom:6px;">📊 Card Ladder Token <span style="font-size:11px; color:var(--muted); font-weight:400;">(optional)</span></h3>
-        <p style="font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.5;">
-          Paste your Card Ladder auth token to pull live CL values on every scan.<br>
-          Get it from <a href="https://app.cardladder.com" target="_blank" style="color:var(--green);">app.cardladder.com</a> → open DevTools → Application → Local Storage → find <code style="background:var(--surface2);padding:1px 4px;border-radius:3px;">token</code>.
-        </p>
-        <input class="cl-input" id="clTokenInput" type="password" placeholder="Paste Card Ladder token..." />
-        <button class="cl-save-btn" style="margin-top:6px; width:100%;" onclick="saveCLToken()">Save Token ✓</button>
-        <div id="clTokenStatus" style="font-size:11px; color:var(--green); margin-top:4px; display:none;">✓ Token saved</div>
-      </div>
+    <input type="hidden" id="clTokenInput" />
+    <div id="clTokenStatus" style="display:none;"></div>
     </div>
 
     <button onclick="closeSettings()" style="position:absolute; top:16px; right:16px; background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; line-height:1;">×</button>
