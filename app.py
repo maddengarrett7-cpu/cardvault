@@ -1018,10 +1018,15 @@ def scan_price():
         image_data = buf.tobytes()
 
         prompt = (
-            "Look at this image for a price written on a sticky note, sticker, or piece of tape on a trading card. "
-            "Extract the dollar amount paid for the card. "
-            "Return ONLY valid JSON: {\"paid\": \"$12.50\"} or {\"paid\": null} if no price is visible. "
-            "Format the price with a dollar sign. No other text."
+            "Look carefully at this image for a price written on a sticky note, sticker, label, or piece of tape. "
+            "This is the amount paid for a trading card. "
+            "READ THE NUMBER VERY CAREFULLY — do not confuse digits. Common prices are $5-$5000. "
+            "If you see a handwritten number, look at each digit individually: "
+            "7 is not 4, 0 is not 5, 1 is not 7, 9 is not 4. "
+            "If there is a decimal point, include it (e.g. $12.50). "
+            "If there is no decimal, assume it is a whole dollar amount (e.g. $700 not $7.00). "
+            "Return ONLY valid JSON: {\"paid\": \"$700\"} or {\"paid\": null} if no price is visible. "
+            "No other text, no markdown."
         )
         response = client.models.generate_content(
             model="gemini-2.5-flash",
