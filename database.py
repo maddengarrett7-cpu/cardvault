@@ -35,6 +35,7 @@ if DATABASE_URL:
             ("google_access_token", "TEXT"),
             ("google_refresh_token", "TEXT"),
             ("google_sheet_id", "TEXT"),
+            ("total_scans", "INTEGER DEFAULT 0"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
@@ -156,7 +157,7 @@ if DATABASE_URL:
             return False, scans_today, FREE_LIMIT
 
         cur.execute(
-            "UPDATE users SET scans_today = %s, scans_date = %s WHERE id = %s",
+            "UPDATE users SET scans_today = %s, scans_date = %s, total_scans = COALESCE(total_scans, 0) + 1 WHERE id = %s",
             (scans_today + 1, today, user_id)
         )
         conn.commit()

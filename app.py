@@ -937,7 +937,9 @@ def admin_dashboard():
             active_today = cur.fetchone()[0]
             cur.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = CURRENT_DATE::text")
             scans_today = cur.fetchone()[0] or 0
-            cur.execute("SELECT email, subscription_status, scans_today, created_at FROM users ORDER BY created_at DESC LIMIT 20")
+            cur.execute("SELECT SUM(COALESCE(total_scans, 0)) FROM users")
+            total_scans_ever = cur.fetchone()[0] or 0
+            cur.execute("SELECT email, subscription_status, scans_today, created_at, COALESCE(total_scans, 0) FROM users ORDER BY created_at DESC LIMIT 20")
             recent_users = cur.fetchall()
             cur.close()
         else:
@@ -955,6 +957,7 @@ def admin_dashboard():
     secret = os.environ.get("ADMIN_SECRET", "")
     def make_row(u):
         email, plan, scans, joined = u[0], u[1], u[2], u[3]
+        total = u[4] if len(u) > 4 else 0
         plan_label = '🟢 Pro' if plan == 'pro' else '⚪ Free'
         if plan != 'pro':
             action_html = (
@@ -972,7 +975,7 @@ def admin_dashboard():
                 '<button style="background:#333;color:#888;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">→ Free</button>'
                 '</form>'
             )
-        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{joined}</td><td>{action_html}</td></tr>"
+        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{total}</td><td>{joined}</td><td>{action_html}</td></tr>"
     rows = ''.join([make_row(u) for u in recent_users])
     return f"""<!DOCTYPE html><html>
 <head><title>CardScan Admin</title>
@@ -993,9 +996,10 @@ td{{padding:10px 8px;border-bottom:1px solid #1a1a1a;font-size:14px}}
   <div class="stat"><div class="stat-num">{pro_users}</div><div class="stat-label">Pro Users</div></div>
   <div class="stat"><div class="stat-num">{active_today}</div><div class="stat-label">Active Today</div></div>
   <div class="stat"><div class="stat-num">{scans_today}</div><div class="stat-label">Scans Today</div></div>
+  <div class="stat"><div class="stat-num">{total_scans_ever}</div><div class="stat-label">Total Scans Ever</div></div>
 </div>
 <h2 style="color:#888;font-size:14px;text-transform:uppercase;letter-spacing:1px;">Recent Users</h2>
-<table><tr><th>Email</th><th>Plan</th><th>Scans Today</th><th>Joined</th><th>Action</th></tr>{rows}</table>
+<table><tr><th>Email</th><th>Plan</th><th>Scans Today</th><th>Total Scans</th><th>Joined</th><th>Action</th></tr>{rows}</table>
 </body></html>"""
 
 @app.route('/scan-price', methods=['POST'])
