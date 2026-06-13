@@ -888,6 +888,33 @@ def admin_reset_password(secret):
         return f"Error: {e}", 500
     return f"✅ Password reset! Login with: {OWNER_EMAIL} / {new_password}"
 
+def _admin_set_plan(email, plan, secret):
+    if secret != os.environ.get("ADMIN_SECRET", ""):
+        return "Forbidden", 403
+    from database import get_db
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("UPDATE users SET subscription_status = %s WHERE email = %s", (plan, email))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("UPDATE users SET subscription_status = ? WHERE email = ?", (plan, email))
+            db.commit()
+        db.close()
+    except Exception as e:
+        return f"Error: {e}", 500
+    return redirect('/admin/dashboard')
+
+@app.route('/admin/upgrade', methods=['POST'])
+def admin_upgrade():
+    return _admin_set_plan(request.form.get('email'), 'pro', request.form.get('secret'))
+
+@app.route('/admin/downgrade', methods=['POST'])
+def admin_downgrade():
+    return _admin_set_plan(request.form.get('email'), 'free', request.form.get('secret'))
+
 @app.route('/admin/dashboard')
 def admin_dashboard():
     if session.get('user_id'):
@@ -925,7 +952,13 @@ def admin_dashboard():
     except Exception as e:
         return f"Error: {e}", 500
 
-    rows = ''.join([f"<tr><td>{u[0]}</td><td>{'🟢 Pro' if u[1]=='pro' else '⚪ Free'}</td><td>{u[2]}</td><td>{u[3]}</td></tr>" for u in recent_users])
+    secret = os.environ.get("ADMIN_SECRET", "")
+    rows = ''.join([
+        f"<tr><td>{u[0]}</td><td>{'🟢 Pro' if u[1]=='pro' else '⚪ Free'}</td><td>{u[2]}</td><td>{u[3]}</td>"
+        f"<td>{'<form method=POST action=/admin/upgrade style=display:inline><input type=hidden name=email value=\"' + u[0] + '\"><input type=hidden name=secret value=\"' + secret + '\"><button style=\"background:#00ff87;color:#000;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;font-size:12px;\">→ Pro</button></form>' if u[1] != 'pro' else '<form method=POST action=/admin/downgrade style=display:inline><input type=hidden name=email value=\"' + u[0] + '\"><input type=hidden name=secret value=\"' + secret + '\"><button style=\"background:#333;color:#888;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;\">→ Free</button></form>'}</td>"
+        f"</tr>"
+        for u in recent_users
+    ])
     return f"""<!DOCTYPE html><html>
 <head><title>CardScan Admin</title>
 <style>body{{font-family:system-ui;background:#0d0d0d;color:#fff;padding:40px;max-width:900px;margin:0 auto}}
@@ -947,7 +980,7 @@ td{{padding:10px 8px;border-bottom:1px solid #1a1a1a;font-size:14px}}
   <div class="stat"><div class="stat-num">{scans_today}</div><div class="stat-label">Scans Today</div></div>
 </div>
 <h2 style="color:#888;font-size:14px;text-transform:uppercase;letter-spacing:1px;">Recent Users</h2>
-<table><tr><th>Email</th><th>Plan</th><th>Scans Today</th><th>Joined</th></tr>{rows}</table>
+<table><tr><th>Email</th><th>Plan</th><th>Scans Today</th><th>Joined</th><th>Action</th></tr>{rows}</table>
 </body></html>"""
 
 @app.route('/scan-price', methods=['POST'])
