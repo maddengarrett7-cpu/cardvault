@@ -953,12 +953,27 @@ def admin_dashboard():
         return f"Error: {e}", 500
 
     secret = os.environ.get("ADMIN_SECRET", "")
-    rows = ''.join([
-        f"<tr><td>{u[0]}</td><td>{'🟢 Pro' if u[1]=='pro' else '⚪ Free'}</td><td>{u[2]}</td><td>{u[3]}</td>"
-        f"<td>{'<form method=POST action=/admin/upgrade style=display:inline><input type=hidden name=email value=\"' + u[0] + '\"><input type=hidden name=secret value=\"' + secret + '\"><button style=\"background:#00ff87;color:#000;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;font-size:12px;\">→ Pro</button></form>' if u[1] != 'pro' else '<form method=POST action=/admin/downgrade style=display:inline><input type=hidden name=email value=\"' + u[0] + '\"><input type=hidden name=secret value=\"' + secret + '\"><button style=\"background:#333;color:#888;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;\">→ Free</button></form>'}</td>"
-        f"</tr>"
-        for u in recent_users
-    ])
+    def make_row(u):
+        email, plan, scans, joined = u[0], u[1], u[2], u[3]
+        plan_label = '🟢 Pro' if plan == 'pro' else '⚪ Free'
+        if plan != 'pro':
+            action_html = (
+                '<form method="POST" action="/admin/upgrade" style="display:inline">'
+                '<input type="hidden" name="email" value="' + email + '">'
+                '<input type="hidden" name="secret" value="' + secret + '">'
+                '<button style="background:#00ff87;color:#000;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;font-size:12px;">→ Pro</button>'
+                '</form>'
+            )
+        else:
+            action_html = (
+                '<form method="POST" action="/admin/downgrade" style="display:inline">'
+                '<input type="hidden" name="email" value="' + email + '">'
+                '<input type="hidden" name="secret" value="' + secret + '">'
+                '<button style="background:#333;color:#888;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">→ Free</button>'
+                '</form>'
+            )
+        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{joined}</td><td>{action_html}</td></tr>"
+    rows = ''.join([make_row(u) for u in recent_users])
     return f"""<!DOCTYPE html><html>
 <head><title>CardScan Admin</title>
 <style>body{{font-family:system-ui;background:#0d0d0d;color:#fff;padding:40px;max-width:900px;margin:0 auto}}
