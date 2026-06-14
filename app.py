@@ -1057,14 +1057,9 @@ def scan_price():
     """Scan the back of a card to read a sticky note price."""
     try:
         body = request.get_json()
-        img_bytes = base64.b64decode(body['image'])
-        import numpy as np
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
+        # Use image bytes directly — no need to re-encode through cv2
+        image_data = base64.b64decode(body['image'])
         client = genai.Client(api_key=GEMINI_API_KEY)
-        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
-        image_data = buf.tobytes()
 
         prompt = (
             "Look carefully at this image for a price written on a sticky note, sticker, label, or piece of tape. "
@@ -1086,13 +1081,9 @@ def scan_price():
             text = text.split("```")[1]
             if text.startswith("json"):
                 text = text[4:]
-        result = json.loads(text.strip())
+        text = text.strip()
+        result = json.loads(text)
         paid = result.get("paid")
-
-        # Update the sheet with the paid amount if we have a sheet
-        if paid and body.get("sheet_id"):
-            # We just append a note — full implementation would update the last row
-            pass
 
         return jsonify({"success": True, "paid": paid})
     except Exception as e:
