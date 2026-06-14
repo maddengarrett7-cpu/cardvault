@@ -1085,6 +1085,37 @@ def scan_price():
         result = json.loads(text)
         paid = result.get("paid")
 
+        # Update the paid column in the last row of the sheet
+        if paid:
+            try:
+                user = get_user_by_id(session['user_id'])
+                custom_sheet = body.get("sheet_id", "")
+                sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else (user.get("google_sheet_id") if user else None) or SPREADSHEET_ID
+                if sheet_id:
+                    svc = get_user_sheets_service(user or {})
+                    tab = get_first_sheet_tab(sheet_id, svc)
+                    # Get current data to find last row and paid column
+                    result_data = svc.spreadsheets().values().get(
+                        spreadsheetId=sheet_id,
+                        range=f"{tab}!1:1000"
+                    ).execute()
+                    rows = result_data.get("values", [])
+                    if rows:
+                        headers = rows[0]
+                        mapping = detect_column_mapping(headers)
+                        paid_col = mapping.get("paid")
+                        last_row = len(rows)
+                        if paid_col is not None and last_row > 1:
+                            col_letter = chr(ord('A') + paid_col)
+                            svc.spreadsheets().values().update(
+                                spreadsheetId=sheet_id,
+                                range=f"{tab}!{col_letter}{last_row}",
+                                valueInputOption="USER_ENTERED",
+                                body={"values": [[paid]]}
+                            ).execute()
+            except Exception as e:
+                pass  # Don't fail the response if sheet update fails
+
         return jsonify({"success": True, "paid": paid})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
