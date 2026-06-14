@@ -125,7 +125,7 @@ def analyze_label(image_data):
 
 def analyze_card(frame):
     client = genai.Client(api_key=GEMINI_API_KEY)
-    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
     image_data = buf.tobytes()
     prompt = (
         "You are scanning a trading card. First determine the card type:\n"
@@ -798,6 +798,7 @@ def scan():
     try:
         # Accept image from browser camera
         body = request.get_json()
+        is_upload = body.get('is_upload', False) if body else False
         if body and 'image' in body:
             import numpy as np
             img_bytes = base64.b64decode(body['image'])
@@ -815,10 +816,10 @@ def scan():
 
         data = analyze_card(frame)
 
-        # If we got a grade but missing key details, do a second focused label pass
+        # Second label pass — only for uploads (high quality) not live camera (too slow)
         has_grade = data.get("grade") and data.get("grade").lower() != "raw"
         missing_details = not data.get("name") or not data.get("year") or not data.get("set")
-        if has_grade and missing_details:
+        if is_upload and has_grade and missing_details:
             try:
                 _, buf2 = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
                 label_data = analyze_label(buf2.tobytes())

@@ -918,7 +918,7 @@
       const res = await fetch('/scan-price', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
+        body: JSON.stringify({ image: imageData, is_upload: true, sheet_id: userSheetUrl })
       });
       const result = await res.json();
       if (result.success && result.paid) {
