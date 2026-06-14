@@ -245,6 +245,18 @@
     .result-row:last-child { border-bottom: none; }
     .result-label { color: var(--muted); }
     .result-value { color: var(--text); font-weight: 600; text-align: right; }
+    @keyframes shimmer {
+      0% { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skeleton {
+      display: inline-block;
+      height: 14px;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--surface2) 25%, #2a2a2a 50%, var(--surface2) 75%);
+      background-size: 400px 100%;
+      animation: shimmer 1.2s infinite linear;
+    }
     .result-value.editable { cursor: pointer; border-bottom: 1px dashed var(--muted); }
     .result-value.editable:hover { color: var(--green); }
     .result-value input.edit-input { background: var(--surface2); border: 1px solid var(--green); border-radius: 6px; color: var(--text); font-size: 14px; font-weight: 600; padding: 2px 8px; text-align: right; width: 160px; outline: none; }
@@ -947,6 +959,7 @@
     setScanBtns(true, 'Analyzing...');
     status.className = 'status-bar loading';
     status.textContent = '🔍 Reading card with AI...';
+    showSkeleton();
 
     try {
       const imageData = await new Promise((resolve, reject) => {
@@ -1027,6 +1040,22 @@
     setScanBtns(false, '📷   SCAN CARD');
   }
 
+  function showSkeleton() {
+    const fields = [
+      {id:'r-name', width:'140px'},
+      {id:'r-year', width:'60px'},
+      {id:'r-set',  width:'120px'},
+      {id:'r-grade',width:'80px'},
+      {id:'r-cert', width:'110px'},
+    ];
+    fields.forEach(f => {
+      const el = document.getElementById(f.id);
+      if (el) el.innerHTML = `<span class="skeleton" style="width:${f.width};">&nbsp;</span>`;
+    });
+    const cardEl = document.getElementById('r-card');
+    if (cardEl) { cardEl.innerHTML = '<span class="skeleton" style="width:200px;">&nbsp;</span>'; cardEl.style.display = 'block'; }
+  }
+
   function setScanBtns(disabled, text) {
     ['scanBtn', 'scanBtnMobile'].forEach(id => {
       const b = document.getElementById(id);
@@ -1042,6 +1071,7 @@
     setScanBtns(true, 'Analyzing...');
     status.className = 'status-bar loading';
     status.textContent = '🔍 Reading card with AI...';
+    showSkeleton();
 
     try {
       const imageData = captureFrame();
