@@ -81,6 +81,36 @@ def generate_frames():
             yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
         time.sleep(0.03)
 
+def analyze_label(image_data):
+    """Second pass focused specifically on reading PSA/BGS/SGC label text."""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        "This is a graded trading card in a PSA, BGS, SGC, or CGC slab. "
+        "Focus ONLY on reading the grading label — the white/colored sticker on the slab. "
+        "The label contains: player/card name, year, brand, set name, card number, grade, and cert number. "
+        "Read every word on the label very carefully, even if small or partially obscured. "
+        "Return ONLY valid JSON with these keys (null if truly unreadable):\n"
+        "  name   - player or card name from label\n"
+        "  year   - 4-digit year\n"
+        "  brand  - manufacturer (Topps, Panini, Upper Deck, etc.)\n"
+        "  set    - set name (Prizm, Chrome, Select, etc.)\n"
+        "  parallel - parallel/variation if listed\n"
+        "  grade  - full grade e.g. 'PSA 10', 'BGS 9.5'\n"
+        "  cert   - cert/serial number\n"
+        "  card   - full description combining all fields\n"
+        "Return ONLY the JSON object — no markdown, no code fences."
+    )
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
 def analyze_card(frame):
     client = genai.Client(api_key=GEMINI_API_KEY)
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
@@ -805,6 +835,20 @@ def scan():
                 return jsonify({'success': False, 'error': 'Could not capture image'})
 
         data = analyze_card(frame)
+
+        # If we got a grade but missing key details, do a second focused label pass
+        has_grade = data.get("grade") and data.get("grade").lower() != "raw"
+        missing_details = not data.get("name") or not data.get("year") or not data.get("set")
+        if has_grade and missing_details:
+            try:
+                _, buf2 = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                label_data = analyze_label(buf2.tobytes())
+                # Merge: fill in any missing fields from label pass
+                for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
+                    if not data.get(field) and label_data.get(field):
+                        data[field] = label_data[field]
+            except Exception:
+                pass
 
         # Auto-fetch values
         cl_token = body.get("cl_token", "") if body else ""
