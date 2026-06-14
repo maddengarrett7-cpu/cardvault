@@ -81,6 +81,18 @@ def generate_frames():
             yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
         time.sleep(0.03)
 
+def gemini_generate(client, model, contents, retries=2):
+    """Call Gemini with automatic retry on 503."""
+    import time as _time
+    for attempt in range(retries + 1):
+        try:
+            return client.models.generate_content(model=model, contents=contents)
+        except Exception as e:
+            if attempt < retries and ("503" in str(e) or "UNAVAILABLE" in str(e)):
+                _time.sleep(3)
+                continue
+            raise
+
 def analyze_label(image_data):
     """Second pass focused specifically on reading PSA/BGS/SGC label text."""
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -100,7 +112,7 @@ def analyze_label(image_data):
         "  card   - full description combining all fields\n"
         "Return ONLY the JSON object — no markdown, no code fences."
     )
-    response = client.models.generate_content(
+    response = gemini_generate(client,
         model="gemini-2.5-flash",
         contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
     )
@@ -154,7 +166,7 @@ def analyze_card(frame):
         "For graded slabs: read the label for all fields including the cert number.\n"
         "Return ONLY the JSON object — no markdown, no code fences, no extra text."
     )
-    response = client.models.generate_content(
+    response = gemini_generate(client,
         model="gemini-2.5-flash",
         contents=[
             prompt,
@@ -878,7 +890,10 @@ def scan():
         append_to_sheet(data, custom_sheet_id, user=user)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        err = str(e)
+        if "503" in err or "UNAVAILABLE" in err:
+            return jsonify({'success': False, 'error': 'Scanner is busy right now — please try again in a moment'})
+        return jsonify({'success': False, 'error': err})
 
 @app.route('/admin/reset-password/<secret>')
 def admin_reset_password(secret):
@@ -1039,7 +1054,7 @@ def scan_price():
             "Return ONLY valid JSON: {\"paid\": \"$700\"} or {\"paid\": null} if no price is visible. "
             "No other text, no markdown."
         )
-        response = client.models.generate_content(
+        response = gemini_generate(client,
             model="gemini-2.5-flash",
             contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
         )
