@@ -124,19 +124,24 @@ def analyze_label(image_data):
     """Second pass focused specifically on reading PSA/BGS/SGC label text."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
-        "This is a graded trading card in a PSA, BGS, SGC, or CGC slab. "
-        "Focus ONLY on reading the grading label — the white/colored sticker on the slab. "
-        "The label contains: player/card name, year, brand, set name, card number, grade, and cert number. "
-        "Read every word on the label very carefully, even if small or partially obscured. "
+        "This is a graded sports trading card in a PSA, BGS, SGC, or CGC slab. "
+        "Zoom in mentally on the grading label sticker and read EVERY word carefully. "
+        "PSA labels typically show: YEAR BRAND SET PLAYER NAME PARALLEL/VARIATION CARD# GEM MT GRADE CERT#\n\n"
+        "Example PSA label text: '2020 Panini Prizm Silver Jordan Love #306 GEM MT 10 Cert# 12345678'\n\n"
+        "Common brands on PSA labels: Panini, Topps, Upper Deck, Bowman, Donruss, Select, Mosaic, Optic\n"
+        "Common sets: Prizm, Chrome, Select, Mosaic, Optic, Donruss, Contenders, Bowman, Heritage\n"
+        "Common parallels: Silver, Gold, Red, Blue, Green, Purple, Orange, Pink, Holo, Refractor, Shimmer\n\n"
+        "Read the CERT NUMBER carefully — it is a 7-9 digit number on the label.\n"
+        "Read the YEAR carefully — it is a 4-digit number like 2018, 2019, 2020, 2021, 2022, 2023, 2024.\n\n"
         "Return ONLY valid JSON with these keys (null if truly unreadable):\n"
-        "  name   - player or card name from label\n"
-        "  year   - 4-digit year\n"
-        "  brand  - manufacturer (Topps, Panini, Upper Deck, etc.)\n"
-        "  set    - set name (Prizm, Chrome, Select, etc.)\n"
-        "  parallel - parallel/variation if listed\n"
-        "  grade  - full grade e.g. 'PSA 10', 'BGS 9.5'\n"
-        "  cert   - cert/serial number\n"
-        "  card   - full description combining all fields\n"
+        "  name     - player full name from label\n"
+        "  year     - 4-digit year\n"
+        "  brand    - manufacturer e.g. 'Panini', 'Topps'\n"
+        "  set      - set name e.g. 'Prizm', 'Chrome'\n"
+        "  parallel - parallel/variation e.g. 'Silver', 'Gold Refractor'\n"
+        "  grade    - full grade e.g. 'PSA 10', 'BGS 9.5'\n"
+        "  cert     - cert number digits only e.g. '12345678'\n"
+        "  card     - full description: 'YEAR BRAND SET PLAYER PARALLEL GRADE'\n"
         "Return ONLY the JSON object — no markdown, no code fences."
     )
     response = gemini_generate(client,
@@ -863,7 +868,7 @@ def scan():
         # Second label pass — only for uploads (high quality) not live camera (too slow)
         has_grade = data.get("grade") and data.get("grade").lower() != "raw"
         missing_details = not data.get("name") or not data.get("year") or not data.get("set")
-        if is_upload and has_grade and missing_details:
+        if is_upload and has_grade:
             try:
                 _, buf2 = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
                 label_data = analyze_label(buf2.tobytes())
