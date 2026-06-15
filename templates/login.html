@@ -146,6 +146,11 @@
       <input type="email" name="email" placeholder="you@example.com" required autofocus>
       <label>Password</label>
       <input type="password" name="password" placeholder="••••••••" required>
+      {% if mode == 'login' %}
+      <div style="text-align:right; margin-top:-8px; margin-bottom:16px;">
+        <a href="/forgot-password" style="font-size:13px; color:#888; text-decoration:none;">Forgot password?</a>
+      </div>
+      {% endif %}
       <button type="submit" class="btn">
         {{ 'Create Account' if mode == 'signup' else 'Log In' }}
       </button>

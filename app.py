@@ -26,7 +26,8 @@ from googleapiclient.discovery import build
 from database import init_db, get_user_by_email, get_user_by_id, create_user, \
     update_stripe_customer, update_subscription, check_and_increment_scans, \
     save_google_tokens, save_google_sheet_id, clear_google_tokens, \
-    create_session, validate_session, delete_session
+    create_session, validate_session, delete_session, \
+    save_reset_token, get_reset_token, delete_reset_token, update_password
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
@@ -45,11 +46,39 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_OAUTH_SCOPES  = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
-APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://scanly-production-8403.up.railway.app")
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://cardscan.live")
+GMAIL_USER         = os.environ.get("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 # ───────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "slabscan-dev-secret")
+
+# ── Email ────────────────────────────────────────────────────────────────────
+import smtplib
+import secrets
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from datetime import datetime, timedelta
+
+def send_reset_email(to_email, reset_url):
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = 'CardScan — Reset Your Password'
+    msg['From'] = f'CardScan <{GMAIL_USER}>'
+    msg['To'] = to_email
+    body = f"""
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0a0a0a;color:#fff;">
+      <h2 style="font-size:22px;font-weight:800;margin-bottom:8px;">Card<span style="color:#00e676;">Scan</span></h2>
+      <p style="color:#aaa;margin-bottom:24px;">Password reset request</p>
+      <p style="color:#ccc;margin-bottom:24px;">Click the button below to reset your password. This link expires in <strong style="color:#fff;">1 hour</strong>.</p>
+      <a href="{reset_url}" style="display:inline-block;background:#00e676;color:#000;font-weight:800;padding:14px 28px;border-radius:10px;text-decoration:none;font-size:15px;">Reset Password</a>
+      <p style="color:#666;font-size:12px;margin-top:32px;">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
+    </div>
+    """
+    msg.attach(MIMEText(body, 'html'))
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, to_email, msg.as_string())
 
 # ── Rate limiting ────────────────────────────────────────────────────────────
 _login_attempts = defaultdict(list)  # ip -> [timestamps]
@@ -520,6 +549,61 @@ def logout():
         delete_session(token)
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'GET':
+        return render_template('forgot_password.html')
+    email = request.form.get('email', '').strip().lower()
+    user = get_user_by_email(email)
+    # Always show success message to avoid user enumeration
+    if user:
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.utcnow() + timedelta(hours=1)
+        save_reset_token(email, token, expires_at)
+        reset_url = f"{APP_BASE_URL}/reset-password/{token}"
+        try:
+            send_reset_email(email, reset_url)
+        except Exception as e:
+            return render_template('forgot_password.html', error='Could not send email. Please try again or contact us on Instagram.')
+    return render_template('forgot_password.html', success=True)
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    row = get_reset_token(token)
+    if not row:
+        return render_template('reset_password.html', error='This reset link is invalid or has already been used.')
+    # Check expiry
+    if DATABASE_URL:
+        from datetime import timezone
+        expires_at = row['expires_at']
+        if expires_at.tzinfo:
+            now = datetime.now(timezone.utc)
+        else:
+            now = datetime.utcnow()
+        if now > expires_at:
+            delete_reset_token(token)
+            return render_template('reset_password.html', error='This reset link has expired. Please request a new one.')
+    else:
+        expires_at = datetime.fromisoformat(str(row['expires_at']))
+        if datetime.utcnow() > expires_at:
+            delete_reset_token(token)
+            return render_template('reset_password.html', error='This reset link has expired. Please request a new one.')
+
+    if request.method == 'GET':
+        return render_template('reset_password.html', token=token)
+
+    password = request.form.get('password', '')
+    confirm = request.form.get('confirm', '')
+    if len(password) < 6:
+        return render_template('reset_password.html', token=token, error='Password must be at least 6 characters.')
+    if password != confirm:
+        return render_template('reset_password.html', token=token, error='Passwords do not match.')
+
+    from werkzeug.security import generate_password_hash
+    update_password(row['email'], generate_password_hash(password))
+    delete_reset_token(token)
+    return render_template('reset_password.html', success=True)
 
 # ── Google OAuth ─────────────────────────────────────────────────────────────
 

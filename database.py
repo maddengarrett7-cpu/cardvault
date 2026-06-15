@@ -305,6 +305,97 @@ else:
         return True, scans_today + 1, FREE_LIMIT
 
 
+def save_reset_token(email, token, expires_at):
+    """Store a password reset token."""
+    if DATABASE_URL:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS password_resets (
+                id SERIAL PRIMARY KEY,
+                email TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("DELETE FROM password_resets WHERE email = %s", (email.lower(),))
+        cur.execute(
+            "INSERT INTO password_resets (email, token, expires_at) VALUES (%s, %s, %s)",
+            (email.lower(), token, expires_at)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS password_resets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("DELETE FROM password_resets WHERE email = ?", (email.lower(),))
+        conn.execute(
+            "INSERT INTO password_resets (email, token, expires_at) VALUES (?, ?, ?)",
+            (email.lower(), token, expires_at)
+        )
+        conn.commit()
+        conn.close()
+
+
+def get_reset_token(token):
+    """Look up a reset token, return the row or None."""
+    if DATABASE_URL:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM password_resets WHERE token = %s", (token,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return dict(row) if row else None
+    else:
+        conn = get_db()
+        row = conn.execute("SELECT * FROM password_resets WHERE token = ?", (token,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+
+def delete_reset_token(token):
+    """Delete a used reset token."""
+    if DATABASE_URL:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM password_resets WHERE token = %s", (token,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        conn.execute("DELETE FROM password_resets WHERE token = ?", (token,))
+        conn.commit()
+        conn.close()
+
+
+def update_password(email, new_hash):
+    """Update a user's password hash."""
+    if DATABASE_URL:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET password_hash = %s WHERE email = %s", (new_hash, email.lower()))
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        conn.execute("UPDATE users SET password_hash = ? WHERE email = ?", (new_hash, email.lower()))
+        conn.commit()
+        conn.close()
+
+
 MAX_SESSIONS = 2
 
 def create_session(user_id, session_token):
