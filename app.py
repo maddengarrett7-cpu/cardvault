@@ -13,6 +13,7 @@ import requests
 import stripe
 from datetime import datetime
 from functools import wraps
+from collections import defaultdict
 from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 import cv2
@@ -49,6 +50,21 @@ APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://scanly-production-8403.up
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "slabscan-dev-secret")
+
+# ── Rate limiting ────────────────────────────────────────────────────────────
+_login_attempts = defaultdict(list)  # ip -> [timestamps]
+
+def check_rate_limit(ip, max_attempts=10, window=300):
+    """Allow max_attempts per window (seconds). Returns True if blocked."""
+    now = time.time()
+    attempts = [t for t in _login_attempts[ip] if now - t < window]
+    _login_attempts[ip] = attempts
+    if len(attempts) >= max_attempts:
+        return True
+    _login_attempts[ip].append(now)
+    return False
+# ─────────────────────────────────────────────────────────────────────────────
+
 init_db()
 
 def login_required(f):
@@ -63,6 +79,11 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
+
+def check_admin(secret):
+    """Validate admin secret — must match env var and be non-empty."""
+    admin_secret = os.environ.get("ADMIN_SECRET", "")
+    return admin_secret and secret == admin_secret and len(admin_secret) >= 8
 
 # Shared camera instance
 camera = None
@@ -396,6 +417,9 @@ def landing():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+        if check_rate_limit(ip, max_attempts=10, window=300):
+            return render_template('login.html', error='Too many attempts. Please wait 5 minutes.', mode='login')
         email    = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         user = get_user_by_email(email)
@@ -412,6 +436,9 @@ def login():
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+        if check_rate_limit(ip, max_attempts=5, window=300):
+            return render_template('login.html', error='Too many attempts. Please wait 5 minutes.', mode='signup')
         email    = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         if not email or not password or len(password) < 6:
@@ -559,7 +586,7 @@ OWNER_EMAIL = "maddengarrett7@gmail.com"
 @app.route('/admin/set-pro/<secret>')
 def admin_set_pro(secret):
     """One-time route to set the owner account to Pro."""
-    if secret != os.environ.get("ADMIN_SECRET", ""):
+    if not check_admin(secret):
         return "Forbidden", 403
     user = get_user_by_email(OWNER_EMAIL)
     if not user:
@@ -915,7 +942,7 @@ def scan():
 
 @app.route('/admin/reset-password/<secret>')
 def admin_reset_password(secret):
-    if secret != os.environ.get("ADMIN_SECRET", ""):
+    if not check_admin(secret):
         return "Forbidden", 403
     from database import get_db
     from werkzeug.security import generate_password_hash
@@ -938,7 +965,7 @@ def admin_reset_password(secret):
     return f"✅ Password reset! Login with: {OWNER_EMAIL} / {new_password}"
 
 def _admin_set_plan(email, plan, secret):
-    if secret != os.environ.get("ADMIN_SECRET", ""):
+    if not check_admin(secret):
         return "Forbidden", 403
     from database import get_db
     db = get_db()
