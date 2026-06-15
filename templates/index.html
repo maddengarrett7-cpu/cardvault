@@ -665,8 +665,8 @@
 </div>
 
 <!-- Flip prompt -->
-<div id="flipPrompt" style="display:none; position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--green); border-radius:16px; padding:16px 20px; z-index:200; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.4); min-width:280px;">
-  <div style="font-size:14px; color:var(--text); margin-bottom:12px;">📝 Flip card to scan price tag?</div>
+<div id="flipPrompt" style="display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--green); border-radius:16px; padding:16px 20px; z-index:200; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.4); min-width:280px;">
+  <div style="font-size:14px; color:var(--text); margin-bottom:12px;">📝 Add the price you paid?</div>
   <div style="display:flex; gap:10px; justify-content:center;">
     <button onclick="startPriceScan()" style="background:var(--green); color:#000; border:none; border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Flip & Scan</button>
     <button onclick="skipPriceScan()" style="background:var(--surface2); color:var(--muted); border:1px solid var(--surface2); border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Skip</button>
@@ -912,19 +912,16 @@
     setScanBtns(false, '📷   SCAN CARD');
   }
 
-  async function startPriceScan() {
-    document.getElementById('flipPrompt').style.display = 'none';
+  async function sendPriceScan(imageData) {
     const status = document.getElementById('statusBar');
     status.className = 'status-bar loading';
     status.textContent = '📝 Reading price tag...';
     setScanBtns(true, 'Reading price...');
-
     try {
-      const imageData = captureFrame();
       const res = await fetch('/scan-price', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData, is_upload: true, sheet_id: userSheetUrl })
+        body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
       });
       const result = await res.json();
       if (result.success && result.paid) {
@@ -942,6 +939,33 @@
       status.textContent = '✗ Error: ' + e.message;
     }
     setScanBtns(false, '📷   SCAN CARD');
+  }
+
+  async function startPriceScan() {
+    document.getElementById('flipPrompt').style.display = 'none';
+
+    // If camera isn't active (upload mode), let user pick a photo
+    const video = document.getElementById('videoEl');
+    const cameraActive = video && video.srcObject && video.readyState >= 2;
+
+    if (!cameraActive) {
+      // Trigger file picker for price photo
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async (e) => {
+        if (!e.target.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          await sendPriceScan(ev.target.result.split(',')[1]);
+        };
+        reader.readAsDataURL(e.target.files[0]);
+      };
+      input.click();
+      return;
+    }
+
+    await sendPriceScan(captureFrame());
   }
 
   async function scanUpload(input) {
