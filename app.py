@@ -214,6 +214,60 @@ def analyze_card(frame):
     text = text.strip()
     return json.loads(text)
 
+def analyze_bulk(image_data):
+    """Detect multiple cards in a single image and return a list of card dicts."""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        "This photo contains multiple graded sports card slabs or trading cards. "
+        "Identify EVERY card visible, reading each grading label carefully. "
+        "Return ONLY a valid JSON array where each element has these keys (null if unreadable):\n"
+        "  card_type  - 'sports' or 'tcg'\n"
+        "  name       - player name (sports) or card name (tcg)\n"
+        "  year       - 4-digit year as integer or null\n"
+        "  brand      - manufacturer e.g. 'Panini', 'Topps'\n"
+        "  set        - set name e.g. 'Prizm', 'Chrome'\n"
+        "  parallel   - parallel/variant e.g. 'Silver', 'Gold Refractor'\n"
+        "  grade      - full grade e.g. 'PSA 10', 'BGS 9.5', or 'Raw'\n"
+        "  cert       - cert number digits only or null\n"
+        "  card       - full description: 'YEAR BRAND SET PLAYER PARALLEL GRADE'\n"
+        "List cards in the order they appear LEFT TO RIGHT, TOP TO BOTTOM in the image. "
+        "Return ONLY the JSON array — no markdown, no code fences, no explanation."
+    )
+    response = gemini_generate(client,
+        model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
+
+def analyze_prices(image_data):
+    """Read price tags from the back of cards and return a list of price strings."""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        "This photo shows the backs of sports card slabs or cards with price stickers or handwritten prices. "
+        "Read EVERY price visible. Return ONLY a valid JSON array of price strings in the order they appear "
+        "LEFT TO RIGHT, TOP TO BOTTOM in the image. "
+        "Format each price as a dollar string e.g. '$25.00', '$150', '$4.99'. "
+        "If no price is visible for a position use null. "
+        "Return ONLY the JSON array — no markdown, no code fences, no explanation."
+    )
+    response = gemini_generate(client,
+        model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
+
 def get_creds():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     b64 = os.environ.get("GOOGLE_CREDS_B64", "")
@@ -943,6 +997,63 @@ def scan():
         if "503" in err or "UNAVAILABLE" in err:
             return jsonify({'success': False, 'error': 'Scanner is busy right now — please try again in a moment'})
         return jsonify({'success': False, 'error': err})
+
+@app.route('/scan-bulk', methods=['POST'])
+@login_required
+def scan_bulk():
+    """Pro-only: detect all cards in a single image and return for review."""
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return jsonify({'success': False, 'error': 'Bulk scanning is a Pro feature. Upgrade to unlock it.'})
+    try:
+        body = request.get_json()
+        raw_image_bytes = base64.b64decode(body['image'])
+        cards = analyze_bulk(raw_image_bytes)
+        if not isinstance(cards, list):
+            return jsonify({'success': False, 'error': 'Could not detect cards in image'})
+        return jsonify({'success': True, 'cards': cards, 'count': len(cards)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/scan-bulk-prices', methods=['POST'])
+@login_required
+def scan_bulk_prices():
+    """Pro-only: read price tags from a photo and return ordered price list."""
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return jsonify({'success': False, 'error': 'Pro feature only.'})
+    try:
+        body = request.get_json()
+        raw_image_bytes = base64.b64decode(body['image'])
+        prices = analyze_prices(raw_image_bytes)
+        if not isinstance(prices, list):
+            return jsonify({'success': False, 'error': 'Could not read prices from image'})
+        return jsonify({'success': True, 'prices': prices})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/scan-bulk-confirm', methods=['POST'])
+@login_required
+def scan_bulk_confirm():
+    """Pro-only: sheet all confirmed cards, deducting scan count per card."""
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return jsonify({'success': False, 'error': 'Pro feature only.'})
+    try:
+        body = request.get_json()
+        cards = body.get('cards', [])
+        custom_sheet = body.get('sheet_id', '')
+        custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
+        sheeted = 0
+        for card in cards:
+            append_to_sheet(card, custom_sheet_id, user=user)
+            sheeted += 1
+        return jsonify({'success': True, 'sheeted': sheeted})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 
 @app.route('/admin/reset-password/<secret>')
 def admin_reset_password(secret):
