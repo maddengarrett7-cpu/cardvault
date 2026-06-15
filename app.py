@@ -210,8 +210,8 @@ FIELD_KEYWORDS = {
     "brand": ["brand", "set", "series", "product"],
     "grade": ["grade", "condition", "psa", "bgs", "sgc", "slab"],
     "cert":  ["cert", "certification", "serial", "slab #", "cert #", "id"],
-    "value": ["value", "price", "ebay", "avg", "market", "worth", "$"],
-    "paid":  ["paid", "cost", "bought", "purchase"],
+    "value": ["value", "ebay", "avg", "market", "worth", "$"],
+    "paid":  ["paid", "cost", "bought", "purchase", "price"],
     "tracking": ["tracking", "track", "ship"],
 }
 
