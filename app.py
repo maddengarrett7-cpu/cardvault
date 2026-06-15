@@ -157,7 +157,7 @@ def analyze_label(image_data):
 
 def analyze_card(frame):
     client = genai.Client(api_key=GEMINI_API_KEY)
-    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
     image_data = buf.tobytes()
     prompt = (
         "You are scanning a trading card. First determine the card type:\n"
@@ -871,9 +871,9 @@ def scan():
         if is_upload and has_grade and raw_image_bytes:
             try:
                 label_data = analyze_label(raw_image_bytes)
-                # Merge: label pass fills in missing fields, but keep grade from first pass
-                for field in ["name", "year", "brand", "set", "parallel", "cert", "card"]:
-                    if not data.get(field) and label_data.get(field):
+                # For uploads, label pass takes full priority including grade
+                for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
+                    if label_data.get(field):
                         data[field] = label_data[field]
             except Exception:
                 pass
