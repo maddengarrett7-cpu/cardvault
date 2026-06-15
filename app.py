@@ -602,6 +602,8 @@ def create_checkout_session():
             mode='subscription',
             success_url=request.host_url + 'account?success=1',
             cancel_url=request.host_url + 'account?cancelled=1',
+            consent_collection={'terms_of_service': 'required'},
+            custom_text={'terms_of_service_acceptance': {'message': 'I agree to the [Terms of Service](https://cardscan.live/terms).'}},
         )
         return jsonify({'url': checkout.url})
     except Exception as e:
@@ -671,6 +673,10 @@ def admin_set_pro(secret):
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
+
+@app.route('/terms')
+def terms():
+    return render_template('terms.html')
 
 @app.route('/account')
 @login_required
