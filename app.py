@@ -871,9 +871,9 @@ def scan():
         if is_upload and has_grade and raw_image_bytes:
             try:
                 label_data = analyze_label(raw_image_bytes)
-                # Merge: fill in any missing fields from label pass
-                for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
-                    if not data.get(field) and label_data.get(field):
+                # Merge: label pass takes priority over first pass for all fields
+                for field in ["name", "year", "brand", "set", "parallel", "cert", "card"]:
+                    if label_data.get(field):
                         data[field] = label_data[field]
             except Exception:
                 pass
