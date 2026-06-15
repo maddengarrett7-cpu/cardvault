@@ -27,7 +27,7 @@
     .btn-outline { border: 1px solid var(--border); background: transparent; color: var(--text); }
     .btn-primary { background: var(--green); color: #000; border: none; }
 
-    .hero { text-align: center; padding: 80px 24px 60px; max-width: 700px; margin: 0 auto; }
+    .hero { text-align: center; padding: 80px 24px 60px; max-width: 700px; margin: 0 auto; position: relative; overflow: hidden; }
     .hero h1 { font-size: 52px; font-weight: 900; line-height: 1.1; margin-bottom: 20px; letter-spacing: -1px; }
     .hero h1 span { color: var(--green); }
     .hero p { font-size: 20px; color: #aaa; margin-bottom: 36px; line-height: 1.6; }
@@ -93,12 +93,10 @@
     <a href="/signup" class="btn btn-primary">Start for Free</a>
     <a href="/login" class="btn btn-outline">Log In</a>
   </div>
-  <!-- Card showcase -->
-  <div style="display:flex; justify-content:center; align-items:flex-end; gap:16px; margin-top:40px; padding:0 20px;">
-    <img src="/static/card2.jpg" alt="PSA Slab" style="width:140px; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.5); transform:rotate(-8deg) translateY(10px); opacity:0.85;">
-    <img src="/static/card1.jpg" alt="PSA Slab" style="width:170px; border-radius:10px; box-shadow:0 12px 40px rgba(0,230,118,0.2), 0 8px 32px rgba(0,0,0,0.6); transform:rotate(0deg); z-index:2;">
-    <img src="/static/card3.jpg" alt="PSA Slab" style="width:140px; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.5); transform:rotate(8deg) translateY(10px); opacity:0.85;">
-  </div>
+  <!-- Background cards -->
+  <img src="/static/card2.jpg" alt="" style="position:absolute; width:120px; border-radius:8px; opacity:0.12; transform:rotate(-15deg); left:5%; top:20%; pointer-events:none;">
+  <img src="/static/card1.jpg" alt="" style="position:absolute; width:120px; border-radius:8px; opacity:0.12; transform:rotate(5deg); right:5%; top:15%; pointer-events:none;">
+  <img src="/static/card3.jpg" alt="" style="position:absolute; width:100px; border-radius:8px; opacity:0.10; transform:rotate(-5deg); right:12%; bottom:10%; pointer-events:none;">
 </div>
 
 <div class="features">
