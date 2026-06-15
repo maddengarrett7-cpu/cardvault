@@ -1097,7 +1097,7 @@ def scan_price():
                                 body={"values": [[paid]]}
                             ).execute()
             except Exception as e:
-                pass  # Don't fail the response if sheet update fails
+                return jsonify({"success": True, "paid": paid, "sheet_error": str(e)})
 
         return jsonify({"success": True, "paid": paid})
     except Exception as e:
