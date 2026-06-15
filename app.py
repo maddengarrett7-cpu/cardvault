@@ -24,7 +24,8 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from database import init_db, get_user_by_email, get_user_by_id, create_user, \
     update_stripe_customer, update_subscription, check_and_increment_scans, \
-    save_google_tokens, save_google_sheet_id, clear_google_tokens
+    save_google_tokens, save_google_sheet_id, clear_google_tokens, \
+    create_session, validate_session, delete_session
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
@@ -54,6 +55,11 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
+            return redirect(url_for('login'))
+        # Validate session token if present
+        token = session.get('session_token')
+        if token and not validate_session(session['user_id'], token):
+            session.clear()
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
@@ -394,7 +400,11 @@ def login():
         password = request.form.get('password', '').strip()
         user = get_user_by_email(email)
         if user and check_password_hash(user['password_hash'], password):
+            import secrets
+            token = secrets.token_hex(32)
+            create_session(user['id'], token)
             session['user_id'] = user['id']
+            session['session_token'] = token
             return redirect(url_for('index'))
         return render_template('login.html', error='Invalid email or password', mode='login')
     return render_template('login.html', mode='login')
@@ -409,12 +419,19 @@ def signup():
         user = create_user(email, generate_password_hash(password))
         if not user:
             return render_template('login.html', error='An account with that email already exists', mode='signup')
+        import secrets
+        token = secrets.token_hex(32)
+        create_session(user['id'], token)
         session['user_id'] = user['id']
+        session['session_token'] = token
         return redirect(url_for('index'))
     return render_template('login.html', mode='signup')
 
 @app.route('/logout')
 def logout():
+    token = session.get('session_token')
+    if token:
+        delete_session(token)
     session.clear()
     return redirect(url_for('login'))
 

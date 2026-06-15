@@ -27,7 +27,17 @@ if DATABASE_URL:
                 scans_date TEXT DEFAULT '',
                 google_access_token TEXT,
                 google_refresh_token TEXT,
-                google_sheet_id TEXT
+                google_sheet_id TEXT,
+                total_scans INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                session_token TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                last_seen TIMESTAMP DEFAULT NOW()
             )
         """)
         # Migrate: add columns if missing
@@ -293,3 +303,58 @@ else:
         conn.commit()
         conn.close()
         return True, scans_today + 1, FREE_LIMIT
+
+
+MAX_SESSIONS = 2
+
+def create_session(user_id, session_token):
+    """Create a new session, removing oldest if over limit."""
+    if DATABASE_URL:
+        conn = get_db()
+        cur = conn.cursor()
+        # Count existing sessions
+        cur.execute("SELECT id FROM user_sessions WHERE user_id = %s ORDER BY last_seen ASC", (user_id,))
+        sessions = cur.fetchall()
+        # Remove oldest sessions if at limit
+        while len(sessions) >= MAX_SESSIONS:
+            cur.execute("DELETE FROM user_sessions WHERE id = %s", (sessions[0][0],))
+            sessions.pop(0)
+        cur.execute(
+            "INSERT INTO user_sessions (user_id, session_token) VALUES (%s, %s)",
+            (user_id, session_token)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+
+def validate_session(user_id, session_token):
+    """Check if session token is valid for this user."""
+    if not DATABASE_URL:
+        return True  # Skip in SQLite dev mode
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM user_sessions WHERE user_id = %s AND session_token = %s",
+        (user_id, session_token)
+    )
+    valid = cur.fetchone() is not None
+    if valid:
+        cur.execute(
+            "UPDATE user_sessions SET last_seen = NOW() WHERE user_id = %s AND session_token = %s",
+            (user_id, session_token)
+        )
+        conn.commit()
+    cur.close()
+    conn.close()
+    return valid
+
+def delete_session(session_token):
+    """Remove a session on logout."""
+    if not DATABASE_URL:
+        return
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM user_sessions WHERE session_token = %s", (session_token,))
+    conn.commit()
+    cur.close()
+    conn.close()
