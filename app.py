@@ -848,10 +848,11 @@ def scan():
         # Accept image from browser camera
         body = request.get_json()
         is_upload = body.get('is_upload', False) if body else False
+        raw_image_bytes = None
         if body and 'image' in body:
             import numpy as np
-            img_bytes = base64.b64decode(body['image'])
-            nparr = np.frombuffer(img_bytes, np.uint8)
+            raw_image_bytes = base64.b64decode(body['image'])
+            nparr = np.frombuffer(raw_image_bytes, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         else:
             # Fall back to Mac camera
@@ -865,13 +866,11 @@ def scan():
 
         data = analyze_card(frame)
 
-        # Second label pass — only for uploads (high quality) not live camera (too slow)
+        # Second label pass — only for uploads, use original bytes for max quality
         has_grade = data.get("grade") and data.get("grade").lower() != "raw"
-        missing_details = not data.get("name") or not data.get("year") or not data.get("set")
-        if is_upload and has_grade:
+        if is_upload and has_grade and raw_image_bytes:
             try:
-                _, buf2 = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
-                label_data = analyze_label(buf2.tobytes())
+                label_data = analyze_label(raw_image_bytes)
                 # Merge: fill in any missing fields from label pass
                 for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
                     if not data.get(field) and label_data.get(field):
