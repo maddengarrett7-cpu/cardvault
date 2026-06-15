@@ -322,7 +322,7 @@ def build_row(data, mapping, num_cols):
         "grade": data.get("grade") or "",
         "cert":  data.get("cert")  or "Raw",
         "value": f"${ebay_avg:.2f}" if ebay_avg else "",
-        "paid":  "",
+        "paid":  data.get("paid") or "",
         "tracking": "",
     }
     row = [""] * num_cols
