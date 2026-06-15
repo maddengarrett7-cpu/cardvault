@@ -944,31 +944,22 @@
   async function startPriceScan() {
     document.getElementById('flipPrompt').style.display = 'none';
 
-    // If camera isn't active (upload mode), let user pick a photo
-    const video = document.getElementById('videoEl');
-    const cameraActive = video && video.srcObject && video.readyState >= 2;
-
-    if (!cameraActive) {
-      // Trigger file picker for price photo
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.style.display = 'none';
-      document.body.appendChild(input);
-      input.onchange = async (e) => {
-        document.body.removeChild(input);
-        if (!e.target.files[0]) return;
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          await sendPriceScan(ev.target.result.split(',')[1]);
-        };
-        reader.readAsDataURL(e.target.files[0]);
+    // Always show file picker so user can upload the back of the card
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = async (e) => {
+      document.body.removeChild(input);
+      if (!e.target.files[0]) return;
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        await sendPriceScan(ev.target.result.split(',')[1]);
       };
-      input.click();
-      return;
-    }
-
-    await sendPriceScan(captureFrame());
+      reader.readAsDataURL(e.target.files[0]);
+    };
+    input.click();
   }
 
   async function scanUpload(input) {
