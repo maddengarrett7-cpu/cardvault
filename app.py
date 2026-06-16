@@ -1288,6 +1288,15 @@ def admin_dashboard():
             cur.execute("SELECT COUNT(*) FROM users WHERE subscription_status='pro' AND plan_type='annual'")
             annual_pro = cur.fetchone()[0]
             mrr = round(monthly_pro * 7.99 + annual_pro * (59 / 12), 2)
+            # Pull total revenue from Stripe
+            try:
+                total_revenue = 0
+                for charge in stripe.Charge.list(limit=100).auto_paging_iter():
+                    if charge.status == 'succeeded' and not charge.refunded:
+                        total_revenue += charge.amount
+                total_revenue_dollars = round(total_revenue / 100, 2)
+            except Exception:
+                total_revenue_dollars = None
             if search:
                 cur.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans, 0) FROM users WHERE LOWER(email) LIKE %s ORDER BY created_at DESC LIMIT 50", (f'%{search}%',))
             else:
@@ -1311,6 +1320,14 @@ def admin_dashboard():
             monthly_pro = db.execute("SELECT COUNT(*) FROM users WHERE subscription_status='pro' AND COALESCE(plan_type,'monthly')='monthly'").fetchone()[0]
             annual_pro = db.execute("SELECT COUNT(*) FROM users WHERE subscription_status='pro' AND plan_type='annual'").fetchone()[0]
             mrr = round(monthly_pro * 7.99 + annual_pro * (59 / 12), 2)
+            try:
+                total_revenue = 0
+                for charge in stripe.Charge.list(limit=100).auto_paging_iter():
+                    if charge.status == 'succeeded' and not charge.refunded:
+                        total_revenue += charge.amount
+                total_revenue_dollars = round(total_revenue / 100, 2)
+            except Exception:
+                total_revenue_dollars = None
             if search:
                 recent_users = db.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans,0) FROM users WHERE LOWER(email) LIKE ? ORDER BY created_at DESC LIMIT 50", (f'%{search}%',)).fetchall()
             else:
@@ -1389,6 +1406,7 @@ td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
   <div class="stat"><div class="stat-num">{total_users}</div><div class="stat-label">Total Users</div></div>
   <div class="stat"><div class="stat-num">{pro_users}</div><div class="stat-label">Pro Users</div></div>
   <div class="stat money"><div class="stat-num">${mrr}</div><div class="stat-label">Est. MRR</div></div>
+  <div class="stat money"><div class="stat-num">${'%.2f' % total_revenue_dollars if total_revenue_dollars is not None else '—'}</div><div class="stat-label">Total Revenue</div></div>
   <div class="stat blue"><div class="stat-num">{conversion_rate}%</div><div class="stat-label">Free → Pro Rate</div></div>
   <div class="stat"><div class="stat-num">{active_today}</div><div class="stat-label">Active Today</div></div>
   <div class="stat"><div class="stat-num">{scans_today}</div><div class="stat-label">Scans Today</div></div>
