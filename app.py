@@ -1145,32 +1145,30 @@ def scan():
                 for field in ["year", "brand", "set"]:
                     if raw_data.get(field):
                         data[field] = raw_data[field]
-                # Fill remaining nulls
-                for field in ["name", "parallel", "serial", "card_number", "sport"]:
+                # Fill remaining nulls (never overwrite name — front scan is authoritative)
+                for field in ["parallel", "serial", "card_number", "sport"]:
                     if raw_data.get(field) and not data.get(field):
                         data[field] = raw_data[field]
-                # Serial found in second pass — propagate into parallel if not already there
-                if raw_data.get("serial") and raw_data["serial"] not in (data.get("parallel") or ""):
+                # If second pass found a serial, it wins
+                if raw_data.get("serial"):
                     data["serial"] = raw_data["serial"]
-                    if data.get("parallel"):
-                        data["parallel"] = f"{data['parallel']} {raw_data['serial']}"
-                # Rebuild description
-                if data.get("card_type") != "tcg":
-                    parts = [p for p in [
-                        str(data.get("year") or ""),
-                        data.get("brand") or "",
-                        data.get("set") or "",
-                        data.get("name") or "",
-                        data.get("parallel") or "",
-                    ] if p]
-                    if parts:
-                        data["card"] = " ".join(parts)
             except Exception:
                 pass
 
-        # Pull serial from first pass if present
-        if data.get("serial") and data.get("parallel") and data["serial"] not in data["parallel"]:
-            data["parallel"] = f"{data['parallel']} {data['serial']}"
+        # Merge serial into parallel exactly once, cleanly
+        _merge_serial(data)
+
+        # Rebuild card description
+        if is_raw_card and data.get("card_type") != "tcg":
+            parts = [p for p in [
+                str(data.get("year") or ""),
+                data.get("brand") or "",
+                data.get("set") or "",
+                data.get("name") or "",
+                data.get("parallel") or "",
+            ] if p]
+            if parts:
+                data["card"] = " ".join(parts)
 
         # Auto-fetch values
         cl_token = body.get("cl_token", "") if body else ""
@@ -1915,6 +1913,26 @@ def download_whatnot_url(job_id, url, user_id):
                 os.remove(tmp_path)
             except Exception:
                 pass
+
+
+import re as _re
+
+def _merge_serial(data):
+    """Ensure serial appears in parallel exactly once, and nowhere else."""
+    serial = data.get("serial")
+    if not serial:
+        return
+    # Normalise serial to '/NNN' format
+    serial = serial.strip()
+    if not serial.startswith("/"):
+        serial = "/" + serial.lstrip("/")
+    data["serial"] = serial
+
+    parallel = data.get("parallel") or ""
+    # Strip ALL existing '/NNN' patterns from parallel first
+    parallel_clean = _re.sub(r'\s*/\d+', '', parallel).strip()
+    # Reattach the single authoritative serial
+    data["parallel"] = f"{parallel_clean} {serial}".strip() if parallel_clean else serial
 
 
 def _frame_changed(prev, curr, threshold=0.96):
