@@ -196,47 +196,54 @@ def analyze_label(image_data):
             text = text[4:]
     return json.loads(text.strip())
 
+def _sharpen(frame):
+    """Unsharp mask to make printed card text crisper for Gemini."""
+    blurred = cv2.GaussianBlur(frame, (0, 0), 2)
+    return cv2.addWeighted(frame, 1.8, blurred, -0.8, 0)
+
+
 def analyze_card(frame, quality=85):
     client = genai.Client(api_key=GEMINI_API_KEY)
+    frame = _sharpen(frame)
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     image_data = buf.tobytes()
     prompt = (
-        "READ THE TEXT printed on this trading card image. "
-        "Do NOT guess or use visual recognition of faces or jerseys — only read what is literally printed.\n\n"
+        "You are an OCR tool reading a trading card image. "
+        "Identify the card by reading PRINTED TEXT ONLY — "
+        "do NOT use the player photo to guess who they are. "
+        "The player photo is unreliable; only the printed name is correct.\n\n"
 
-        "Step 1 — find these text elements on the card:\n"
-        "  PLAYER NAME  : large text on front, e.g. 'JUSTIN JEFFERSON'\n"
-        "  YEAR         : tiny copyright line at very bottom, e.g. '© 2021 Panini' → year = 2021\n"
-        "  BRAND        : company name in logo or copyright, e.g. 'Panini', 'Topps', 'Upper Deck'\n"
-        "  SET          : product name printed on card, e.g. 'Prizm', 'Chrome', 'Select', 'Mosaic'\n"
-        "  SERIAL STAMP : foil/gold stamp like '045/099' → serial = '/99' (print run only)\n"
-        "  GRADE LABEL  : PSA/BGS/SGC label on a slab, e.g. 'PSA 10', 'BGS 9.5'\n"
-        "  CERT NUMBER  : number on grading label\n\n"
+        "STEP 1 — Read all visible text out loud into the \"text_read\" field first. "
+        "Include: the large name text, position/team if printed, the tiny copyright line "
+        "at the bottom (e.g. \'© 2022 Topps\'), any foil-stamped numbers (e.g. \'089/299\'), "
+        "brand name, set name. Copy every word exactly as printed.\n\n"
 
-        "Step 2 — determine card type: 'sports' or 'tcg' (Pokemon/MTG/YuGiOh)\n\n"
+        "STEP 2 — Using ONLY what you wrote in text_read, fill the remaining fields.\n\n"
 
-        "Step 3 — identify the PARALLEL from the card's color/finish:\n"
+        "Return ONLY valid JSON with these exact keys (null if not visible):\n"
+        "  text_read   - string: every word you can read on the card, verbatim\n"
+        "  card_type   - \'sports\' or \'tcg\'\n"
+        "  name        - player/card name copied from text_read (NOT from the photo)\n"
+        "  year        - integer 4-digit year from copyright line in text_read\n"
+        "  brand       - \'Panini\', \'Topps\', \'Upper Deck\', etc from text_read\n"
+        "  set         - \'Prizm\', \'Chrome\', \'Select\', \'Mosaic\', etc from text_read\n"
+        "  parallel    - card color/finish. For numbered cards include print run: "
+        "\'Aqua /299\', \'Gold /10\'. null for plain base card\n"
+        "  serial      - numbered stamp print run only: \'/299\', \'/10\'. "
+        "If text_read has \'089/299\' then serial=\'/299\'. null if not numbered\n"
+        "  grade       - \'PSA 10\', \'BGS 9.5\', \'CGC 10\' if in slab, else \'Raw\'\n"
+        "  cert        - cert number from grading label, null if raw\n"
+        "  rarity      - TCG only: \'Rare Holo\', \'Common\', etc. null for sports\n"
+        "  card_number - TCG only: \'4/102\'. null for sports\n"
+        "  hp          - TCG only: HP integer. null for sports\n"
+        "  card        - built from text_read: \'YEAR BRAND SET NAME PARALLEL\' "
+        "e.g. \'2022 Topps Chrome Luther Burden III Aqua /299\'\n\n"
+        "Parallel colors by set:\n"
         "  Prizm: Silver=base foil, Gold /10, Red /299, Blue /199, Green /75, Purple /49, Orange /25\n"
         "  Chrome: Refractor=base, Gold Refractor /50, Orange /25, Red /5\n"
         "  Select: Silver, Gold /10, Tie-Dye /25, Blue /49, Red /75, White Sparkle /99\n"
         "  Mosaic: Silver=base foil, Gold /10, Pink /25, Blue /49, Green /75, Red /99\n"
-        "  If numbered stamp found, include it: 'Gold /10', 'Green /99'\n\n"
-
-        "Return ONLY a valid JSON object with these exact keys (use null for anything not visible):\n"
-        "  card_type   - string: 'sports' or 'tcg'\n"
-        "  name        - string: player name exactly as printed on card\n"
-        "  year        - integer: 4-digit year from copyright line, or null\n"
-        "  brand       - string: 'Panini', 'Topps', 'Upper Deck', etc, or null\n"
-        "  set         - string: 'Prizm', 'Chrome', 'Select', 'Mosaic', etc, or null\n"
-        "  parallel    - string: 'Silver', 'Gold /10', 'Green /99', etc. null if base card\n"
-        "  serial      - string: '/99', '/10', etc. null if card is not numbered\n"
-        "  grade       - string: 'PSA 10', 'BGS 9.5', 'CGC 10', or 'Raw'\n"
-        "  cert        - string: cert number digits from grading label, or null\n"
-        "  rarity      - string: TCG rarity only e.g. 'Rare Holo', null for sports\n"
-        "  card_number - string: TCG set number e.g. '4/102', null for sports\n"
-        "  hp          - integer: TCG HP value, null for sports\n"
-        "  card        - string: full description e.g. '2021 Panini Prizm Silver Justin Jefferson'\n"
-        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
+        "Return ONLY the JSON object — no markdown, no code fences."
     )
     response = gemini_generate(client,
         model="gemini-2.5-flash",
@@ -246,7 +253,6 @@ def analyze_card(frame, quality=85):
         ],
     )
     text = response.text.strip()
-    # Strip markdown code fences if present
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
