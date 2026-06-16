@@ -1019,7 +1019,7 @@
         // ── Merge card detail updates (raw only) ──────────────────────────
         if (result.update) {
           const u = result.update;
-          const fieldElMap = { year: 'r-year', set: 'r-set', name: 'r-name', card_number: 'r-cardnum' };
+          const fieldElMap = { year: 'r-year', set: 'r-set', card_number: 'r-cardnum' }; // name intentionally excluded — front scan is authoritative
           for (const [key, elId] of Object.entries(fieldElMap)) {
             if (!u[key]) continue;
             const el = document.getElementById(elId);

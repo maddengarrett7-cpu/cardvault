@@ -1716,24 +1716,23 @@ def scan_back_full():
         # Single Gemini call: card details + price in one pass
         client = genai.Client(api_key=GEMINI_API_KEY)
         prompt = (
-            "This is the BACK of a raw (ungraded) sports card. "
-            "Read every line of text and extract two things:\n\n"
-            "1. CARD DETAILS from the printed card text:\n"
-            "   year        — 4-digit year from copyright line e.g. '© 2021 Panini' → 2021\n"
-            "   card_number — card number e.g. '# 301' or '301' near the bottom\n"
-            "   brand       — manufacturer from copyright line e.g. 'Panini', 'Topps'\n"
-            "   set         — set name if printed e.g. 'Prizm', 'Chrome', 'Select'\n"
-            "   name        — player full name from stats/bio header\n"
-            "   team        — player's team name\n"
-            "   rookie      — true if 'RC', 'Rookie', or 'Rookie Card' appears\n"
-            "   serial      — print run if numbered e.g. '045/199' → '/199', else null\n\n"
-            "2. PRICE from any sticker, sticky note, handwritten label, or tape:\n"
-            "   paid        — dollar amount e.g. '$45', '$4.99', '$700'. "
-            "                 Look carefully — this could be a handwritten number. "
-            "                 If no price is visible return null.\n\n"
-            "Return ONLY valid JSON with these exact keys "
-            "(null for anything not found):\n"
-            "  year, card_number, brand, set, name, team, rookie, serial, paid\n"
+            "This is the BACK of a sports trading card that has already been identified. "
+            "DO NOT try to identify who the player is — that was done from the front. "
+            "Your job is only to read specific printed details and any price sticker.\n\n"
+            "1. READ FROM THE PRINTED CARD TEXT ONLY:\n"
+            "   year        — The 4-digit year in the copyright line at the very bottom, "
+            "                 e.g. '© 2021 Panini America' → 2021. Read it exactly.\n"
+            "   card_number — The card's set number, e.g. '# 301' or '301' near the bottom corner. "
+            "                 NOT a serial/numbered stamp.\n"
+            "   brand       — Manufacturer name from copyright line: 'Panini', 'Topps', 'Upper Deck'.\n"
+            "   set         — Set name if printed on the back: 'Prizm', 'Chrome', 'Select', etc.\n"
+            "   rookie      — true ONLY if 'RC', 'Rookie Card', or 'Rookie' is explicitly printed.\n"
+            "   serial      — If a foil/stamped number like '045/099' appears, return '/99'. "
+            "                 null if not numbered.\n\n"
+            "2. PRICE — Look for a sticker, sticky note, or handwritten price:\n"
+            "   paid        — Dollar amount e.g. '$45', '$4.99'. null if nothing found.\n\n"
+            "Return ONLY valid JSON (null for anything not found):\n"
+            "  year, card_number, brand, set, rookie, serial, paid\n"
             "Return ONLY the JSON object — no markdown, no code fences."
         )
         response = gemini_generate(
@@ -1749,7 +1748,7 @@ def scan_back_full():
         back = json.loads(text.strip())
 
         update = {k: back[k] for k in
-                  ('year', 'card_number', 'brand', 'set', 'name', 'team', 'rookie', 'serial')
+                  ('year', 'card_number', 'brand', 'set', 'rookie', 'serial')
                   if back.get(k) is not None}
         paid = back.get('paid')
 
