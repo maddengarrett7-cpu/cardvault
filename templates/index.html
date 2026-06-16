@@ -900,9 +900,20 @@
   function captureFrame(quality = 0.95) {
     const video  = document.getElementById('videoEl');
     const canvas = document.getElementById('canvasEl');
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+
+    // Crop to the card guide rectangle (52% wide, 2.5:3.5 aspect ratio, centered)
+    // so Gemini gets card pixels only — not background noise
+    const cardW  = vw * 0.52;
+    const cardH  = cardW * (3.5 / 2.5);
+    const sx     = (vw - cardW) / 2;
+    const sy     = Math.max(0, (vh - cardH) / 2);
+    const cropH  = Math.min(cardH, vh - sy);
+
+    canvas.width  = Math.round(cardW);
+    canvas.height = Math.round(cropH);
+    canvas.getContext('2d').drawImage(video, sx, sy, cardW, cropH, 0, 0, cardW, cropH);
     return canvas.toDataURL('image/jpeg', quality).split(',')[1];
   }
 

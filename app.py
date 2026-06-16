@@ -201,59 +201,44 @@ def analyze_card(frame, quality=85):
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     image_data = buf.tobytes()
     prompt = (
-        "You are scanning a sports or trading card. Study every part of the image carefully.\n\n"
-        "First determine the card type:\n"
-        "  - 'sports' — NBA, NFL, MLB, NHL player cards (Topps, Panini, Upper Deck, Bowman, etc.)\n"
-        "  - 'tcg'    — Pokemon, Magic: The Gathering, Yu-Gi-Oh, or other trading card games\n\n"
-        "Return ONLY valid JSON with these exact keys (use null for anything you cannot determine):\n\n"
-        "  card_type   - 'sports' or 'tcg'\n"
-        "  name        - player name (sports) or Pokemon/card name (tcg)\n"
-        "  year        - card year as 4-digit integer (look in copyright line at bottom, e.g. '© 2021')\n"
-        "  brand       - manufacturer e.g. 'Topps', 'Panini', 'Upper Deck', 'Pokemon'\n"
-        "  set         - set/product name e.g. 'Prizm', 'Chrome', 'Select', 'Base Set'\n"
-        "  parallel    - color or finish variant e.g. 'Silver', 'Gold', 'Red', 'Blue', 'Green',\n"
-        "                'Purple', 'Orange', 'Pink', 'Holo Refractor', 'Tie-Dye', 'Disco'.\n"
-        "                For numbered cards include the print run: e.g. 'Gold /10', 'Green /99'.\n"
-        "                null for a base card with no special finish.\n"
-        "  serial      - ONLY for numbered cards: the print run as '/NUMBER' e.g. '/99', '/25', '/10'.\n"
-        "                Look for a foil/gold stamp like '045/099' — serial = '/99'. null if not numbered.\n"
-        "  grade       - grading company + grade if in a slab: 'PSA 10', 'BGS 9.5', 'CGC 10'. If raw: 'Raw'.\n"
-        "  cert        - cert number on grading label only (string or null)\n"
-        "  rarity      - TCG rarity only: 'Rare Holo', 'Common', 'Ultra Rare', 'Secret Rare' (null for sports)\n"
-        "  card_number - TCG card number e.g. '4/102' (null for sports). For sports, do NOT put the serial stamp here.\n"
-        "  hp          - TCG HP as integer e.g. 120 (null for sports)\n"
-        "  card        - full human-readable description:\n"
-        "                Sports: 'YEAR BRAND SET PLAYER PARALLEL' e.g. '2021 Panini Prizm Silver Luka Doncic'\n"
-        "                        If numbered add serial: '2021 Panini Prizm Gold /10 Justin Jefferson'\n"
-        "                        If graded add grade: '2021 Panini Prizm Silver Luka Doncic PSA 10'\n"
-        "                TCG: 'NAME SET CARD_NUMBER RARITY' e.g. 'Charizard Base Set 4/102 Holo Rare'\n\n"
-        "CRITICAL RULES — read these carefully:\n\n"
-        "NUMBERED CARDS (most important):\n"
-        "  Numbered cards have a foil or printed stamp like '045/099' or '12/25' on the card face.\n"
-        "  - The second number is the PRINT RUN (how many exist). Put '/99' in `serial`.\n"
-        "  - The first number is WHICH COPY this is (e.g. copy 45 of 99) — irrelevant, ignore it.\n"
-        "  - Also put the color + print run in `parallel` e.g. 'Gold /10', 'Green /99', 'Red /25'.\n"
-        "  - Do NOT put the stamp number in `card_number` — that field is only for TCG set numbers.\n"
-        "  Common print runs and their likely parallels:\n"
-        "    /10 → Gold Vinyl or Gold; /25 → Gold; /49 → Orange or Purple; /75 → Blue or Green;\n"
-        "    /99 → Green, Red, or Blue; /149 → Blue; /199 → Red or Blue; /299 → Purple\n\n"
-        "YEAR:\n"
-        "  Look at the copyright line at the very bottom of the card (tiny text): '© 2021 Panini America'.\n"
-        "  Do NOT guess the year from the player's career — READ it from the card.\n\n"
-        "BRAND vs SET:\n"
-        "  Topps brand sets: Chrome, Finest, Heritage, Stadium Club, Bowman, Series 1/2, Allen & Ginter\n"
-        "  Panini brand sets: Prizm, Select, Donruss, Mosaic, Optic, Contenders, Obsidian, Chronicles\n"
-        "  Upper Deck sets: SP Authentic, Exquisite, Young Guns\n"
-        "  Never call a Prizm card 'Topps' or a Chrome card 'Panini'.\n\n"
-        "PARALLELS for common sets:\n"
-        "  Prizm: Silver (base foil), Gold /10, Gold Vinyl /10, Red /299, Blue /199, Green /75,\n"
-        "         Purple /49, Orange /25, Pink /15, Rainbow /5, Black /1\n"
-        "  Chrome Refractor: Refractor (base), Gold /50, Orange /25, Red /5, Superfractor /1\n"
-        "  Select: Silver, Gold /10, Gold Vinyl /10, Tie-Dye /25, Blue /49, Red /75, White Sparkle /99\n"
-        "  Mosaic: Silver (Mosaic foil), Gold /10, Pink /25, Blue /49, Green /75, Red /99\n\n"
-        "For graded slabs: read the label text for year, brand, set, parallel, grade, and cert.\n"
-        "For raw cards: read every word on the card face including the copyright line.\n"
-        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
+        "READ THE TEXT printed on this trading card image. "
+        "Do NOT guess or use visual recognition of faces or jerseys — only read what is literally printed.\n\n"
+
+        "Step 1 — find these text elements on the card:\n"
+        "  PLAYER NAME  : large text on front, e.g. 'JUSTIN JEFFERSON'\n"
+        "  YEAR         : tiny copyright line at very bottom, e.g. '© 2021 Panini' → year = 2021\n"
+        "  BRAND        : company name in logo or copyright, e.g. 'Panini', 'Topps', 'Upper Deck'\n"
+        "  SET          : product name printed on card, e.g. 'Prizm', 'Chrome', 'Select', 'Mosaic'\n"
+        "  SERIAL STAMP : foil/gold stamp like '045/099' → serial = '/99' (print run only)\n"
+        "  GRADE LABEL  : PSA/BGS/SGC label on a slab, e.g. 'PSA 10', 'BGS 9.5'\n"
+        "  CERT NUMBER  : number on grading label\n\n"
+
+        "Step 2 — determine card type: 'sports' or 'tcg' (Pokemon/MTG/YuGiOh)\n\n"
+
+        "Step 3 — identify the PARALLEL from the card's color/finish:\n"
+        "  Prizm: Silver=base foil, Gold /10, Red /299, Blue /199, Green /75, Purple /49, Orange /25\n"
+        "  Chrome: Refractor=base, Gold Refractor /50, Orange /25, Red /5\n"
+        "  Select: Silver, Gold /10, Tie-Dye /25, Blue /49, Red /75, White Sparkle /99\n"
+        "  Mosaic: Silver=base foil, Gold /10, Pink /25, Blue /49, Green /75, Red /99\n"
+        "  If numbered stamp found, include it: 'Gold /10', 'Green /99'\n\n"
+
+        "Return ONLY valid JSON — null for anything not visible on the card:\n"
+        "{\n"
+        '  "card_type"  : "sports" or "tcg",\n'
+        '  "name"       : "EXACT text of player/card name as printed",\n'
+        '  "year"       : integer from copyright line or null,\n'
+        '  "brand"      : "Panini" / "Topps" / "Upper Deck" / etc,\n'
+        '  "set"        : "Prizm" / "Chrome" / "Select" / etc,\n'
+        '  "parallel"   : "Silver" / "Gold /10" / "Green /99" / null for base,\n'
+        '  "serial"     : "/99" / "/10" / null if not numbered,\n'
+        '  "grade"      : "PSA 10" / "BGS 9.5" / "Raw",\n'
+        '  "cert"       : "cert number from label" or null,\n'
+        '  "rarity"     : "Rare Holo" / null (TCG only),\n'
+        '  "card_number": "4/102" or null (TCG only — NOT the serial stamp),\n'
+        '  "hp"         : integer or null (TCG only),\n'
+        '  "card"       : "YEAR BRAND SET NAME PARALLEL" (omit grade for raw, include for graded)\n'
+        "}\n"
+        "Return ONLY the JSON object — no markdown, no code fences."
     )
     response = gemini_generate(client,
         model="gemini-2.5-flash",
