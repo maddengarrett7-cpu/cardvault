@@ -1356,6 +1356,30 @@ def scan_price():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.route('/delete-account', methods=['POST'])
+@login_required
+def delete_account():
+    from database import get_db
+    user_id = session['user_id']
+    token = session.get('session_token')
+    if token:
+        delete_session(token)
+    session.clear()
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            db.commit()
+        db.close()
+    except Exception:
+        pass
+    return redirect('/?deleted=1')
+
 @app.errorhandler(404)
 def not_found(e):
     return render_template('404.html'), 404

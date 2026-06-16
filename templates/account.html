@@ -173,8 +173,21 @@
       {% if user.subscription_status == 'free' %}
       <div class="row">
         <span class="row-label">Daily Scans</span>
-        <span class="row-value">{{ user.scans_today }} / 20</span>
+        <span class="row-value" style="{% if user.scans_today >= 8 %}color:#ff6b6b;{% endif %}">
+          {{ user.scans_today }} / 10
+          {% if user.scans_today >= 8 and user.scans_today < 10 %}⚠️{% endif %}
+          {% if user.scans_today >= 10 %}🚫{% endif %}
+        </span>
       </div>
+      {% if user.scans_today >= 8 %}
+      <div style="background:#1a0a0a; border:1px solid #5a2a2a; border-radius:10px; padding:12px 14px; margin-top:12px; font-size:13px; color:#ff9999; line-height:1.5;">
+        {% if user.scans_today >= 10 %}
+        You've hit your daily limit. Resets at midnight, or <a href="#upgrade" style="color:var(--green);">upgrade to Pro</a> for unlimited scans.
+        {% else %}
+        You're almost at your daily limit ({{ 10 - user.scans_today }} scan{{ 's' if 10 - user.scans_today != 1 else '' }} left). <a href="#upgrade" style="color:var(--green);">Upgrade to Pro</a> for unlimited.
+        {% endif %}
+      </div>
+      {% endif %}
       {% endif %}
     </div>
 
@@ -190,8 +203,9 @@
         <span class="row-value">CardScan Pro</span>
       </div>
       <form action="/create-portal-session" method="POST" style="margin-top:16px;">
-        <button type="submit" class="manage-btn">Manage Subscription ↗</button>
+        <button type="submit" class="manage-btn">Manage / Cancel Subscription ↗</button>
       </form>
+      <p style="font-size:12px; color:var(--muted); margin-top:10px; text-align:center;">You can cancel anytime from the Stripe portal. Your Pro access stays until the end of the billing period.</p>
     </div>
     {% else %}
     <div class="upgrade-box">
@@ -217,9 +231,49 @@
     </div>
     {% endif %}
 
+    <!-- Onboarding tip for new users without a sheet connected -->
+    {% if not user.google_sheet_id %}
+    <div style="background:rgba(0,230,118,0.06); border:1px solid rgba(0,230,118,0.2); border-radius:14px; padding:20px 24px; margin-bottom:20px;">
+      <div style="font-size:13px; font-weight:700; color:var(--green); margin-bottom:8px;">💡 Get the most out of CardScan</div>
+      <p style="font-size:13px; color:#ccc; line-height:1.6; margin-bottom:12px;">Connect a Google Sheet so every card you scan is automatically logged. Takes 30 seconds — just tap the sheet icon inside the scanner.</p>
+      <a href="/" style="font-size:13px; font-weight:700; color:var(--green); text-decoration:none;">→ Go to scanner and connect your sheet</a>
+    </div>
+    {% endif %}
+
+    <!-- Delete account -->
+    <div class="panel" style="border-color:#3a1a1a;">
+      <h2 style="color:#ff6b6b;">Danger Zone</h2>
+      <div class="row" style="border:none;">
+        <div>
+          <div style="font-size:14px; font-weight:600; margin-bottom:4px;">Delete Account</div>
+          <div style="font-size:13px; color:var(--muted);">Permanently delete your account and all data. This cannot be undone.</div>
+        </div>
+        <button onclick="confirmDelete()" style="background:transparent; border:1px solid #5a2a2a; color:#ff6b6b; border-radius:8px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; margin-left:16px;">Delete</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Delete confirmation modal -->
+  <div id="deleteModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:300; align-items:center; justify-content:center;">
+    <div style="background:var(--surface); border:1px solid #5a2a2a; border-radius:16px; padding:32px; max-width:360px; width:90%; text-align:center;">
+      <div style="font-size:32px; margin-bottom:16px;">⚠️</div>
+      <h3 style="font-size:18px; font-weight:800; margin-bottom:10px;">Delete your account?</h3>
+      <p style="color:var(--muted); font-size:14px; margin-bottom:24px; line-height:1.6;">This will permanently delete your account and all data. If you have an active Pro subscription, cancel it first via <strong style="color:var(--text);">Manage Subscription</strong>.</p>
+      <div style="display:flex; gap:10px;">
+        <button onclick="document.getElementById('deleteModal').style.display='none'" style="flex:1; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); cursor:pointer; font-size:14px;">Cancel</button>
+        <form action="/delete-account" method="POST" style="flex:1;">
+          <button type="submit" style="width:100%; padding:12px; background:#c0392b; border:none; border-radius:10px; color:#fff; font-weight:800; font-size:14px; cursor:pointer;">Yes, Delete</button>
+        </form>
+      </div>
+    </div>
   </div>
 
   <script>
+    function confirmDelete() {
+      document.getElementById('deleteModal').style.display = 'flex';
+    }
+
     let selectedPlan = 'monthly';
 
     function selectPlan(plan) {
