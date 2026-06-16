@@ -196,9 +196,9 @@ def analyze_label(image_data):
             text = text[4:]
     return json.loads(text.strip())
 
-def analyze_card(frame):
+def analyze_card(frame, quality=85):
     client = genai.Client(api_key=GEMINI_API_KEY)
-    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     image_data = buf.tobytes()
     prompt = (
         "You are scanning a trading card. First determine the card type:\n"
@@ -254,6 +254,62 @@ def analyze_card(frame):
             text = text[4:]
     text = text.strip()
     return json.loads(text)
+
+def analyze_raw_card(image_data):
+    """Second pass for raw (ungraded) cards — focused on fine-print details
+    that the general first pass tends to miss: year, set, parallel, card number."""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        "This is a raw (ungraded) sports or trading card. "
+        "Your ONLY job is to read the fine-print details that are easy to miss. "
+        "Study every millimeter of text carefully.\n\n"
+
+        "WHERE TO FIND EACH FIELD:\n"
+        "  YEAR  — Look at the very bottom of the card for a copyright line like '© 2021 Panini America' "
+        "or '2022 Topps'. It is usually tiny. Also check the card back if visible. "
+        "Return ONLY the 4-digit number.\n"
+        "  BRAND — Read the manufacturer name from the logo or copyright line. "
+        "Topps and Panini are different companies. "
+        "Topps sets include: Chrome, Finest, Heritage, Bowman, Stadium Club, Series 1/2. "
+        "Panini sets include: Prizm, Select, Mosaic, Optic, Donruss, Contenders, Obsidian, Chronicles.\n"
+        "  SET   — The product/set name, e.g. 'Prizm', 'Chrome', 'Select', 'Mosaic', 'Optic', 'Bowman'.\n"
+        "  PARALLEL — Look at the card border color, foil finish, and any color treatment:\n"
+        "    Prizm parallels: Silver (default foil), Gold, Red, Blue, Green, Purple, Orange, Pink, "
+        "Rainbow, Red White Blue, Carolina Blue, Hyper, Disco, Holo, Cracked Ice\n"
+        "    Chrome parallels: Refractor (default), Gold Refractor, Pink Refractor, Blue Refractor, "
+        "Purple Refractor, Orange Refractor, Atomic Refractor, Prism Refractor\n"
+        "    Select parallels: Silver, Gold, Gold Vinyl, Tie-Dye, Blue, Red, Green, White Sparkle, Courtside\n"
+        "    Mosaic parallels: Silver, Gold, Pink, Blue, Green, Red, Reactive Blue/Yellow/Orange\n"
+        "    Donruss parallels: Press Proof, Gold Press Proof, Carolina Blue, Holo Pink, Diamond\n"
+        "    If you see a foil/shimmer border → Silver. Gold border → Gold. Etc.\n"
+        "    If it appears to be a standard base card with no special finish → null\n"
+        "  CARD NUMBER — Look for a number like '#301' or '301' printed on the front, usually "
+        "bottom corner. For numbered parallels (e.g. '45/99'), format as '/99' in the parallel field.\n"
+        "  PLAYER/CARD NAME — The large name printed on the front of the card.\n"
+        "  SPORT — Basketball, Football, Baseball, Hockey, Soccer etc.\n\n"
+
+        "Return ONLY valid JSON with these keys (null if truly cannot determine):\n"
+        "  name       - player full name\n"
+        "  year       - 4-digit year as integer\n"
+        "  brand      - manufacturer\n"
+        "  set        - set/product name\n"
+        "  parallel   - parallel variant or null for base\n"
+        "  card_number - card number printed on card e.g. '301' or null\n"
+        "  sport      - sport name or null\n"
+        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
+    )
+    response = gemini_generate(
+        client,
+        model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
 
 def analyze_bulk(image_data):
     """Detect multiple cards in a single image and return a list of card dicts."""
@@ -1027,17 +1083,46 @@ def scan():
             if not ret:
                 return jsonify({'success': False, 'error': 'Could not capture image'})
 
-        data = analyze_card(frame)
+        # Use higher quality for uploads so Gemini can read fine print
+        data = analyze_card(frame, quality=95 if is_upload else 85)
 
-        # Second label pass — only for uploads, use original bytes for max quality
-        has_grade = data.get("grade") and data.get("grade").lower() != "raw"
+        is_raw_card = (not data.get("grade") or data.get("grade", "").lower() == "raw")
+        has_grade   = not is_raw_card
+
+        # Second pass for graded slabs — read the slab label
         if is_upload and has_grade and raw_image_bytes:
             try:
                 label_data = analyze_label(raw_image_bytes)
-                # For uploads, label pass takes full priority including grade
                 for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
                     if label_data.get(field):
                         data[field] = label_data[field]
+            except Exception:
+                pass
+
+        # Second pass for raw cards — focused on year, set, parallel, fine print
+        if is_raw_card and raw_image_bytes:
+            try:
+                raw_data = analyze_raw_card(raw_image_bytes)
+                # Fill in any fields the first pass left null; don't overwrite confident values
+                for field in ["name", "year", "brand", "set", "parallel", "card_number", "sport"]:
+                    if raw_data.get(field) and not data.get(field):
+                        data[field] = raw_data[field]
+                # Year and brand are worth overwriting if the second pass found them — they're
+                # the most commonly wrong fields on raw cards
+                for field in ["year", "brand", "set"]:
+                    if raw_data.get(field):
+                        data[field] = raw_data[field]
+                # Rebuild the card description with the improved data
+                if data.get("card_type") != "tcg":
+                    parts = [p for p in [
+                        str(data.get("year") or ""),
+                        data.get("brand") or "",
+                        data.get("set") or "",
+                        data.get("name") or "",
+                        data.get("parallel") or "",
+                    ] if p]
+                    if parts:
+                        data["card"] = " ".join(parts)
             except Exception:
                 pass
 
