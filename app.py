@@ -720,7 +720,10 @@ def webhook():
     if event['type'] in ('customer.subscription.created', 'customer.subscription.updated'):
         sub = event['data']['object']
         status = 'pro' if sub['status'] == 'active' else 'free'
-        update_subscription(sub['customer'], status)
+        # Detect plan type from the price ID
+        price_id = sub.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
+        plan_type = 'annual' if price_id == STRIPE_ANNUAL_PRICE_ID else 'monthly'
+        update_subscription(sub['customer'], status, plan_type)
     elif event['type'] == 'customer.subscription.deleted':
         update_subscription(event['data']['object']['customer'], 'free')
 
@@ -1280,7 +1283,11 @@ def admin_dashboard():
             cur.execute("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '30 days'")
             new_this_month = cur.fetchone()[0]
             conversion_rate = round((pro_users / total_users * 100), 1) if total_users > 0 else 0
-            mrr = round(pro_users * 7.99, 2)
+            cur.execute("SELECT COUNT(*) FROM users WHERE subscription_status='pro' AND COALESCE(plan_type,'monthly')='monthly'")
+            monthly_pro = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM users WHERE subscription_status='pro' AND plan_type='annual'")
+            annual_pro = cur.fetchone()[0]
+            mrr = round(monthly_pro * 7.99 + annual_pro * (59 / 12), 2)
             if search:
                 cur.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans, 0) FROM users WHERE LOWER(email) LIKE %s ORDER BY created_at DESC LIMIT 50", (f'%{search}%',))
             else:
@@ -1301,7 +1308,9 @@ def admin_dashboard():
             new_this_week = db.execute("SELECT COUNT(*) FROM users WHERE created_at >= ?", (week_ago,)).fetchone()[0]
             new_this_month = db.execute("SELECT COUNT(*) FROM users WHERE created_at >= ?", (month_ago,)).fetchone()[0]
             conversion_rate = round((pro_users / total_users * 100), 1) if total_users > 0 else 0
-            mrr = round(pro_users * 7.99, 2)
+            monthly_pro = db.execute("SELECT COUNT(*) FROM users WHERE subscription_status='pro' AND COALESCE(plan_type,'monthly')='monthly'").fetchone()[0]
+            annual_pro = db.execute("SELECT COUNT(*) FROM users WHERE subscription_status='pro' AND plan_type='annual'").fetchone()[0]
+            mrr = round(monthly_pro * 7.99 + annual_pro * (59 / 12), 2)
             if search:
                 recent_users = db.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans,0) FROM users WHERE LOWER(email) LIKE ? ORDER BY created_at DESC LIMIT 50", (f'%{search}%',)).fetchall()
             else:

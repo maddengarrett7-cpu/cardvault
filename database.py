@@ -46,6 +46,7 @@ if DATABASE_URL:
             ("google_refresh_token", "TEXT"),
             ("google_sheet_id", "TEXT"),
             ("total_scans", "INTEGER DEFAULT 0"),
+            ("plan_type", "TEXT DEFAULT 'monthly'"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
@@ -129,13 +130,19 @@ if DATABASE_URL:
         cur.close()
         conn.close()
 
-    def update_subscription(customer_id, status):
+    def update_subscription(customer_id, status, plan_type=None):
         conn = get_db()
         cur = conn.cursor()
-        cur.execute(
-            "UPDATE users SET subscription_status = %s WHERE stripe_customer_id = %s",
-            (status, customer_id)
-        )
+        if plan_type:
+            cur.execute(
+                "UPDATE users SET subscription_status = %s, plan_type = %s WHERE stripe_customer_id = %s",
+                (status, plan_type, customer_id)
+            )
+        else:
+            cur.execute(
+                "UPDATE users SET subscription_status = %s WHERE stripe_customer_id = %s",
+                (status, customer_id)
+            )
         conn.commit()
         cur.close()
         conn.close()
@@ -269,9 +276,12 @@ else:
         conn.commit()
         conn.close()
 
-    def update_subscription(customer_id, status):
+    def update_subscription(customer_id, status, plan_type=None):
         conn = get_db()
-        conn.execute("UPDATE users SET subscription_status = ? WHERE stripe_customer_id = ?", (status, customer_id))
+        if plan_type:
+            conn.execute("UPDATE users SET subscription_status = ?, plan_type = ? WHERE stripe_customer_id = ?", (status, plan_type, customer_id))
+        else:
+            conn.execute("UPDATE users SET subscription_status = ? WHERE stripe_customer_id = ?", (status, customer_id))
         conn.commit()
         conn.close()
 
