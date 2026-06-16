@@ -196,69 +196,70 @@ def analyze_label(image_data):
             text = text[4:]
     return json.loads(text.strip())
 
-def _sharpen(frame):
-    """Unsharp mask to make printed card text crisper for Gemini."""
-    blurred = cv2.GaussianBlur(frame, (0, 0), 2)
-    return cv2.addWeighted(frame, 1.8, blurred, -0.8, 0)
-
-
 def analyze_card(frame, quality=85):
+    """Two-call approach: OCR image then parse text with no image.
+    Call 2 has no image so Gemini cannot use visual recognition."""
     client = genai.Client(api_key=GEMINI_API_KEY)
-    frame = _sharpen(frame)
+    blurred = cv2.GaussianBlur(frame, (0, 0), 1)
+    frame = cv2.addWeighted(frame, 1.3, blurred, -0.3, 0)
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     image_data = buf.tobytes()
-    prompt = (
-        "You are an OCR tool reading a trading card image. "
-        "Identify the card by reading PRINTED TEXT ONLY — "
-        "do NOT use the player photo to guess who they are. "
-        "The player photo is unreliable; only the printed name is correct.\n\n"
 
-        "STEP 1 — Read all visible text out loud into the \"text_read\" field first. "
-        "Include: the large name text, position/team if printed, the tiny copyright line "
-        "at the bottom (e.g. \'© 2022 Topps\'), any foil-stamped numbers (e.g. \'089/299\'), "
-        "brand name, set name. Copy every word exactly as printed.\n\n"
+    # Call 1 — pure OCR: read every word on the card
+    ocr_prompt = (
+        "Read every word and number printed on this trading card image. "
+        "List everything exactly as printed. Include:\n"
+        "- The large player name text on the card front\n"
+        "- The tiny copyright line at the very bottom e.g. '© 2022 Topps Chrome'\n"
+        "- Any foil-stamped numbers e.g. '089/299'\n"
+        "- Brand name, set name, position, team\n"
+        "Just list the text. No analysis, no JSON, no explanations."
+    )
+    ocr_resp = gemini_generate(
+        client, model="gemini-2.5-flash",
+        contents=[ocr_prompt,
+                  genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    card_text = ocr_resp.text.strip()
 
-        "STEP 2 — Using ONLY what you wrote in text_read, fill the remaining fields.\n\n"
-
-        "Return ONLY valid JSON with these exact keys (null if not visible):\n"
-        "  text_read   - string: every word you can read on the card, verbatim\n"
-        "  card_type   - \'sports\' or \'tcg\'\n"
-        "  name        - player/card name copied from text_read (NOT from the photo)\n"
-        "  year        - integer 4-digit year from copyright line in text_read\n"
-        "  brand       - \'Panini\', \'Topps\', \'Upper Deck\', etc from text_read\n"
-        "  set         - \'Prizm\', \'Chrome\', \'Select\', \'Mosaic\', etc from text_read\n"
-        "  parallel    - card color/finish. For numbered cards include print run: "
-        "\'Aqua /299\', \'Gold /10\'. null for plain base card\n"
-        "  serial      - numbered stamp print run only: \'/299\', \'/10\'. "
-        "If text_read has \'089/299\' then serial=\'/299\'. null if not numbered\n"
-        "  grade       - \'PSA 10\', \'BGS 9.5\', \'CGC 10\' if in slab, else \'Raw\'\n"
-        "  cert        - cert number from grading label, null if raw\n"
-        "  rarity      - TCG only: \'Rare Holo\', \'Common\', etc. null for sports\n"
-        "  card_number - TCG only: \'4/102\'. null for sports\n"
-        "  hp          - TCG only: HP integer. null for sports\n"
-        "  card        - built from text_read: \'YEAR BRAND SET NAME PARALLEL\' "
-        "e.g. \'2022 Topps Chrome Luther Burden III Aqua /299\'\n\n"
-        "Parallel colors by set:\n"
+    # Call 2 — parse text into JSON (NO image — visual recognition impossible)
+    parse_prompt = (
+        "The following text was read from a sports or trading card:\n\n"
+        + card_text +
+        "\n\nParse it into JSON (null for anything not in the text above):\n"
+        "  card_type   - 'sports' or 'tcg'\n"
+        "  name        - player/card name\n"
+        "  year        - integer 4-digit year from copyright line e.g. '© 2022' = 2022\n"
+        "  brand       - 'Panini', 'Topps', 'Upper Deck', etc\n"
+        "  set         - 'Prizm', 'Chrome', 'Select', 'Mosaic', 'Bowman', etc\n"
+        "  parallel    - color/finish with print run if numbered: 'Aqua /299', 'Gold /10'."
+        " null if plain base\n"
+        "  serial      - print run only: '/299', '/10'."
+        " Stamp '089/299' means serial='/299'. null if not numbered\n"
+        "  grade       - 'PSA 10', 'BGS 9.5', 'CGC 10' if graded, else 'Raw'\n"
+        "  cert        - cert number if graded, null otherwise\n"
+        "  rarity      - TCG rarity e.g. 'Rare Holo', null for sports\n"
+        "  card_number - TCG set number e.g. '4/102', null for sports\n"
+        "  hp          - TCG HP integer, null for sports\n"
+        "  card        - full description e.g. '2022 Topps Chrome Luther Burden III Aqua /299'\n\n"
+        "Parallel color guide:\n"
         "  Prizm: Silver=base foil, Gold /10, Red /299, Blue /199, Green /75, Purple /49, Orange /25\n"
         "  Chrome: Refractor=base, Gold Refractor /50, Orange /25, Red /5\n"
         "  Select: Silver, Gold /10, Tie-Dye /25, Blue /49, Red /75, White Sparkle /99\n"
         "  Mosaic: Silver=base foil, Gold /10, Pink /25, Blue /49, Green /75, Red /99\n"
         "Return ONLY the JSON object — no markdown, no code fences."
     )
-    response = gemini_generate(client,
-        model="gemini-2.5-flash",
-        contents=[
-            prompt,
-            genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg"),
-        ],
+    parse_resp = gemini_generate(
+        client, model="gemini-2.5-flash",
+        contents=[parse_prompt],
     )
-    text = response.text.strip()
+    text = parse_resp.text.strip()
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
             text = text[4:]
-    text = text.strip()
-    return json.loads(text)
+    return json.loads(text.strip())
+
 
 def analyze_card_back(image_data):
     """Read the back of a raw card for details the front scan may have missed."""
