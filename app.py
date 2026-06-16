@@ -1677,26 +1677,84 @@ def scan_price():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-@app.route('/scan-back', methods=['POST'])
+@app.route('/scan-back-full', methods=['POST'])
 @login_required
-def scan_back():
-    """Scan the back of a raw card to fill in year, card number, etc."""
+def scan_back_full():
+    """Scan the back of a raw card — returns card detail updates AND any price sticker."""
     try:
         body = request.get_json()
         image_data = base64.b64decode(body['image'])
-        back = analyze_card_back(image_data)
 
-        # Build a clean update dict — only send non-null fields
-        update = {}
-        for field in ('year', 'card_number', 'brand', 'set', 'name', 'team', 'rookie', 'serial'):
-            if back.get(field) is not None:
-                update[field] = back[field]
+        # Single Gemini call: card details + price in one pass
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt = (
+            "This is the BACK of a raw (ungraded) sports card. "
+            "Read every line of text and extract two things:\n\n"
+            "1. CARD DETAILS from the printed card text:\n"
+            "   year        — 4-digit year from copyright line e.g. '© 2021 Panini' → 2021\n"
+            "   card_number — card number e.g. '# 301' or '301' near the bottom\n"
+            "   brand       — manufacturer from copyright line e.g. 'Panini', 'Topps'\n"
+            "   set         — set name if printed e.g. 'Prizm', 'Chrome', 'Select'\n"
+            "   name        — player full name from stats/bio header\n"
+            "   team        — player's team name\n"
+            "   rookie      — true if 'RC', 'Rookie', or 'Rookie Card' appears\n"
+            "   serial      — print run if numbered e.g. '045/199' → '/199', else null\n\n"
+            "2. PRICE from any sticker, sticky note, handwritten label, or tape:\n"
+            "   paid        — dollar amount e.g. '$45', '$4.99', '$700'. "
+            "                 Look carefully — this could be a handwritten number. "
+            "                 If no price is visible return null.\n\n"
+            "Return ONLY valid JSON with these exact keys "
+            "(null for anything not found):\n"
+            "  year, card_number, brand, set, name, team, rookie, serial, paid\n"
+            "Return ONLY the JSON object — no markdown, no code fences."
+        )
+        response = gemini_generate(
+            client,
+            model="gemini-2.5-flash",
+            contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+        )
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        back = json.loads(text.strip())
 
-        # If we got a serial number and it's not already in the parallel, surface it
-        if back.get('serial') and not back.get('parallel'):
-            update['serial'] = back['serial']
+        update = {k: back[k] for k in
+                  ('year', 'card_number', 'brand', 'set', 'name', 'team', 'rookie', 'serial')
+                  if back.get(k) is not None}
+        paid = back.get('paid')
 
-        return jsonify({'success': True, 'update': update})
+        # If price found, also update the sheet's paid column
+        if paid:
+            try:
+                user = get_user_by_id(session['user_id'])
+                custom_sheet = body.get('sheet_id', '')
+                sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else (
+                    user.get('google_sheet_id') if user else None) or SPREADSHEET_ID
+                if sheet_id:
+                    svc = get_user_sheets_service(user or {})
+                    tab = get_first_sheet_tab(sheet_id, svc)
+                    result_data = svc.spreadsheets().values().get(
+                        spreadsheetId=sheet_id, range=f'{tab}!1:1000').execute()
+                    rows = result_data.get('values', [])
+                    if rows:
+                        headers = rows[0]
+                        mapping = detect_column_mapping(headers)
+                        paid_col = mapping.get('paid')
+                        last_row = len(rows)
+                        if paid_col is not None and last_row > 1:
+                            col_letter = chr(ord('A') + paid_col)
+                            svc.spreadsheets().values().update(
+                                spreadsheetId=sheet_id,
+                                range=f'{tab}!{col_letter}{last_row}',
+                                valueInputOption='USER_ENTERED',
+                                body={'values': [[paid]]}
+                            ).execute()
+            except Exception:
+                pass
+
+        return jsonify({'success': True, 'update': update, 'paid': paid})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 

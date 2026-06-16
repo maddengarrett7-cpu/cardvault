@@ -690,23 +690,13 @@
   </div>
 </div>
 
-<!-- Raw card back-scan prompt -->
-<div id="rawBackPrompt" style="display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid #ffab40; border-radius:16px; padding:16px 20px; z-index:201; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.5); min-width:300px; max-width:340px;">
-  <div style="font-size:20px; margin-bottom:6px;">🔄</div>
-  <div style="font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px;">Flip card for more detail</div>
-  <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">The back shows the year, card #, and copyright — scan it to fill in missing fields.</div>
+<!-- Unified flip prompt — shown after every scan -->
+<div id="flipPrompt" style="display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--green); border-radius:16px; padding:16px 20px; z-index:200; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.5); min-width:300px; max-width:340px;">
+  <div id="flipPromptText" style="font-size:14px; color:var(--text); margin-bottom:12px;">🔄 Flip card to scan the back</div>
+  <div id="flipPromptSub" style="font-size:12px; color:var(--muted); margin-bottom:14px;"></div>
   <div style="display:flex; gap:10px; justify-content:center;">
-    <button onclick="startBackScan()" style="background:#ffab40; color:#000; border:none; border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Scan Back</button>
-    <button onclick="skipBackScan()" style="background:var(--surface2); color:var(--muted); border:1px solid var(--border); border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Skip</button>
-  </div>
-</div>
-
-<!-- Flip prompt (price) -->
-<div id="flipPrompt" style="display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--green); border-radius:16px; padding:16px 20px; z-index:200; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.4); min-width:280px;">
-  <div style="font-size:14px; color:var(--text); margin-bottom:12px;">📝 Add the price you paid?</div>
-  <div style="display:flex; gap:10px; justify-content:center;">
-    <button onclick="startPriceScan()" style="background:var(--green); color:#000; border:none; border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Flip & Scan</button>
-    <button onclick="skipPriceScan()" style="background:var(--surface2); color:var(--muted); border:1px solid var(--surface2); border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Skip</button>
+    <button id="flipScanBtn" onclick="enterBackScanMode()" style="background:var(--green); color:#000; border:none; border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Flip & Scan</button>
+    <button onclick="dismissFlipPrompt()" style="background:var(--surface2); color:var(--muted); border:1px solid var(--border); border-radius:10px; padding:10px 20px; font-weight:700; font-size:14px; cursor:pointer;">Skip</button>
   </div>
 </div>
 
@@ -939,101 +929,109 @@
     input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
   }
 
+  // ── Flip / back-scan state ───────────────────────────────────────────────
+  let _backScanMode  = false;   // true while waiting for user to press scan on the back
+  let _backScanIsRaw = false;   // raw cards get full card+price analysis; graded just get price
+
   function showFlipPrompt(cardData) {
     const isRaw = !cardData.grade || cardData.grade.toLowerCase() === 'raw';
     const isTCG = cardData.card_type === 'tcg';
-    if (isRaw && !isTCG) {
-      // For raw sports cards, ask to scan back first
-      document.getElementById('rawBackPrompt').style.display = 'block';
-      document.getElementById('rawBackPrompt')._cardData = cardData;
+    _backScanIsRaw = isRaw && !isTCG;
+
+    const prompt = document.getElementById('flipPrompt');
+    prompt._cardData = cardData;
+    prompt.style.display = 'block';
+
+    if (_backScanIsRaw) {
+      document.getElementById('flipPromptText').textContent = '🔄 Flip card to scan the back';
+      document.getElementById('flipPromptSub').textContent  = 'Gets you the year, card #, price paid — all in one shot.';
     } else {
-      document.getElementById('flipPrompt').style.display = 'block';
-      document.getElementById('flipPrompt')._cardData = cardData;
+      document.getElementById('flipPromptText').textContent = '📝 Flip to scan price paid';
+      document.getElementById('flipPromptSub').textContent  = 'Point camera at any price sticker or handwritten price.';
     }
   }
 
-  function skipBackScan() {
-    document.getElementById('rawBackPrompt').style.display = 'none';
-    // Proceed to price prompt
-    const cardData = document.getElementById('rawBackPrompt')._cardData;
-    document.getElementById('flipPrompt').style.display = 'block';
-    document.getElementById('flipPrompt')._cardData = cardData;
+  function dismissFlipPrompt() {
+    document.getElementById('flipPrompt').style.display = 'none';
+    exitBackScanMode();
   }
 
-  async function startBackScan() {
-    document.getElementById('rawBackPrompt').style.display = 'none';
-    const cardData = document.getElementById('rawBackPrompt')._cardData;
+  function enterBackScanMode() {
+    document.getElementById('flipPrompt').style.display = 'none';
+    _backScanMode = true;
 
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment';
-    input.style.display = 'none';
-    document.body.appendChild(input);
+    // Swap the scan button into back-scan mode
+    setScanBtns(false, '📷  SCAN BACK');
+    // Update guide label
+    const guide = document.querySelector('.guide-label');
+    if (guide) guide.textContent = 'Flip card — align back here';
 
-    input.onchange = async (e) => {
-      document.body.removeChild(input);
-      if (!e.target.files[0]) {
-        skipBackScan();
-        return;
-      }
-      const status = document.getElementById('statusBar');
-      status.className = 'status-bar loading';
-      status.textContent = '🔍 Reading card back…';
-      setScanBtns(true, 'Reading back...');
+    const status = document.getElementById('statusBar');
+    status.className = 'status-bar loading';
+    if (_backScanIsRaw) {
+      status.textContent = '🔄 Flip the card over, then press SCAN BACK';
+    } else {
+      status.textContent = '🔄 Flip the card over to show the price, then press SCAN BACK';
+    }
+  }
 
-      try {
-        const imageData = await readFileAsBase64(e.target.files[0]);
-        const res = await fetch('/scan-back', {
+  function exitBackScanMode() {
+    _backScanMode = false;
+    setScanBtns(false, '📷   SCAN CARD');
+    const guide = document.querySelector('.guide-label');
+    if (guide) guide.textContent = 'Align card here';
+  }
+
+  async function captureBackFrame() {
+    exitBackScanMode();
+
+    const imageData = captureFrame();
+    const status = document.getElementById('statusBar');
+    status.className = 'status-bar loading';
+    setScanBtns(true, 'Reading back...');
+
+    const cardData = document.getElementById('flipPrompt')._cardData;
+
+    try {
+      if (_backScanIsRaw || cardData) {
+        // Raw cards — one call gets card details + price
+        status.textContent = _backScanIsRaw
+          ? '🔍 Reading card back for details & price…'
+          : '📝 Reading price tag…';
+
+        const endpoint = _backScanIsRaw ? '/scan-back-full' : '/scan-price';
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: imageData })
+          body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
         });
         const result = await res.json();
 
-        if (result.success && result.update) {
+        if (!result.success) throw new Error(result.error || 'Scan failed');
+
+        let msgs = [];
+
+        // ── Merge card detail updates (raw only) ──────────────────────────
+        if (result.update) {
           const u = result.update;
-          // Merge into current display — only fill fields that are blank or '—'
-          const fieldMap = {
-            year:        'r-year',
-            card_number: 'r-cardnum',
-            brand:       null,        // shown in card description only
-            set:         'r-set',
-            name:        'r-name',
-          };
-          let improved = [];
-          for (const [key, elId] of Object.entries(fieldMap)) {
+          const fieldElMap = { year: 'r-year', set: 'r-set', name: 'r-name', card_number: 'r-cardnum' };
+          for (const [key, elId] of Object.entries(fieldElMap)) {
             if (!u[key]) continue;
-            if (elId) {
-              const el = document.getElementById(elId);
-              if (el && (el.textContent === '—' || !el.textContent.trim())) {
-                el.textContent = u[key];
-                improved.push(key);
-              } else if (el && key === 'year') {
-                // Year from back is more reliable — always update
-                el.textContent = u[key];
-                improved.push(key);
-              }
-            }
-            // Keep scanHistory in sync
-            if (scanHistory.length > 0 && u[key]) {
-              scanHistory[0][key] = u[key];
-            }
+            const el = document.getElementById(elId);
+            if (el) el.textContent = u[key];
+            if (scanHistory.length) scanHistory[0][key] = u[key];
           }
-          // Show rookie badge if detected
-          if (u.rookie && scanHistory.length > 0) {
-            scanHistory[0].rookie = true;
+          if (u.brand  && scanHistory.length) scanHistory[0].brand  = u.brand;
+          if (u.team   && scanHistory.length) scanHistory[0].team   = u.team;
+          if (u.serial && scanHistory.length) scanHistory[0].serial = u.serial;
+          if (u.rookie) {
+            if (scanHistory.length) scanHistory[0].rookie = true;
             const cardEl = document.getElementById('r-card');
-            if (cardEl && cardEl.textContent && !cardEl.textContent.includes('RC')) {
-              cardEl.textContent = cardEl.textContent.trim() + ' RC';
-            }
+            if (cardEl && !cardEl.textContent.includes('RC'))
+              cardEl.textContent = (cardEl.textContent || '').trim() + ' RC';
           }
-          // Serial number
-          if (u.serial && scanHistory.length > 0) {
-            scanHistory[0].serial = u.serial;
-          }
-          // Rebuild card description with improved data
-          if (improved.length && scanHistory.length > 0) {
+          // Rebuild card description
+          if (scanHistory.length) {
             const d = scanHistory[0];
             const parts = [d.year, d.brand, d.set, d.name, d.parallel].filter(Boolean);
             if (parts.length) {
@@ -1042,84 +1040,40 @@
               document.getElementById('r-card').style.display = 'block';
               d.card = desc;
             }
-            status.className = 'status-bar success';
-            status.textContent = `✓ Back scan added: ${improved.join(', ')}`;
-          } else {
-            status.className = 'status-bar';
-            status.textContent = 'Back scanned — no new fields found.';
           }
-        } else {
-          status.className = 'status-bar';
-          status.textContent = 'Could not read back — fields unchanged.';
+          const filledKeys = Object.keys(u).filter(k => u[k] !== null && u[k] !== undefined);
+          if (filledKeys.length) msgs.push(`details: ${filledKeys.join(', ')}`);
         }
-      } catch (err) {
-        status.className = 'status-bar error';
-        status.textContent = '✗ Back scan failed: ' + err.message;
-      }
 
-      setScanBtns(false, '📷   SCAN CARD');
-      // Now show price prompt
-      document.getElementById('flipPrompt').style.display = 'block';
-      document.getElementById('flipPrompt')._cardData = cardData;
-    };
+        // ── Merge price ───────────────────────────────────────────────────
+        const paid = result.paid || result.paid === 0 ? result.paid : null;
+        if (paid) {
+          if (scanHistory.length) scanHistory[0].paid = paid;
+          const p = parseFloat(String(paid).replace(/[^0-9.]/g, ''));
+          if (!isNaN(p)) {
+            totalPaid += p;
+            document.getElementById('stat-paid').textContent = '$' + totalPaid.toFixed(2);
+          }
+          msgs.push(`price: ${paid}`);
+        }
 
-    input.click();
-  }
-
-  function skipPriceScan() {
-    document.getElementById('flipPrompt').style.display = 'none';
-    setScanBtns(false, '📷   SCAN CARD');
-  }
-
-  async function sendPriceScan(imageData) {
-    const status = document.getElementById('statusBar');
-    status.className = 'status-bar loading';
-    status.textContent = '📝 Reading price tag...';
-    setScanBtns(true, 'Reading price...');
-    try {
-      const res = await fetch('/scan-price', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
-      });
-      const result = await res.json();
-      if (result.success && result.paid) {
-        if (scanHistory.length > 0) scanHistory[0].paid = result.paid;
-        const p = parseFloat(result.paid.replace(/[^0-9.]/g,''));
-        if (!isNaN(p)) { totalPaid += p; document.getElementById('stat-paid').textContent = '$' + totalPaid.toFixed(2); }
         status.className = 'status-bar success';
-        status.textContent = `✓ Price logged: ${result.paid}`;
-      } else {
-        status.className = 'status-bar error';
-        status.textContent = '✗ Could not read price — try again or enter manually';
+        status.textContent = msgs.length
+          ? '✓ Back scanned — ' + msgs.join(' · ')
+          : '✓ Back scanned (no new fields found)';
+
       }
     } catch (e) {
       status.className = 'status-bar error';
-      status.textContent = '✗ Error: ' + e.message;
+      status.textContent = '✗ Back scan failed: ' + e.message;
     }
+
     setScanBtns(false, '📷   SCAN CARD');
   }
 
-  async function startPriceScan() {
-    document.getElementById('flipPrompt').style.display = 'none';
-
-    // Always show file picker so user can upload the back of the card
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.style.display = 'none';
-    document.body.appendChild(input);
-    input.onchange = async (e) => {
-      document.body.removeChild(input);
-      if (!e.target.files[0]) return;
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        await sendPriceScan(ev.target.result.split(',')[1]);
-      };
-      reader.readAsDataURL(e.target.files[0]);
-    };
-    input.click();
-  }
+  // Legacy stubs kept so nothing else breaks
+  function skipPriceScan()  { dismissFlipPrompt(); }
+  async function startPriceScan() { enterBackScanMode(); }
 
   // ── Bulk Scan ────────────────────────────────────────────────────────────
   let bulkCards = [];
@@ -1366,6 +1320,7 @@
   }
 
   async function scanCard() {
+    if (_backScanMode) { await captureBackFrame(); return; }
     const status = document.getElementById('statusBar');
 
     setScanBtns(true, 'Analyzing...');
