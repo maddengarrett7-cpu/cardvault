@@ -474,6 +474,11 @@
         <span class="result-label">Grade</span>
         <span class="result-value editable" id="r-grade" onclick="editField('r-grade')" title="Tap to edit">—</span>
       </div>
+      <div class="result-row" id="row-serial" style="display:none">
+        <span class="result-label">Numbered</span>
+        <span class="result-value" id="r-serial" style="color:#ffab40;font-weight:800;">—</span>
+      </div>
+
       <div class="result-row" id="row-cert">
         <span class="result-label">Cert #</span>
         <span class="result-value editable" id="r-cert" onclick="editField('r-cert')" title="Tap to edit">—</span>
@@ -892,13 +897,13 @@
     }
   }
 
-  function captureFrame() {
+  function captureFrame(quality = 0.95) {
     const video  = document.getElementById('videoEl');
     const canvas = document.getElementById('canvasEl');
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+    return canvas.toDataURL('image/jpeg', quality).split(',')[1];
   }
 
   function editField(id) {
@@ -1226,7 +1231,7 @@
       const res = await fetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData, cl_token: clToken, sheet_id: userSheetUrl })
+        body: JSON.stringify({ image: imageData, is_upload: true, cl_token: clToken, sheet_id: userSheetUrl })
       });
       const result = await res.json();
 
@@ -1254,6 +1259,8 @@
         document.getElementById('r-set').textContent     = d.set   || '—';
         document.getElementById('r-grade').textContent   = d.grade || '—';
         document.getElementById('r-cert').textContent    = d.cert  || '—';
+        document.getElementById('r-serial').textContent   = d.serial || '—';
+        document.getElementById('row-serial').style.display = d.serial ? 'flex' : 'none';
         document.getElementById('r-cardnum').textContent = d.card_number || '—';
         document.getElementById('r-rarity').textContent  = d.rarity || '—';
         document.getElementById('r-hp').textContent      = d.hp ? d.hp + ' HP' : '—';
@@ -1364,6 +1371,8 @@
         document.getElementById('r-set').textContent     = d.set   || '—';
         document.getElementById('r-grade').textContent   = d.grade || '—';
         document.getElementById('r-cert').textContent    = d.cert  || '—';
+        document.getElementById('r-serial').textContent   = d.serial || '—';
+        document.getElementById('row-serial').style.display = d.serial ? 'flex' : 'none';
         document.getElementById('r-cardnum').textContent = d.card_number || '—';
         document.getElementById('r-rarity').textContent  = d.rarity || '—';
         document.getElementById('r-hp').textContent      = d.hp ? d.hp + ' HP' : '—';
