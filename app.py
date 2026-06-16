@@ -7,6 +7,8 @@ Run this and open http://localhost:5000 in your browser
 import os
 import json
 import time
+import uuid
+import tempfile
 import threading
 import base64
 import requests
@@ -14,7 +16,7 @@ import stripe
 from datetime import datetime
 from functools import wraps
 from collections import defaultdict
-from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for, stream_with_context
 from werkzeug.security import generate_password_hash, check_password_hash
 import cv2
 from google import genai
@@ -137,17 +139,27 @@ def generate_frames():
             yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
         time.sleep(0.03)
 
-def gemini_generate(client, model, contents, retries=2):
-    """Call Gemini with automatic retry on 503."""
+_FALLBACK_MODEL = "gemini-2.0-flash"
+
+def gemini_generate(client, model, contents, retries=5):
+    """Call Gemini with exponential backoff and model fallback on overload."""
     import time as _time
+    last_err = None
     for attempt in range(retries + 1):
+        # After half the retries, fall back to the lighter model
+        active_model = _FALLBACK_MODEL if attempt >= (retries // 2) else model
         try:
-            return client.models.generate_content(model=model, contents=contents)
+            return client.models.generate_content(model=active_model, contents=contents)
         except Exception as e:
-            if attempt < retries and ("503" in str(e) or "UNAVAILABLE" in str(e)):
-                _time.sleep(3)
+            last_err = e
+            err_str = str(e)
+            is_overload = any(x in err_str for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded"))
+            if attempt < retries and is_overload:
+                wait = min(2 ** attempt, 30)  # 1s, 2s, 4s, 8s, 16s … cap at 30s
+                _time.sleep(wait)
                 continue
             raise
+    raise last_err
 
 def analyze_label(image_data):
     """Second pass focused specifically on reading PSA/BGS/SGC label text."""
@@ -1568,6 +1580,402 @@ def delete_account():
     except Exception:
         pass
     return redirect('/?deleted=1')
+
+# ── Whatnot Stream Analyzer ──────────────────────────────────────────────────
+
+_whatnot_jobs = {}  # job_id -> {status, progress, total, cards, error}
+WHATNOT_MAX_BYTES = 500 * 1024 * 1024  # 500 MB
+
+
+def analyze_whatnot_frame(image_data):
+    """Analyze a single Whatnot stream frame for card details, price, and sold state."""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        "This is a frame from a Whatnot live stream selling sports cards or trading cards. "
+        "Analyze the frame carefully and return ONLY valid JSON with these keys:\n\n"
+        "  card_visible  - true if a trading card is clearly shown, false otherwise (boolean)\n"
+        "  name          - player name (sports) or card name (TCG), null if not visible\n"
+        "  year          - 4-digit year as integer, null if not visible\n"
+        "  brand         - manufacturer e.g. 'Panini', 'Topps', null if not visible\n"
+        "  set           - set name e.g. 'Prizm', 'Chrome', null if not visible\n"
+        "  parallel      - parallel/variant e.g. 'Silver', 'Gold', null if not visible\n"
+        "  grade         - grading if in slab e.g. 'PSA 10', 'BGS 9.5', or 'Raw', null if not visible\n"
+        "  cert          - cert/serial number digits only, null if not visible\n"
+        "  card          - full description: 'YEAR BRAND SET PLAYER PARALLEL GRADE', null if no card\n"
+        "  price_shown   - any dollar amount visible as an overlay or on screen e.g. '$45', null if none\n"
+        "  sold          - true if 'SOLD', 'WINNER', or a sold banner is clearly visible on screen\n"
+        "  sold_price    - the final price shown at the moment of sale, null if not a sold frame\n\n"
+        "Look for price overlays typically shown at the top or bottom of the Whatnot stream UI. "
+        "Look for a green or red 'SOLD' banner or 'WINNER' text overlay. "
+        "If no card is visible (transition screen, chat only, countdown, etc.) set card_visible to false. "
+        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
+    )
+    response = gemini_generate(
+        client,
+        model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
+
+def _cards_match(a, b):
+    """True if two card descriptions refer to the same card."""
+    if not a or not b:
+        return False
+    # Compare key fields; fall back to fuzzy card string match
+    for field in ("cert", "card"):
+        va, vb = (a.get(field) or "").strip().lower(), (b.get(field) or "").strip().lower()
+        if va and vb and va == vb:
+            return True
+    # Check name + grade similarity
+    na = (a.get("name") or "").lower()
+    nb = (b.get("name") or "").lower()
+    ga = (a.get("grade") or "").lower()
+    gb = (b.get("grade") or "").lower()
+    if na and nb and na == nb and ga == gb:
+        return True
+    return False
+
+
+def download_whatnot_url(job_id, url, user_id):
+    """Background thread: download a replay URL with yt-dlp, then process it."""
+    import yt_dlp
+
+    job = _whatnot_jobs[job_id]
+    tmp_path = None
+
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+            job['dl_bytes'] = downloaded
+            job['dl_total'] = total
+        elif d['status'] == 'finished':
+            job['dl_bytes'] = job.get('dl_total', 0)
+
+    tmp_dir = tempfile.gettempdir()
+    tmp_base = os.path.join(tmp_dir, f'whatnot_{job_id}')
+
+    ydl_opts = {
+        # 720p or best available — good enough for card OCR, avoids huge 1080p files
+        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720][ext=mp4]/best[height<=720]/best',
+        'outtmpl': tmp_base + '.%(ext)s',
+        'quiet': True,
+        'no_warnings': True,
+        'progress_hooks': [progress_hook],
+        'noprogress': False,
+        # Don't keep partial downloads on error
+        'keepvideo': False,
+    }
+
+    try:
+        job['phase'] = 'downloading'
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            # yt-dlp may merge into mkv/mp4 — find the output file
+            ext = info.get('ext', 'mp4')
+            tmp_path = tmp_base + '.' + ext
+            # Fallback: scan temp dir for matching prefix
+            if not os.path.exists(tmp_path):
+                for fn in os.listdir(tmp_dir):
+                    if fn.startswith(f'whatnot_{job_id}'):
+                        tmp_path = os.path.join(tmp_dir, fn)
+                        break
+
+        if not tmp_path or not os.path.exists(tmp_path):
+            job['status'] = 'error'
+            job['error'] = 'Download completed but output file not found.'
+            return
+
+        job['phase'] = 'processing'
+        process_whatnot_video(job_id, tmp_path, user_id)
+
+    except Exception as e:
+        job['status'] = 'error'
+        job['error'] = f'Download failed: {str(e)}'
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+
+def _frame_changed(prev, curr, threshold=0.96):
+    """Return True if the frame looks meaningfully different from the previous one."""
+    if prev is None:
+        return True
+    g1 = cv2.cvtColor(prev, cv2.COLOR_BGR2GRAY)
+    g2 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
+    h1 = cv2.calcHist([g1], [0], None, [256], [0, 256])
+    h2 = cv2.calcHist([g2], [0], None, [256], [0, 256])
+    cv2.normalize(h1, h1)
+    cv2.normalize(h2, h2)
+    correlation = cv2.compareHist(h1, h2, cv2.HISTCMP_CORREL)
+    return correlation < threshold
+
+
+def process_whatnot_video(job_id, video_path, user_id):
+    """Background thread: extract frames, run Gemini, build card list."""
+    job = _whatnot_jobs[job_id]
+    try:
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            job["status"] = "error"
+            job["error"] = "Could not open video file"
+            return
+
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        frame_interval = max(1, int(fps * 3))  # sample every 3 seconds
+        sample_count = max(1, total_frames // frame_interval)
+        job["total"] = sample_count
+
+        cards = []          # finalized card entries
+        current = None      # card being tracked
+        current_price = None
+        frame_idx = 0
+        processed = 0
+        last_analyzed_frame = None  # last frame actually sent to Gemini
+        last_result = {"card_visible": False}
+
+        while True:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            processed += 1
+            job["progress"] = processed
+
+            # Skip Gemini if frame looks the same as last analyzed frame
+            if not _frame_changed(last_analyzed_frame, frame):
+                frame_idx += frame_interval
+                continue
+
+            last_analyzed_frame = frame.copy()
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            image_data = buf.tobytes()
+
+            try:
+                result = analyze_whatnot_frame(image_data)
+            except Exception:
+                result = {"card_visible": False}
+
+            last_result = result
+
+            if result.get("card_visible"):
+                price = result.get("price_shown") or result.get("sold_price")
+                if price:
+                    current_price = price
+
+                if result.get("sold"):
+                    # Finalize current card with sold price
+                    if current:
+                        current["sold_price"] = result.get("sold_price") or current_price
+                        current["price_shown"] = result.get("sold_price") or current_price
+                        if not any(_cards_match(c, current) for c in cards):
+                            cards.append(current)
+                        job["cards"] = list(cards)
+                    current = None
+                    current_price = None
+                elif _cards_match(result, current):
+                    # Same card still showing — update price if we see one
+                    if price:
+                        current["price_shown"] = price
+                else:
+                    # New card detected — finalize previous if any
+                    if current and not any(_cards_match(c, current) for c in cards):
+                        cards.append(current)
+                        job["cards"] = list(cards)
+                    current = {k: result.get(k) for k in
+                               ("name", "year", "brand", "set", "parallel", "grade", "cert", "card")}
+                    current["price_shown"] = price
+                    current["sold_price"] = None
+
+            frame_idx += frame_interval
+
+        cap.release()
+
+        # Finalize any card still in progress
+        if current and not any(_cards_match(c, current) for c in cards):
+            cards.append(current)
+
+        job["cards"] = cards
+        job["status"] = "done"
+
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+    finally:
+        try:
+            os.remove(video_path)
+        except Exception:
+            pass
+
+
+@app.route('/whatnot')
+@login_required
+def whatnot():
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return redirect('/?upgrade=whatnot')
+    return render_template('whatnot.html', user=user)
+
+
+@app.route('/whatnot/upload', methods=['POST'])
+@login_required
+def whatnot_upload():
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return jsonify({'success': False, 'error': 'Pro feature only.'})
+
+    f = request.files.get('video')
+    if not f:
+        return jsonify({'success': False, 'error': 'No video file provided.'})
+
+    # Save to temp file (streaming to avoid holding all bytes in RAM)
+    suffix = os.path.splitext(f.filename or 'video.mp4')[1] or '.mp4'
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    size = 0
+    try:
+        for chunk in f.stream:
+            size += len(chunk)
+            if size > WHATNOT_MAX_BYTES:
+                tmp.close()
+                os.remove(tmp.name)
+                return jsonify({'success': False, 'error': 'Video exceeds 500 MB limit.'})
+            tmp.write(chunk)
+        tmp.close()
+    except Exception as e:
+        try:
+            tmp.close()
+            os.remove(tmp.name)
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(e)})
+
+    job_id = str(uuid.uuid4())
+    _whatnot_jobs[job_id] = {
+        'status': 'processing',
+        'phase': 'processing',
+        'progress': 0,
+        'total': 1,
+        'dl_bytes': 0,
+        'dl_total': 0,
+        'cards': [],
+        'error': None,
+    }
+
+    t = threading.Thread(
+        target=process_whatnot_video,
+        args=(job_id, tmp.name, session['user_id']),
+        daemon=True,
+    )
+    t.start()
+
+    return jsonify({'success': True, 'job_id': job_id})
+
+
+@app.route('/whatnot/from-url', methods=['POST'])
+@login_required
+def whatnot_from_url():
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return jsonify({'success': False, 'error': 'Pro feature only.'})
+    body = request.get_json()
+    url = (body or {}).get('url', '').strip()
+    if not url:
+        return jsonify({'success': False, 'error': 'No URL provided.'})
+
+    job_id = str(uuid.uuid4())
+    _whatnot_jobs[job_id] = {
+        'status': 'processing',
+        'phase': 'downloading',
+        'progress': 0,
+        'total': 1,
+        'dl_bytes': 0,
+        'dl_total': 0,
+        'cards': [],
+        'error': None,
+    }
+
+    t = threading.Thread(
+        target=download_whatnot_url,
+        args=(job_id, url, session['user_id']),
+        daemon=True,
+    )
+    t.start()
+
+    return jsonify({'success': True, 'job_id': job_id})
+
+
+@app.route('/whatnot/progress/<job_id>')
+@login_required
+def whatnot_progress(job_id):
+    """SSE stream for Whatnot processing progress."""
+    def generate():
+        while True:
+            job = _whatnot_jobs.get(job_id)
+            if not job:
+                yield f"data: {json.dumps({'error': 'Job not found'})}\n\n"
+                return
+            payload = {
+                'status': job['status'],
+                'phase': job.get('phase', 'processing'),
+                'progress': job['progress'],
+                'total': job['total'],
+                'dl_bytes': job.get('dl_bytes', 0),
+                'dl_total': job.get('dl_total', 0),
+                'cards': job['cards'],
+                'error': job.get('error'),
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+            if job['status'] in ('done', 'error'):
+                return
+            time.sleep(1)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+        },
+    )
+
+
+@app.route('/whatnot/confirm', methods=['POST'])
+@login_required
+def whatnot_confirm():
+    """Sheet all confirmed Whatnot cards to Google Sheets."""
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return jsonify({'success': False, 'error': 'Pro feature only.'})
+    body = request.get_json()
+    cards = body.get('cards', [])
+    custom_sheet = body.get('sheet_id', '')
+    custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
+    sheeted = 0
+    for card in cards:
+        # Map sold_price -> paid field for the sheet
+        if card.get('sold_price'):
+            card['paid'] = card['sold_price']
+        elif card.get('price_shown'):
+            card['paid'] = card['price_shown']
+        try:
+            append_to_sheet(card, custom_sheet_id, user=user)
+            sheeted += 1
+        except Exception:
+            pass
+    return jsonify({'success': True, 'sheeted': sheeted})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.errorhandler(404)
 def not_found(e):

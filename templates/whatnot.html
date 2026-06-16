@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>CardScan — Whatnot Analyzer</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --green: #00e676;
+      --green-dark: #00c853;
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface2: #1e1e1e;
+      --border: #2a2a2a;
+      --text: #ffffff;
+      --muted: #888;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface);
+    }
+    .logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .logo span { color: var(--green); }
+    .btn-outline {
+      padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; color: var(--text); font-size: 13px; cursor: pointer;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-outline:hover { border-color: var(--green); color: var(--green); }
+
+    .page { max-width: 900px; margin: 0 auto; padding: 28px 24px 60px; }
+
+    .page-header { margin-bottom: 28px; }
+    .page-header h1 { font-size: 26px; font-weight: 800; margin-bottom: 6px; }
+    .page-header h1 span { color: var(--green); }
+    .page-header p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 16px; padding: 48px 24px;
+      text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+      background: var(--surface);
+    }
+    .upload-zone.drag-over { border-color: var(--green); background: rgba(0,230,118,0.04); }
+    .upload-zone.has-file { border-color: var(--green); border-style: solid; }
+    .upload-icon { font-size: 48px; margin-bottom: 14px; }
+    .upload-zone h2 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .upload-zone p { color: var(--muted); font-size: 14px; }
+    .upload-zone .file-name { color: var(--green); font-weight: 600; font-size: 15px; margin-top: 12px; }
+    #fileInput { display: none; }
+
+    .upload-btn {
+      margin-top: 20px; padding: 14px 32px; background: var(--green); color: #000;
+      border: none; border-radius: 12px; font-size: 16px; font-weight: 800;
+      cursor: pointer; transition: background 0.2s, transform 0.1s;
+    }
+    .upload-btn:hover { background: #00ff87; }
+    .upload-btn:active { transform: scale(0.98); }
+    .upload-btn:disabled { background: #333; color: #555; cursor: not-allowed; }
+
+    /* Progress */
+    .progress-section { display: none; margin-top: 28px; }
+    .progress-section.visible { display: block; }
+    .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .progress-label { font-size: 14px; font-weight: 600; }
+    .progress-pct { font-size: 14px; color: var(--green); font-weight: 700; }
+    .progress-bar-wrap {
+      height: 10px; background: var(--surface2); border-radius: 99px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%; background: var(--green); border-radius: 99px;
+      width: 0%; transition: width 0.4s ease;
+    }
+    .progress-sub { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+    /* Cards found counter */
+    .live-count {
+      display: none; margin-top: 14px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 16px; font-size: 14px; color: var(--muted);
+    }
+    .live-count.visible { display: flex; align-items: center; gap: 10px; }
+    .live-count strong { color: var(--green); font-size: 20px; font-weight: 800; }
+
+    /* Review table */
+    .review-section { display: none; margin-top: 36px; }
+    .review-section.visible { display: block; }
+    .review-section h2 {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.5px; color: var(--muted); margin-bottom: 16px;
+    }
+
+    .sheet-row {
+      display: flex; gap: 12px; align-items: flex-end; margin-bottom: 16px;
+    }
+    .sheet-row input {
+      flex: 1; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 14px; outline: none;
+    }
+    .sheet-row input:focus { border-color: var(--green); }
+    .sheet-row input::placeholder { color: var(--muted); }
+
+    .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); }
+    thead th {
+      padding: 12px 14px; text-align: left; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    thead th:first-child { width: 40px; text-align: center; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr.excluded { opacity: 0.35; }
+    tbody tr:hover { background: var(--surface2); }
+    td { padding: 12px 14px; font-size: 13px; vertical-align: middle; }
+    td:first-child { text-align: center; }
+
+    .tag {
+      display: inline-block; padding: 3px 8px; border-radius: 6px;
+      font-size: 11px; font-weight: 700;
+    }
+    .tag-grade { background: rgba(0,230,118,0.12); color: var(--green); }
+    .tag-sold { background: rgba(255,82,82,0.12); color: #ff5252; }
+    .tag-price { background: rgba(255,171,64,0.12); color: #ffab40; }
+
+    .cell-edit {
+      background: none; border: none; color: var(--text); font-size: 13px;
+      width: 100%; padding: 4px 6px; border-radius: 6px; cursor: pointer;
+      text-align: left;
+    }
+    .cell-edit:hover { background: var(--surface2); }
+    .cell-edit:focus { outline: 1px solid var(--green); background: var(--surface2); }
+
+    .action-row {
+      display: flex; gap: 12px; align-items: center; margin-top: 20px; flex-wrap: wrap;
+    }
+    .btn-green {
+      padding: 14px 28px; background: var(--green); color: #000; border: none;
+      border-radius: 12px; font-size: 15px; font-weight: 800; cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-green:hover { background: #00ff87; }
+    .btn-green:active { transform: scale(0.98); }
+    .btn-green:disabled { background: #333; color: #555; cursor: not-allowed; }
+
+    .sheet-status { font-size: 14px; color: var(--green); font-weight: 600; }
+    .sheet-status.err { color: #ff5252; }
+
+    .empty-state {
+      text-align: center; padding: 48px 24px; color: var(--muted);
+      background: var(--surface); border-radius: 12px; margin-top: 12px;
+    }
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+
+    .error-box {
+      background: rgba(255,82,82,0.08); border: 1px solid rgba(255,82,82,0.3);
+      border-radius: 10px; padding: 14px 18px; color: #ff5252; font-size: 14px;
+      margin-top: 16px; display: none;
+    }
+    .error-box.visible { display: block; }
+
+    .checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: var(--green); }
+
+    /* Tabs */
+    .tab-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab {
+      padding: 9px 18px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .tab:hover { border-color: var(--green); color: var(--text); }
+    .tab.active { background: rgba(0,230,118,0.1); border-color: var(--green); color: var(--green); }
+
+    /* URL input */
+    .url-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+    .url-box input {
+      width: 100%; padding: 14px 16px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+      font-size: 15px; outline: none; transition: border-color 0.15s;
+    }
+    .url-box input:focus { border-color: var(--green); }
+    .url-box input::placeholder { color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="logo" style="text-decoration:none;color:inherit;">Card<span>Scan</span></a>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <span style="font-size:12px;color:var(--muted);">{{ user.email }}</span>
+    <a href="/" class="btn-outline">← Scanner</a>
+    <a href="/account" class="btn-outline">Account</a>
+  </div>
+</header>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>Whatnot <span>Stream Analyzer</span></h1>
+    <p>Paste a Whatnot (or YouTube) replay URL — or upload a local clip. We'll extract frames every 3 seconds, detect each card and price, and compile your sales into Google Sheets.</p>
+  </div>
+
+  <!-- Tab switcher -->
+  <div class="tab-row">
+    <button class="tab active" id="tabUrl" onclick="switchTab('url')">🔗 Paste URL</button>
+    <button class="tab" id="tabFile" onclick="switchTab('file')">📁 Upload File</button>
+  </div>
+
+  <!-- URL input -->
+  <div id="urlPanel">
+    <div class="url-box">
+      <input type="text" id="urlInput" placeholder="https://whatnot.com/stream/... or YouTube link" autocomplete="off" spellcheck="false">
+      <button class="upload-btn" id="urlBtn" style="margin-top:14px;width:100%;">Analyze Stream</button>
+    </div>
+  </div>
+
+  <!-- File upload zone -->
+  <div id="filePanel" style="display:none;">
+    <div class="upload-zone" id="uploadZone">
+      <div class="upload-icon">📹</div>
+      <h2>Drop your Whatnot replay here</h2>
+      <p>MP4, MOV, or AVI — max 500 MB</p>
+      <div class="file-name" id="fileName" style="display:none;"></div>
+      <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/x-msvideo,video/*">
+    </div>
+    <div style="text-align:center;margin-top:16px;">
+      <button class="upload-btn" id="uploadBtn" disabled>Analyze Stream</button>
+    </div>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- Progress -->
+  <div class="progress-section" id="progressSection">
+    <div class="progress-header">
+      <span class="progress-label" id="progressLabel">Analyzing frames…</span>
+      <span class="progress-pct" id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="progress-sub" id="progressSub">Starting up…</div>
+  </div>
+
+  <div class="live-count" id="liveCount">
+    <strong id="liveNum">0</strong> cards detected so far
+  </div>
+
+  <!-- Review table -->
+  <div class="review-section" id="reviewSection">
+    <h2>Review Detected Sales</h2>
+
+    <div class="sheet-row">
+      <input type="text" id="sheetInput" placeholder="Google Sheet URL or ID (optional — uses your connected sheet)">
+    </div>
+
+    <div class="table-wrap">
+      <table id="cardsTable">
+        <thead>
+          <tr>
+            <th><input type="checkbox" class="checkbox" id="checkAll" checked title="Select all"></th>
+            <th>#</th>
+            <th>Card</th>
+            <th>Grade</th>
+            <th>Cert</th>
+            <th>Price Shown</th>
+            <th>Sold Price</th>
+          </tr>
+        </thead>
+        <tbody id="cardsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="empty-state" id="emptyState" style="display:none;">
+      <div class="icon">🔍</div>
+      <p>No cards were detected in this video.<br>Try a clearer recording where cards are held up individually.</p>
+    </div>
+
+    <div class="action-row">
+      <button class="btn-green" id="sheetBtn" disabled>Send to Google Sheets</button>
+      <span class="sheet-status" id="sheetStatus"></span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const uploadZone    = document.getElementById('uploadZone');
+const fileInput     = document.getElementById('fileInput');
+const fileName      = document.getElementById('fileName');
+const uploadBtn     = document.getElementById('uploadBtn');
+const urlInput      = document.getElementById('urlInput');
+const urlBtn        = document.getElementById('urlBtn');
+const errorBox      = document.getElementById('errorBox');
+const progressSection = document.getElementById('progressSection');
+const progressBar   = document.getElementById('progressBar');
+const progressPct   = document.getElementById('progressPct');
+const progressLabel = document.getElementById('progressLabel');
+const progressSub   = document.getElementById('progressSub');
+const liveCount     = document.getElementById('liveCount');
+const liveNum       = document.getElementById('liveNum');
+const reviewSection = document.getElementById('reviewSection');
+const cardsBody     = document.getElementById('cardsBody');
+const emptyState    = document.getElementById('emptyState');
+const sheetBtn      = document.getElementById('sheetBtn');
+const sheetStatus   = document.getElementById('sheetStatus');
+const checkAll      = document.getElementById('checkAll');
+
+let selectedFile  = null;
+let detectedCards = [];
+let activeMode    = 'url'; // 'url' | 'file'
+
+// Tab switching
+function switchTab(mode) {
+  activeMode = mode;
+  document.getElementById('tabUrl').classList.toggle('active', mode === 'url');
+  document.getElementById('tabFile').classList.toggle('active', mode === 'file');
+  document.getElementById('urlPanel').style.display  = mode === 'url'  ? 'block' : 'none';
+  document.getElementById('filePanel').style.display = mode === 'file' ? 'block' : 'none';
+  hideError();
+}
+
+// URL mode
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') startUrlAnalysis(); });
+urlBtn.addEventListener('click', startUrlAnalysis);
+
+async function startUrlAnalysis() {
+  const url = urlInput.value.trim();
+  if (!url) { showError('Please paste a Whatnot or YouTube URL.'); return; }
+  urlBtn.disabled = true;
+  urlInput.disabled = true;
+  hideError();
+
+  progressSection.classList.add('visible');
+  liveCount.classList.add('visible');
+  progressLabel.textContent = 'Downloading replay…';
+  progressSub.textContent = 'Fetching video at 720p — this may take a minute.';
+  progressBar.style.width = '0%';
+  progressPct.textContent = '0%';
+
+  let res, data;
+  try {
+    res  = await fetch('/whatnot/from-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    data = await res.json();
+  } catch (e) {
+    showError('Request failed. Please check your connection.');
+    urlBtn.disabled = false;
+    urlInput.disabled = false;
+    return;
+  }
+
+  if (!data.success) {
+    showError(data.error || 'Failed to start download.');
+    urlBtn.disabled = false;
+    urlInput.disabled = false;
+    return;
+  }
+
+  pollProgress(data.job_id);
+}
+
+// File mode — drag-and-drop
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+function setFile(f) {
+  if (f.size > 500 * 1024 * 1024) { showError('File is too large. Maximum size is 500 MB.'); return; }
+  selectedFile = f;
+  fileName.textContent = `${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)`;
+  fileName.style.display = 'block';
+  uploadZone.classList.add('has-file');
+  uploadBtn.disabled = false;
+  hideError();
+}
+
+uploadBtn.addEventListener('click', startUpload);
+
+async function startUpload() {
+  if (!selectedFile) return;
+  uploadBtn.disabled = true;
+  uploadZone.style.pointerEvents = 'none';
+  hideError();
+
+  progressSection.classList.add('visible');
+  liveCount.classList.add('visible');
+  progressLabel.textContent = 'Uploading video…';
+  progressSub.textContent = 'This may take a moment for large files.';
+  progressBar.style.width = '0%';
+  progressPct.textContent = '0%';
+
+  const form = new FormData();
+  form.append('video', selectedFile);
+
+  let res, data;
+  try {
+    res  = await fetch('/whatnot/upload', { method: 'POST', body: form });
+    data = await res.json();
+  } catch (e) {
+    showError('Upload failed. Please check your connection and try again.');
+    resetFileUI();
+    return;
+  }
+
+  if (!data.success) {
+    showError(data.error || 'Upload failed.');
+    resetFileUI();
+    return;
+  }
+
+  progressLabel.textContent = 'Analyzing frames with Gemini…';
+  progressSub.textContent = 'Extracting a frame every 3 seconds and identifying cards.';
+  pollProgress(data.job_id);
+}
+
+// Shared SSE progress handler
+function pollProgress(jobId) {
+  const es = new EventSource(`/whatnot/progress/${jobId}`);
+
+  es.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+
+    if (d.error && d.status !== 'done') {
+      showError(d.error);
+      es.close();
+      resetFileUI();
+      urlBtn.disabled = false;
+      urlInput.disabled = false;
+      return;
+    }
+
+    // Download phase
+    if (d.phase === 'downloading') {
+      progressLabel.textContent = 'Downloading replay…';
+      if (d.dl_total > 0) {
+        const pct = Math.round((d.dl_bytes / d.dl_total) * 100);
+        progressBar.style.width = pct + '%';
+        progressPct.textContent = pct + '%';
+        progressSub.textContent = `${fmt(d.dl_bytes)} of ${fmt(d.dl_total)} downloaded`;
+      } else if (d.dl_bytes > 0) {
+        progressSub.textContent = `${fmt(d.dl_bytes)} downloaded…`;
+      }
+    }
+
+    // Processing phase
+    if (d.phase === 'processing' || d.status === 'done') {
+      progressLabel.textContent = d.status === 'done' ? 'Analysis complete!' : 'Analyzing frames with Gemini…';
+      const pct = d.total > 0 ? Math.round((d.progress / d.total) * 100) : 0;
+      progressBar.style.width = (d.status === 'done' ? 100 : pct) + '%';
+      progressPct.textContent = (d.status === 'done' ? 100 : pct) + '%';
+      if (d.status !== 'done') progressSub.textContent = `Frame ${d.progress} of ${d.total} analyzed`;
+    }
+
+    liveNum.textContent = d.cards.length;
+
+    if (d.status === 'done') {
+      es.close();
+      detectedCards = d.cards;
+      renderReview(detectedCards);
+    } else if (d.status === 'error') {
+      es.close();
+      showError(d.error || 'Processing failed.');
+      resetFileUI();
+      urlBtn.disabled = false;
+      urlInput.disabled = false;
+    }
+  };
+
+  es.onerror = () => {
+    es.close();
+    showError('Lost connection to server. Please try again.');
+    resetFileUI();
+    urlBtn.disabled = false;
+    urlInput.disabled = false;
+  };
+}
+
+function fmt(bytes) {
+  if (bytes > 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function renderReview(cards) {
+  reviewSection.classList.add('visible');
+
+  if (!cards.length) {
+    cardsBody.innerHTML = '';
+    emptyState.style.display = 'block';
+    sheetBtn.disabled = true;
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  sheetBtn.disabled = false;
+  cardsBody.innerHTML = '';
+
+  cards.forEach((card, i) => {
+    const tr = document.createElement('tr');
+    tr.dataset.idx = i;
+
+    const soldPrice = card.sold_price || '';
+    const priceShown = card.price_shown || '';
+    const grade = card.grade || '';
+    const cert = card.cert || '';
+    const cardDesc = card.card || [card.year, card.brand, card.set, card.name, card.parallel].filter(Boolean).join(' ') || '—';
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="checkbox row-check" checked data-idx="${i}"></td>
+      <td style="color:var(--muted);font-weight:700">${i + 1}</td>
+      <td><input class="cell-edit" value="${escHtml(cardDesc)}" data-field="card" data-idx="${i}" style="min-width:240px"></td>
+      <td>${grade ? `<span class="tag tag-grade">${escHtml(grade)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="color:var(--muted);font-size:12px">${escHtml(cert) || '—'}</td>
+      <td>${priceShown ? `<span class="tag tag-price">${escHtml(priceShown)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>
+        <input class="cell-edit" value="${escHtml(soldPrice)}" data-field="sold_price" data-idx="${i}"
+          placeholder="—" style="width:90px;${soldPrice ? 'color:#ff5252;font-weight:700;' : 'color:var(--muted);'}">
+      </td>
+    `;
+    cardsBody.appendChild(tr);
+  });
+
+  // Row check toggles
+  cardsBody.querySelectorAll('.row-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const tr = cb.closest('tr');
+      tr.classList.toggle('excluded', !cb.checked);
+      syncCheckAll();
+    });
+  });
+
+  // Inline edit
+  cardsBody.querySelectorAll('.cell-edit').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const idx = parseInt(inp.dataset.idx);
+      const field = inp.dataset.field;
+      detectedCards[idx][field] = inp.value;
+    });
+  });
+}
+
+checkAll.addEventListener('change', () => {
+  cardsBody.querySelectorAll('.row-check').forEach(cb => {
+    cb.checked = checkAll.checked;
+    cb.closest('tr').classList.toggle('excluded', !checkAll.checked);
+  });
+});
+
+function syncCheckAll() {
+  const all = [...cardsBody.querySelectorAll('.row-check')];
+  checkAll.checked = all.every(c => c.checked);
+  checkAll.indeterminate = !checkAll.checked && all.some(c => c.checked);
+}
+
+sheetBtn.addEventListener('click', async () => {
+  const selected = [];
+  cardsBody.querySelectorAll('tr').forEach(tr => {
+    const cb = tr.querySelector('.row-check');
+    if (cb && cb.checked) {
+      const idx = parseInt(tr.dataset.idx);
+      selected.push(detectedCards[idx]);
+    }
+  });
+  if (!selected.length) {
+    sheetStatus.textContent = 'No cards selected.';
+    sheetStatus.className = 'sheet-status err';
+    return;
+  }
+
+  sheetBtn.disabled = true;
+  sheetStatus.textContent = 'Sending…';
+  sheetStatus.className = 'sheet-status';
+
+  const sheetId = document.getElementById('sheetInput').value.trim();
+  try {
+    const res = await fetch('/whatnot/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cards: selected, sheet_id: sheetId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      sheetStatus.textContent = `✓ ${data.sheeted} card${data.sheeted !== 1 ? 's' : ''} sent to Google Sheets!`;
+      sheetStatus.className = 'sheet-status';
+    } else {
+      sheetStatus.textContent = data.error || 'Failed to write to sheet.';
+      sheetStatus.className = 'sheet-status err';
+      sheetBtn.disabled = false;
+    }
+  } catch (e) {
+    sheetStatus.textContent = 'Network error. Please try again.';
+    sheetStatus.className = 'sheet-status err';
+    sheetBtn.disabled = false;
+  }
+});
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  errorBox.classList.add('visible');
+}
+function hideError() {
+  errorBox.classList.remove('visible');
+}
+function resetFileUI() {
+  uploadBtn.disabled = !selectedFile;
+  uploadZone.style.pointerEvents = '';
+}
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
