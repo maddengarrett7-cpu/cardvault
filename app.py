@@ -1192,6 +1192,52 @@ def _admin_set_plan(email, plan, secret):
         return f"Error: {e}", 500
     return redirect('/admin/dashboard')
 
+@app.route('/admin/delete-user', methods=['POST'])
+def admin_delete_user():
+    if not check_admin(request.form.get('secret')):
+        return "Forbidden", 403
+    email = request.form.get('email', '').lower()
+    from database import get_db
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("DELETE FROM users WHERE email = %s", (email,))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("DELETE FROM users WHERE email = ?", (email,))
+            db.commit()
+        db.close()
+    except Exception as e:
+        return f"Error: {e}", 500
+    return redirect('/admin/dashboard')
+
+@app.route('/admin/send-email', methods=['POST'])
+def admin_send_email():
+    body = request.get_json()
+    if not check_admin(body.get('secret')):
+        return jsonify({'success': False, 'error': 'Forbidden'})
+    to = body.get('to', '')
+    subject = body.get('subject', '')
+    message = body.get('body', '')
+    if not to or not subject or not message:
+        return jsonify({'success': False, 'error': 'Missing fields'})
+    try:
+        send_reset_email.__module__  # just to confirm import works
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = f'CardScan <{GMAIL_USER}>'
+        msg['To'] = to
+        html = f'<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0a0a0a;color:#fff;"><h2>Card<span style="color:#00e676;">Scan</span></h2><div style="color:#ccc;line-height:1.7;margin-top:16px;">{message.replace(chr(10), "<br>")}</div><p style="color:#555;font-size:12px;margin-top:32px;">Sent from CardScan Admin</p></div>'
+        msg.attach(MIMEText(html, 'html'))
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, to, msg.as_string())
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/admin/upgrade', methods=['POST'])
 def admin_upgrade():
     return _admin_set_plan(request.form.get('email'), 'pro', request.form.get('secret'))
@@ -1210,10 +1256,15 @@ def admin_dashboard():
         return redirect(url_for('login'))
 
     from database import get_db
+    from datetime import date, timedelta
+    search = request.args.get('search', '').strip().lower()
     db = get_db()
     try:
         if hasattr(db, 'cursor'):
             cur = db.cursor()
+            today = str(date.today())
+            week_ago = str(date.today() - timedelta(days=7))
+            month_ago = str(date.today() - timedelta(days=30))
             cur.execute("SELECT COUNT(*) FROM users")
             total_users = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM users WHERE subscription_status = 'pro'")
@@ -1224,67 +1275,178 @@ def admin_dashboard():
             scans_today = cur.fetchone()[0] or 0
             cur.execute("SELECT SUM(COALESCE(total_scans, 0)) FROM users")
             total_scans_ever = cur.fetchone()[0] or 0
-            cur.execute("SELECT email, subscription_status, scans_today, created_at, COALESCE(total_scans, 0) FROM users ORDER BY created_at DESC LIMIT 20")
+            cur.execute("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days'")
+            new_this_week = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '30 days'")
+            new_this_month = cur.fetchone()[0]
+            conversion_rate = round((pro_users / total_users * 100), 1) if total_users > 0 else 0
+            mrr = round(pro_users * 7.99, 2)
+            if search:
+                cur.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans, 0) FROM users WHERE LOWER(email) LIKE %s ORDER BY created_at DESC LIMIT 50", (f'%{search}%',))
+            else:
+                cur.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans, 0) FROM users ORDER BY created_at DESC LIMIT 50")
             recent_users = cur.fetchall()
+            cur.execute("SELECT email, COALESCE(total_scans, 0) as ts FROM users ORDER BY ts DESC LIMIT 5")
+            top_scanners = cur.fetchall()
             cur.close()
         else:
-            from datetime import date
             today = str(date.today())
+            week_ago = str(date.today() - timedelta(days=7))
+            month_ago = str(date.today() - timedelta(days=30))
             total_users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             pro_users = db.execute("SELECT COUNT(*) FROM users WHERE subscription_status = 'pro'").fetchone()[0]
             active_today = db.execute("SELECT COUNT(*) FROM users WHERE scans_date = ?", (today,)).fetchone()[0]
             scans_today = db.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = ?", (today,)).fetchone()[0] or 0
-            recent_users = db.execute("SELECT email, subscription_status, scans_today, created_at FROM users ORDER BY created_at DESC LIMIT 20").fetchall()
+            total_scans_ever = db.execute("SELECT SUM(COALESCE(total_scans,0)) FROM users").fetchone()[0] or 0
+            new_this_week = db.execute("SELECT COUNT(*) FROM users WHERE created_at >= ?", (week_ago,)).fetchone()[0]
+            new_this_month = db.execute("SELECT COUNT(*) FROM users WHERE created_at >= ?", (month_ago,)).fetchone()[0]
+            conversion_rate = round((pro_users / total_users * 100), 1) if total_users > 0 else 0
+            mrr = round(pro_users * 7.99, 2)
+            if search:
+                recent_users = db.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans,0) FROM users WHERE LOWER(email) LIKE ? ORDER BY created_at DESC LIMIT 50", (f'%{search}%',)).fetchall()
+            else:
+                recent_users = db.execute("SELECT id, email, subscription_status, scans_today, created_at, COALESCE(total_scans,0) FROM users ORDER BY created_at DESC LIMIT 50").fetchall()
+            top_scanners = db.execute("SELECT email, COALESCE(total_scans,0) as ts FROM users ORDER BY ts DESC LIMIT 5").fetchall()
         db.close()
     except Exception as e:
         return f"Error: {e}", 500
 
     secret = os.environ.get("ADMIN_SECRET", "")
+
     def make_row(u):
-        email, plan, scans, joined = u[0], u[1], u[2], u[3]
-        total = u[4] if len(u) > 4 else 0
+        uid, email, plan, scans, joined, total = u[0], u[1], u[2], u[3], u[4], u[5]
         plan_label = '🟢 Pro' if plan == 'pro' else '⚪ Free'
-        if plan != 'pro':
-            action_html = (
-                '<form method="POST" action="/admin/upgrade" style="display:inline">'
-                '<input type="hidden" name="email" value="' + email + '">'
-                '<input type="hidden" name="secret" value="' + secret + '">'
-                '<button style="background:#00ff87;color:#000;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;font-size:12px;">→ Pro</button>'
-                '</form>'
-            )
-        else:
-            action_html = (
-                '<form method="POST" action="/admin/downgrade" style="display:inline">'
-                '<input type="hidden" name="email" value="' + email + '">'
-                '<input type="hidden" name="secret" value="' + secret + '">'
-                '<button style="background:#333;color:#888;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">→ Free</button>'
-                '</form>'
-            )
-        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{total}</td><td>{joined}</td><td>{action_html}</td></tr>"
+        upgrade_btn = (
+            f'<form method="POST" action="/admin/upgrade" style="display:inline">'
+            f'<input type="hidden" name="email" value="{email}">'
+            f'<input type="hidden" name="secret" value="{secret}">'
+            f'<button style="background:#00ff87;color:#000;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;font-size:12px;">→ Pro</button>'
+            f'</form>'
+        ) if plan != 'pro' else (
+            f'<form method="POST" action="/admin/downgrade" style="display:inline">'
+            f'<input type="hidden" name="email" value="{email}">'
+            f'<input type="hidden" name="secret" value="{secret}">'
+            f'<button style="background:#333;color:#888;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">→ Free</button>'
+            f'</form>'
+        )
+        delete_btn = (
+            f'<form method="POST" action="/admin/delete-user" style="display:inline" onsubmit="return confirm(\'Delete {email}?\')">'
+            f'<input type="hidden" name="email" value="{email}">'
+            f'<input type="hidden" name="secret" value="{secret}">'
+            f'<button style="background:#3a1a1a;color:#ff6b6b;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;margin-left:4px;">✕</button>'
+            f'</form>'
+        )
+        email_btn = (
+            f'<button onclick="openEmail(\'{email}\')" style="background:#1a1a2a;color:#88aaff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;margin-left:4px;">✉</button>'
+        )
+        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{total}</td><td>{str(joined)[:10]}</td><td style='white-space:nowrap'>{upgrade_btn}{delete_btn}{email_btn}</td></tr>"
+
     rows = ''.join([make_row(u) for u in recent_users])
+    top_scanner_rows = ''.join([f"<tr><td>{u[0]}</td><td style='color:#00ff87;font-weight:700'>{u[1]}</td></tr>" for u in top_scanners])
+    search_val = search or ''
+
     return f"""<!DOCTYPE html><html>
 <head><title>CardScan Admin</title>
-<style>body{{font-family:system-ui;background:#0d0d0d;color:#fff;padding:40px;max-width:900px;margin:0 auto}}
-h1{{color:#00ff87}}
-.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:24px 0}}
-.stat{{background:#1a1a1a;border-radius:12px;padding:20px;text-align:center}}
-.stat-num{{font-size:36px;font-weight:800;color:#00ff87}}
-.stat-label{{color:#888;font-size:13px;margin-top:4px}}
-table{{width:100%;border-collapse:collapse;margin-top:24px}}
+<style>
+body{{font-family:system-ui;background:#0d0d0d;color:#fff;padding:40px;max-width:1000px;margin:0 auto}}
+h1{{color:#00ff87;margin-bottom:4px}}
+h2{{color:#888;font-size:13px;text-transform:uppercase;letter-spacing:1px;margin:28px 0 12px}}
+.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:24px 0}}
+.stat{{background:#1a1a1a;border-radius:12px;padding:18px;text-align:center}}
+.stat-num{{font-size:30px;font-weight:800;color:#00ff87}}
+.stat-label{{color:#888;font-size:12px;margin-top:4px}}
+.stat.money .stat-num{{color:#ffd700}}
+.stat.blue .stat-num{{color:#88aaff}}
+table{{width:100%;border-collapse:collapse}}
 th{{text-align:left;color:#888;font-size:12px;padding:8px;border-bottom:1px solid #333}}
-td{{padding:10px 8px;border-bottom:1px solid #1a1a1a;font-size:14px}}
+td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
+.search-bar{{display:flex;gap:10px;margin-bottom:20px}}
+.search-bar input{{flex:1;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px}}
+.search-bar button{{padding:10px 20px;background:#00ff87;color:#000;border:none;border-radius:8px;font-weight:700;cursor:pointer}}
+.two-col{{display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-top:8px}}
+.email-modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center}}
+.email-modal.open{{display:flex}}
+.email-box{{background:#1a1a1a;border:1px solid #333;border-radius:14px;padding:28px;width:480px}}
+.email-box input,.email-box textarea{{width:100%;padding:10px;background:#0d0d0d;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px;margin-bottom:12px}}
+.email-box textarea{{height:120px;resize:vertical}}
+.email-box button{{padding:10px 20px;background:#00ff87;color:#000;border:none;border-radius:8px;font-weight:700;cursor:pointer}}
+.email-box .cancel{{background:#333;color:#888;margin-left:10px}}
 </style></head>
 <body>
-<h1>📊 CardScan Dashboard</h1>
+<h1>📊 CardScan Admin</h1>
+<p style="color:#555;font-size:13px;margin-bottom:24px;">Last refreshed: {str(date.today())}</p>
+
 <div class="stats">
   <div class="stat"><div class="stat-num">{total_users}</div><div class="stat-label">Total Users</div></div>
   <div class="stat"><div class="stat-num">{pro_users}</div><div class="stat-label">Pro Users</div></div>
+  <div class="stat money"><div class="stat-num">${mrr}</div><div class="stat-label">Est. MRR</div></div>
+  <div class="stat blue"><div class="stat-num">{conversion_rate}%</div><div class="stat-label">Free → Pro Rate</div></div>
   <div class="stat"><div class="stat-num">{active_today}</div><div class="stat-label">Active Today</div></div>
   <div class="stat"><div class="stat-num">{scans_today}</div><div class="stat-label">Scans Today</div></div>
   <div class="stat"><div class="stat-num">{total_scans_ever}</div><div class="stat-label">Total Scans Ever</div></div>
+  <div class="stat blue"><div class="stat-num">{new_this_week}</div><div class="stat-label">New This Week</div></div>
+  <div class="stat blue"><div class="stat-num">{new_this_month}</div><div class="stat-label">New This Month</div></div>
 </div>
-<h2 style="color:#888;font-size:14px;text-transform:uppercase;letter-spacing:1px;">Recent Users</h2>
-<table><tr><th>Email</th><th>Plan</th><th>Scans Today</th><th>Total Scans</th><th>Joined</th><th>Action</th></tr>{rows}</table>
+
+<div class="two-col">
+  <div>
+    <h2>Users</h2>
+    <form class="search-bar" method="GET">
+      <input type="text" name="search" placeholder="Search by email..." value="{search_val}">
+      <button type="submit">Search</button>
+      {'<a href="/admin/dashboard" style="padding:10px 16px;background:#333;color:#888;border:none;border-radius:8px;text-decoration:none;font-size:14px;">Clear</a>' if search_val else ''}
+    </form>
+    <table>
+      <tr><th>Email</th><th>Plan</th><th>Today</th><th>Total</th><th>Joined</th><th>Actions</th></tr>
+      {rows}
+    </table>
+  </div>
+  <div>
+    <h2>Top Scanners</h2>
+    <table>
+      <tr><th>Email</th><th>Total Scans</th></tr>
+      {top_scanner_rows}
+    </table>
+  </div>
+</div>
+
+<!-- Email modal -->
+<div class="email-modal" id="emailModal">
+  <div class="email-box">
+    <h3 style="margin-bottom:16px;">✉ Send Email</h3>
+    <input type="text" id="emailTo" placeholder="To" readonly>
+    <input type="text" id="emailSubject" placeholder="Subject">
+    <textarea id="emailBody" placeholder="Message..."></textarea>
+    <div>
+      <button onclick="sendAdminEmail()">Send</button>
+      <button class="cancel" onclick="document.getElementById('emailModal').classList.remove('open')">Cancel</button>
+    </div>
+    <div id="emailStatus" style="margin-top:10px;font-size:13px;color:#00ff87;"></div>
+  </div>
+</div>
+
+<script>
+function openEmail(email) {{
+  document.getElementById('emailTo').value = email;
+  document.getElementById('emailSubject').value = '';
+  document.getElementById('emailBody').value = '';
+  document.getElementById('emailStatus').textContent = '';
+  document.getElementById('emailModal').classList.add('open');
+}}
+async function sendAdminEmail() {{
+  const to = document.getElementById('emailTo').value;
+  const subject = document.getElementById('emailSubject').value;
+  const body = document.getElementById('emailBody').value;
+  const res = await fetch('/admin/send-email', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{to, subject, body, secret: '{secret}'}})
+  }});
+  const data = await res.json();
+  document.getElementById('emailStatus').textContent = data.success ? '✓ Email sent!' : '✗ ' + data.error;
+  if (data.success) setTimeout(() => document.getElementById('emailModal').classList.remove('open'), 1500);
+}}
+</script>
 </body></html>"""
 
 @app.route('/scan-price', methods=['POST'])
