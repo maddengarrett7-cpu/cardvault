@@ -1352,6 +1352,14 @@ def scan_price():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return render_template('500.html'), 500
+
 if __name__ == '__main__':
     print("\n🚀 Card Scanner Web App")
     print("   Open this in your browser: http://localhost:5000\n")
