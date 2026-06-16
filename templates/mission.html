@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CardScan — Our Mission</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --green: #00e676;
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --border: #2a2a2a;
+      --text: #ffffff;
+      --muted: #888;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-size: 22px; font-weight: 800; }
+    .logo span { color: var(--green); }
+    .container { max-width: 780px; margin: 0 auto; padding: 60px 24px 100px; }
+
+    .hero { text-align: center; margin-bottom: 72px; }
+    .hero-tag { display: inline-block; background: rgba(0,230,118,0.1); color: var(--green); font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; margin-bottom: 20px; }
+    .hero h1 { font-size: 42px; font-weight: 900; line-height: 1.15; margin-bottom: 20px; letter-spacing: -1px; }
+    .hero h1 span { color: var(--green); }
+    .hero p { font-size: 18px; color: #aaa; max-width: 560px; margin: 0 auto; line-height: 1.7; }
+
+    .section { margin-bottom: 72px; }
+    .section h2 { font-size: 24px; font-weight: 800; margin-bottom: 16px; }
+    .section p { color: #ccc; font-size: 16px; margin-bottom: 16px; line-height: 1.8; }
+
+    .screenshots { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 48px 0; }
+    .screenshot-wrap { border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+    .screenshot-wrap img { width: 100%; display: block; }
+    .screenshot-label { font-size: 13px; color: var(--muted); text-align: center; padding: 12px; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 48px 0; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 20px; text-align: center; }
+    .stat-num { font-size: 36px; font-weight: 900; color: var(--green); margin-bottom: 6px; }
+    .stat-label { font-size: 13px; color: var(--muted); }
+
+    .cta { text-align: center; margin-top: 72px; }
+    .cta h2 { font-size: 28px; font-weight: 800; margin-bottom: 12px; }
+    .cta p { color: var(--muted); margin-bottom: 28px; font-size: 16px; }
+    .cta a { display: inline-block; background: var(--green); color: #000; font-weight: 800; padding: 14px 36px; border-radius: 12px; text-decoration: none; font-size: 16px; }
+
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 30px; }
+      .screenshots { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Card<span>Scan</span></div>
+    <a href="/" style="color: var(--muted); font-size: 14px;">← Back</a>
+  </header>
+
+  <div class="container">
+
+    <div class="hero">
+      <div class="hero-tag">Our Mission</div>
+      <h1>Built for collectors,<br><span>by a collector.</span></h1>
+      <p>CardScan exists to make logging cards accurately faster and easier — so you spend less time on spreadsheets and more time in the hobby.</p>
+    </div>
+
+    <div class="section">
+      <h2>The problem we solved</h2>
+      <p>If you've ever been at a card show with a stack of slabs and no easy way to log what you paid and what you picked up — you know the pain. Writing it down is slow. Typing it manually is error-prone. By the time you're home, you've already forgotten half the cert numbers.</p>
+      <p>We built CardScan to fix that. Point your phone at a slab, and the AI reads the player, year, set, grade, and cert number instantly. It logs everything straight to your Google Sheet — no typing required.</p>
+    </div>
+
+    <div class="screenshots">
+      <div class="screenshot-wrap">
+        <img src="/static/mission-fronts.jpg" alt="Stack of graded PSA slabs — fronts">
+        <div class="screenshot-label">📸 Scan the fronts — AI reads every label</div>
+      </div>
+      <div class="screenshot-wrap">
+        <img src="/static/mission-backs.png" alt="Stack of graded PSA slabs — backs with prices">
+        <div class="screenshot-label">💰 Scan the backs — prices log automatically</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>What we believe</h2>
+      <p>The hobby shouldn't require a second job in data entry. Whether you're a casual collector tracking your PC or a dealer logging hundreds of cards at a show, your time is better spent on the cards — not the spreadsheet.</p>
+      <p>CardScan is designed to get out of your way. Open it, scan, done. Your collection tracks itself.</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num">&lt;5s</div>
+        <div class="stat-label">Average scan time</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">AI</div>
+        <div class="stat-label">Powered by Gemini 2.5</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">0</div>
+        <div class="stat-label">Manual typing required</div>
+      </div>
+    </div>
+
+    <div class="cta">
+      <h2>Ready to try it?</h2>
+      <p>Free to start. No app download needed.</p>
+      <a href="/signup">Start Scanning Free</a>
+    </div>
+
+  </div>
+</body>
+</html>

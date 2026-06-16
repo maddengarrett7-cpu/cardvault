@@ -754,6 +754,10 @@ def admin_set_pro(secret):
         return f"Error: {str(e)}", 500
     return f"✅ {OWNER_EMAIL} is now Pro!"
 
+@app.route('/mission')
+def mission():
+    return render_template('mission.html')
+
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
