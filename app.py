@@ -208,12 +208,17 @@ def analyze_card(frame, quality=85):
     # Call 1 — pure OCR: read every word on the card
     ocr_prompt = (
         "Read every word and number printed on this trading card image. "
-        "List everything exactly as printed. Include:\n"
-        "- The large player name text on the card front\n"
-        "- The tiny copyright line at the very bottom e.g. '© 2022 Topps Chrome'\n"
-        "- Any foil-stamped numbers e.g. '089/299'\n"
-        "- Brand name, set name, position, team\n"
-        "Just list the text. No analysis, no JSON, no explanations."
+        "List all visible text exactly as printed. Be thorough — look for:\n"
+        "1. PLAYER NAME: large text on the card front\n"
+        "2. SET/COLLECTION NAME: product name printed on the card e.g. 'Chrome', "
+        "'Prizm', 'Obsidian', 'Silhouette', 'Select', 'Mosaic' — look carefully "
+        "for any word that identifies the product line\n"
+        "3. COPYRIGHT LINE: tiny text at very bottom e.g. '© 2025 Panini' or "
+        "'© 2024-25 Panini' — copy it exactly\n"
+        "4. SERIAL STAMP: foil-stamped number e.g. '089/299' or '45/99'\n"
+        "5. BRAND: company name e.g. 'Panini', 'Topps'\n"
+        "6. Position, team, any other printed text\n"
+        "Output only the raw text. No analysis, no JSON."
     )
     ocr_resp = gemini_generate(
         client, model="gemini-2.5-flash",
@@ -229,9 +234,16 @@ def analyze_card(frame, quality=85):
         "\n\nParse it into JSON (null for anything not in the text above):\n"
         "  card_type   - 'sports' or 'tcg'\n"
         "  name        - player/card name\n"
-        "  year        - integer 4-digit year from copyright line e.g. '© 2022' = 2022\n"
+        "  year        - integer: 4-digit year from copyright line.\n"
+        "    If single year: '© 2025 Panini' = 2025\n"
+        "    If dual year: '© 2024-25 Panini' = 2025 (ALWAYS use the SECOND/later year)\n"
+        "    If written as season: '2024-2025' = 2025\n"
         "  brand       - 'Panini', 'Topps', 'Upper Deck', etc\n"
-        "  set         - 'Prizm', 'Chrome', 'Select', 'Mosaic', 'Bowman', etc\n"
+        "  set         - the product/collection name from the OCR text above.\n"
+        "    Use EXACTLY what was read — do not substitute a different set name.\n"
+        "    Common sets: Prizm, Chrome, Select, Mosaic, Obsidian, Silhouette, Optic,\n"
+        "    Donruss, Bowman, Topps Series 1, Topps Series 2, Heritage, Stadium Club,\n"
+        "    National Treasures, Immaculate, Contenders, Chronicles, Flux, Revolution\n"
         "  parallel    - color/finish with print run if numbered: 'Aqua /299', 'Gold /10'."
         " null if plain base\n"
         "  serial      - print run only: '/299', '/10'."
@@ -1148,17 +1160,10 @@ def scan():
         if is_raw_card and raw_image_bytes:
             try:
                 raw_data = analyze_raw_card(raw_image_bytes)
-                # Year/brand/set from second pass always win — they're more focused
-                for field in ["year", "brand", "set"]:
-                    if raw_data.get(field):
-                        data[field] = raw_data[field]
-                # Fill remaining nulls (never overwrite name — front scan is authoritative)
-                for field in ["parallel", "serial", "card_number", "sport"]:
+                # Second pass only fills nulls — two-call first pass is authoritative
+                for field in ["year", "brand", "set", "parallel", "serial", "card_number", "sport"]:
                     if raw_data.get(field) and not data.get(field):
                         data[field] = raw_data[field]
-                # If second pass found a serial, it wins
-                if raw_data.get("serial"):
-                    data["serial"] = raw_data["serial"]
             except Exception:
                 pass
 
