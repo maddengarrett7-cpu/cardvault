@@ -900,8 +900,8 @@
   function captureFrame(quality = 0.95) {
     const video  = document.getElementById('videoEl');
     const canvas = document.getElementById('canvasEl');
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
+    const vw = video.videoWidth  || 1280;
+    const vh = video.videoHeight || 720;
 
     // Crop to the card guide rectangle (52% wide, 2.5:3.5 aspect ratio, centered)
     // so Gemini gets card pixels only — not background noise

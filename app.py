@@ -222,23 +222,21 @@ def analyze_card(frame, quality=85):
         "  Mosaic: Silver=base foil, Gold /10, Pink /25, Blue /49, Green /75, Red /99\n"
         "  If numbered stamp found, include it: 'Gold /10', 'Green /99'\n\n"
 
-        "Return ONLY valid JSON — null for anything not visible on the card:\n"
-        "{\n"
-        '  "card_type"  : "sports" or "tcg",\n'
-        '  "name"       : "EXACT text of player/card name as printed",\n'
-        '  "year"       : integer from copyright line or null,\n'
-        '  "brand"      : "Panini" / "Topps" / "Upper Deck" / etc,\n'
-        '  "set"        : "Prizm" / "Chrome" / "Select" / etc,\n'
-        '  "parallel"   : "Silver" / "Gold /10" / "Green /99" / null for base,\n'
-        '  "serial"     : "/99" / "/10" / null if not numbered,\n'
-        '  "grade"      : "PSA 10" / "BGS 9.5" / "Raw",\n'
-        '  "cert"       : "cert number from label" or null,\n'
-        '  "rarity"     : "Rare Holo" / null (TCG only),\n'
-        '  "card_number": "4/102" or null (TCG only — NOT the serial stamp),\n'
-        '  "hp"         : integer or null (TCG only),\n'
-        '  "card"       : "YEAR BRAND SET NAME PARALLEL" (omit grade for raw, include for graded)\n'
-        "}\n"
-        "Return ONLY the JSON object — no markdown, no code fences."
+        "Return ONLY a valid JSON object with these exact keys (use null for anything not visible):\n"
+        "  card_type   - string: 'sports' or 'tcg'\n"
+        "  name        - string: player name exactly as printed on card\n"
+        "  year        - integer: 4-digit year from copyright line, or null\n"
+        "  brand       - string: 'Panini', 'Topps', 'Upper Deck', etc, or null\n"
+        "  set         - string: 'Prizm', 'Chrome', 'Select', 'Mosaic', etc, or null\n"
+        "  parallel    - string: 'Silver', 'Gold /10', 'Green /99', etc. null if base card\n"
+        "  serial      - string: '/99', '/10', etc. null if card is not numbered\n"
+        "  grade       - string: 'PSA 10', 'BGS 9.5', 'CGC 10', or 'Raw'\n"
+        "  cert        - string: cert number digits from grading label, or null\n"
+        "  rarity      - string: TCG rarity only e.g. 'Rare Holo', null for sports\n"
+        "  card_number - string: TCG set number e.g. '4/102', null for sports\n"
+        "  hp          - integer: TCG HP value, null for sports\n"
+        "  card        - string: full description e.g. '2021 Panini Prizm Silver Justin Jefferson'\n"
+        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
     )
     response = gemini_generate(client,
         model="gemini-2.5-flash",
@@ -2193,10 +2191,14 @@ def whatnot_confirm():
 
 @app.errorhandler(404)
 def not_found(e):
+    if request.path.startswith('/scan') or request.is_json:
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def server_error(e):
+    if request.path.startswith('/scan') or request.is_json:
+        return jsonify({'success': False, 'error': 'Server error — please try again'}), 500
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
