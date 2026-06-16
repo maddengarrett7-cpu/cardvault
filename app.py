@@ -255,6 +255,41 @@ def analyze_card(frame, quality=85):
     text = text.strip()
     return json.loads(text)
 
+def analyze_card_back(image_data):
+    """Read the back of a raw card for details the front scan may have missed."""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        "This is the BACK of a raw (ungraded) sports or trading card. "
+        "Read every line of text carefully and extract the following details:\n\n"
+        "WHERE TO LOOK:\n"
+        "  YEAR        — Copyright line, usually at the very bottom: '© 2021 Panini' or '2022 Topps'. "
+        "                Return just the 4-digit number.\n"
+        "  CARD NUMBER — Printed clearly on the back, often '# 301', 'Card No. 301', or just '301' near "
+        "                the bottom. Do NOT include set print run totals.\n"
+        "  BRAND       — Company name in the copyright line or logo on the back.\n"
+        "  SET         — Set/product name if printed (e.g. 'Prizm', 'Chrome', 'Select').\n"
+        "  NAME        — Player's full name from the bio or stats header.\n"
+        "  TEAM        — Player's team name.\n"
+        "  ROOKIE      — true if 'RC', 'Rookie', or 'Rookie Card' appears anywhere on the back.\n"
+        "  SERIAL      — If the card is numbered (e.g. '045/199'), return the print run as a string "
+        "                like '/199'. Null if not numbered.\n\n"
+        "Return ONLY valid JSON with these exact keys (null if not found):\n"
+        "  year, card_number, brand, set, name, team, rookie, serial\n"
+        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
+    )
+    response = gemini_generate(
+        client,
+        model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
+
 def analyze_raw_card(image_data):
     """Second pass for raw (ungraded) cards — focused on fine-print details
     that the general first pass tends to miss: year, set, parallel, card number."""
@@ -1641,6 +1676,30 @@ def scan_price():
         return jsonify({"success": True, "paid": paid})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+@app.route('/scan-back', methods=['POST'])
+@login_required
+def scan_back():
+    """Scan the back of a raw card to fill in year, card number, etc."""
+    try:
+        body = request.get_json()
+        image_data = base64.b64decode(body['image'])
+        back = analyze_card_back(image_data)
+
+        # Build a clean update dict — only send non-null fields
+        update = {}
+        for field in ('year', 'card_number', 'brand', 'set', 'name', 'team', 'rookie', 'serial'):
+            if back.get(field) is not None:
+                update[field] = back[field]
+
+        # If we got a serial number and it's not already in the parallel, surface it
+        if back.get('serial') and not back.get('parallel'):
+            update['serial'] = back['serial']
+
+        return jsonify({'success': True, 'update': update})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 
 @app.route('/delete-account', methods=['POST'])
 @login_required
