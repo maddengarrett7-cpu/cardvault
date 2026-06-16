@@ -707,6 +707,30 @@
 
 
 <script>
+  // Safe fetch wrapper — always returns parsed JSON or throws a clean error.
+  // Handles session expiry (redirect to /login), Railway 502s, and any other
+  // case where the server returns HTML instead of JSON.
+  async function apiFetch(url, options = {}) {
+    let res;
+    try {
+      res = await fetch(url, options);
+    } catch (e) {
+      throw new Error('Network error — check your connection');
+    }
+    // Detect session expiry: fetch follows the redirect and lands on /login HTML
+    if (res.redirected || res.url.includes('/login')) {
+      window.location.href = '/login';
+      throw new Error('Session expired — redirecting to login');
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      // Server sent HTML (502 from Railway, 500 error page, etc.)
+      throw new Error(`Server error (${res.status}) — please try again`);
+    }
+    const data = await res.json();
+    return data;
+  }
+
   let scanHistory = [];
   let totalScanned = 0;
   let totalGraded = 0;
@@ -1016,12 +1040,11 @@
           : '📝 Reading price tag…';
 
         const endpoint = _backScanIsRaw ? '/scan-back-full' : '/scan-price';
-        const res = await fetch(endpoint, {
+        const result = await apiFetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
         });
-        const result = await res.json();
 
         if (!result.success) throw new Error(result.error || 'Scan failed');
 
@@ -1108,12 +1131,11 @@
 
     const imageData = await readFileAsBase64(file);
 
-    const res = await fetch('/scan-bulk', {
+    const result = await apiFetch('/scan-bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageData })
     });
-    const result = await res.json();
 
     if (!result.success) {
       document.getElementById('bulkStatus').textContent = '✗ ' + result.error;
@@ -1155,12 +1177,11 @@
     statusEl.textContent = '🔍 Reading prices...';
 
     const imageData = await readFileAsBase64(file);
-    const res = await fetch('/scan-bulk-prices', {
+    const result = await apiFetch('/scan-bulk-prices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageData })
     });
-    const result = await res.json();
 
     if (!result.success) {
       statusEl.textContent = '✗ Could not read prices';
@@ -1186,12 +1207,11 @@
     document.getElementById('bulkConfirmBtn').disabled = true;
     document.getElementById('bulkStatus').textContent = `⏳ Sheeting ${bulkCards.length} cards...`;
 
-    const res = await fetch('/scan-bulk-confirm', {
+    const result = await apiFetch('/scan-bulk-confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cards: bulkCards, sheet_id: userSheetUrl })
     });
-    const result = await res.json();
 
     if (result.success) {
       document.getElementById('bulkStatus').textContent = `✓ ${result.sheeted} cards added to your sheet!`;
@@ -1239,12 +1259,11 @@
         reader.readAsDataURL(file);
       });
 
-      const res = await fetch('/scan', {
+      const result = await apiFetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: imageData, is_upload: true, cl_token: clToken, sheet_id: userSheetUrl })
       });
-      const result = await res.json();
 
       if (result.limit_reached) {
         status.className = 'status-bar error';
@@ -1348,12 +1367,11 @@
 
     try {
       const imageData = captureFrame();
-      const res = await fetch('/scan', {
+      const result = await apiFetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: imageData, cl_token: clToken, sheet_id: userSheetUrl })
       });
-      const result = await res.json();
 
       if (result.limit_reached) {
         status.className = 'status-bar error';
