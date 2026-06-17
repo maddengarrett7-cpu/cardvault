@@ -1026,6 +1026,12 @@
     exitBackScanMode();
 
     const imageData = captureFrame();
+    if (!imageData || imageData.length < 100) {
+      document.getElementById('statusBar').className = 'status-bar error';
+      document.getElementById('statusBar').textContent = '✗ Could not capture image — make sure camera is active';
+      exitBackScanMode();
+      return;
+    }
     const status = document.getElementById('statusBar');
     status.className = 'status-bar loading';
     setScanBtns(true, 'Reading back...');
@@ -1046,7 +1052,7 @@
           body: JSON.stringify({ image: imageData, sheet_id: userSheetUrl })
         });
 
-        if (!result.success) throw new Error(result.error || 'Scan failed');
+        if (!result.success) throw new Error(result.error || 'Back scan returned an error — please try again');
 
         let msgs = [];
 

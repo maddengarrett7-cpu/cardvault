@@ -1713,8 +1713,13 @@ def scan_price():
 def scan_back_full():
     """Scan the back of a raw card — returns card detail updates AND any price sticker."""
     try:
-        body = request.get_json()
-        image_data = base64.b64decode(body['image'])
+        body = request.get_json(silent=True)
+        if not body or 'image' not in body:
+            return jsonify({'success': False, 'error': 'No image received'})
+        try:
+            image_data = base64.b64decode(body['image'])
+        except Exception:
+            return jsonify({'success': False, 'error': 'Invalid image data'})
 
         # Single Gemini call: card details + price in one pass
         client = genai.Client(api_key=GEMINI_API_KEY)
@@ -1743,12 +1748,10 @@ def scan_back_full():
             model="gemini-2.5-flash",
             contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
         )
-        text = response.text.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        back = json.loads(text.strip())
+        try:
+            back = _parse_json_response(response.text)
+        except Exception as parse_err:
+            return jsonify({'success': False, 'error': f'Could not parse back scan response: {parse_err}'})
 
         update = {k: back[k] for k in
                   ('year', 'card_number', 'brand', 'set', 'rookie', 'serial')
@@ -1786,7 +1789,8 @@ def scan_back_full():
 
         return jsonify({'success': True, 'update': update, 'paid': paid})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        err = str(e) or repr(e) or 'Back scan failed — please try again'
+        return jsonify({'success': False, 'error': err})
 
 
 @app.route('/delete-account', methods=['POST'])
