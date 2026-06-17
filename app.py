@@ -139,7 +139,7 @@ def generate_frames():
             yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
         time.sleep(0.03)
 
-_FALLBACK_MODEL = "gemini-2.5-flash-lite-preview-06-17"
+_FALLBACK_MODEL = "gemini-2.5-flash"
 
 def gemini_generate(client, model, contents, retries=5):
     """Call Gemini with exponential backoff and model fallback on overload."""
