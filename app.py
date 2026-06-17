@@ -196,91 +196,48 @@ def analyze_label(image_data):
             text = text[4:]
     return json.loads(text.strip())
 
-def _parse_json_response(text):
-    """Strip markdown fences and parse JSON, raise ValueError if invalid."""
-    text = text.strip()
+def analyze_card(frame, quality=85):
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    image_data = buf.tobytes()
+    prompt = (
+        "Identify this trading card by reading the PRINTED TEXT on it. "
+        "Do not guess the player name from the photo — read the name that is printed on the card.\n\n"
+        "Return ONLY a valid JSON object with these keys (null if not visible):\n"
+        "  card_type   - 'sports' or 'tcg'\n"
+        "  name        - player name exactly as printed (read the text, ignore the photo)\n"
+        "  year        - integer year from copyright line e.g. '© 2024-25' = 2025, '© 2022' = 2022\n"
+        "  brand       - 'Panini', 'Topps', 'Upper Deck', etc\n"
+        "  set         - set name e.g. 'Prizm', 'Chrome', 'Select', 'Mosaic', 'Obsidian', 'Silhouette'\n"
+        "  parallel    - color/finish, include print run: 'Silver', 'Gold /10', 'Aqua /299'. null for base\n"
+        "  serial      - numbered stamp print run: '/299', '/10'. e.g. '089/299' stamp = '/299'. null if none\n"
+        "  grade       - 'PSA 10', 'BGS 9.5', 'CGC 10' if in slab, else 'Raw'\n"
+        "  cert        - cert number from grading label, null if raw\n"
+        "  rarity      - TCG rarity only e.g. 'Rare Holo', null for sports\n"
+        "  card_number - TCG set number e.g. '4/102', null for sports\n"
+        "  hp          - TCG HP integer, null for sports\n"
+        "  card        - full description e.g. '2022 Topps Chrome Luther Burden III Aqua /299'\n\n"
+        "Brand/set guide:\n"
+        "  Panini sets: Prizm, Select, Donruss, Mosaic, Optic, Obsidian, Silhouette, Contenders\n"
+        "  Topps sets: Chrome, Finest, Heritage, Bowman, Stadium Club, Series 1, Series 2\n"
+        "  Upper Deck sets: SP Authentic, Exquisite, Young Guns\n"
+        "Parallel colors by set:\n"
+        "  Prizm: Silver=base foil, Gold /10, Red /299, Blue /199, Green /75, Purple /49, Orange /25\n"
+        "  Chrome: Refractor=base, Gold /50, Orange /25, Red /5\n"
+        "  Select: Silver, Gold /10, Tie-Dye /25, Blue /49, Red /75, White Sparkle /99\n"
+        "  Mosaic: Silver=base foil, Gold /10, Pink /25, Blue /49, Green /75, Red /99\n"
+        "Return ONLY the JSON object — no markdown, no code fences, no extra text."
+    )
+    response = gemini_generate(
+        client, model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
             text = text[4:]
     return json.loads(text.strip())
-
-
-def analyze_card(frame, quality=85):
-    """Two-call approach: OCR image → parse text (no image on call 2).
-    Falls back to single-call if either step errors."""
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    blurred = cv2.GaussianBlur(frame, (0, 0), 1)
-    frame = cv2.addWeighted(frame, 1.3, blurred, -0.3, 0)
-    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-    image_data = buf.tobytes()
-    image_part = genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")
-
-    try:
-        # Call 1 — pure OCR: read every word printed on the card
-        ocr_prompt = (
-            "Read every word and number printed on this trading card image. "
-            "List all visible text exactly as printed. Look for:\n"
-            "1. PLAYER NAME: large text on the card front\n"
-            "2. SET/COLLECTION NAME: e.g. 'Chrome', 'Prizm', 'Obsidian', 'Silhouette', 'Select'\n"
-            "3. COPYRIGHT LINE: tiny text at very bottom e.g. '© 2025 Panini' or '© 2024-25 Panini'\n"
-            "4. SERIAL STAMP: foil number e.g. '089/299' or '45/99'\n"
-            "5. BRAND: 'Panini', 'Topps', 'Upper Deck'\n"
-            "6. Position, team, any other text\n"
-            "Output raw text only. No JSON, no analysis."
-        )
-        ocr_resp = gemini_generate(
-            client, model="gemini-2.5-flash",
-            contents=[ocr_prompt, image_part],
-        )
-        card_text = ocr_resp.text.strip()
-        if not card_text:
-            raise ValueError("OCR returned empty text")
-
-        # Call 2 — parse text → JSON (no image, so no visual hallucination)
-        parse_prompt = (
-            "The following text was read from a sports or trading card:\n\n"
-            + card_text +
-            "\n\nParse into JSON (null for anything not in the text):\n"
-            "  card_type   - 'sports' or 'tcg'\n"
-            "  name        - player/card name\n"
-            "  year        - 4-digit integer from copyright. "
-            "Dual-year '© 2024-25' = 2025 (use the later year). null if not found\n"
-            "  brand       - 'Panini', 'Topps', 'Upper Deck', etc\n"
-            "  set         - EXACT set name from the text. Do not substitute.\n"
-            "    Known sets: Prizm, Chrome, Select, Mosaic, Obsidian, Silhouette, Optic,\n"
-            "    Donruss, Bowman, Heritage, Stadium Club, National Treasures, Immaculate,\n"
-            "    Contenders, Chronicles, Flux, Revolution, Topps Series 1, Topps Series 2\n"
-            "  parallel    - color/finish + print run if numbered: 'Aqua /299', 'Gold /10'. null if base\n"
-            "  serial      - print run only e.g. '/299'. Stamp '089/299' = '/299'. null if not numbered\n"
-            "  grade       - 'PSA 10', 'BGS 9.5', 'CGC 10' if slab, else 'Raw'\n"
-            "  cert        - cert number if graded, else null\n"
-            "  rarity      - TCG only e.g. 'Rare Holo', null for sports\n"
-            "  card_number - TCG only e.g. '4/102', null for sports\n"
-            "  hp          - TCG HP integer, null for sports\n"
-            "  card        - '2025 Panini Silhouette Stephen Curry /99'\n"
-            "Return ONLY the JSON object — no markdown, no code fences."
-        )
-        parse_resp = gemini_generate(
-            client, model="gemini-2.5-flash",
-            contents=[parse_prompt],
-        )
-        return _parse_json_response(parse_resp.text)
-
-    except Exception:
-        # Fallback: single-call with image if two-call path fails
-        fallback_prompt = (
-            "Scan this trading card and return JSON. "
-            "Read the PRINTED TEXT for the player name — do not use the photo.\n"
-            "Return JSON with: card_type, name, year, brand, set, parallel, serial, "
-            "grade, cert, rarity, card_number, hp, card. null for anything not visible.\n"
-            "Return ONLY the JSON object."
-        )
-        resp = gemini_generate(
-            client, model="gemini-2.5-flash",
-            contents=[fallback_prompt, image_part],
-        )
-        return _parse_json_response(resp.text)
 
 
 def analyze_card_back(image_data):
