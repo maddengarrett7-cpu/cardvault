@@ -642,6 +642,18 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/admin/test-email/<secret>')
+def admin_test_email(secret):
+    if not check_admin(secret):
+        return "Forbidden", 403
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        return f"❌ Missing env vars — GMAIL_USER='{GMAIL_USER}' GMAIL_APP_PASSWORD={'set' if GMAIL_APP_PASSWORD else 'NOT SET'}"
+    try:
+        send_reset_email(GMAIL_USER, "https://cardscan.live/test")
+        return f"✅ Test email sent to {GMAIL_USER} — check your inbox"
+    except Exception as e:
+        return f"❌ Email failed: {str(e)}"
+
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'GET':
