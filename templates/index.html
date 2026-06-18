@@ -401,7 +401,7 @@
 <body>
 
 <header style="position:relative;">
-  <div class="logo">Card<span>Scan</span></div>
+  <a href="/home" style="text-decoration:none;color:inherit;" class="logo">Card<span>Scan</span></a>
   <div class="header-actions">
     <button class="btn-outline" onclick="exportCSV()">⬇ Excel/CSV</button>
     <button class="btn-outline" id="openSheetBtn" onclick="openUserSheet()" style="display:none">Open Sheet ↗</button>
@@ -416,6 +416,7 @@
 
   <!-- Mobile dropdown menu -->
   <div class="mobile-menu" id="mobileMenu">
+    <a href="/home" class="btn-outline" onclick="closeMenu()">🏠 Home</a>
     <button class="btn-outline" onclick="exportCSV(); closeMenu()">⬇ Export to Excel/CSV</button>
     <button class="btn-outline" id="mobileOpenSheetBtn" onclick="openUserSheet(); closeMenu()" style="display:none">Open Sheet ↗</button>
     <button class="btn-outline" id="mobileConnectSheetsBtn" onclick="openSettings(); closeMenu()">📊 Connect Sheets</button>
