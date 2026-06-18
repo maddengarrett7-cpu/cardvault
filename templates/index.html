@@ -508,7 +508,6 @@
       </div>
       <div id="ebayContent">
         <div class="value-placeholder" id="valuePlaceholder">Scan a card to see market value</div>
-        <div style="text-align:center; margin-top:8px; font-size:12px; color:var(--muted); font-style:italic;">⏳ eBay live pricing — Coming Soon</div>
         <div id="valueData" style="display:none">
           <div class="value-grid">
             <div class="value-box">
@@ -529,9 +528,8 @@
       </div>
       <div id="clContent" style="display:none">
         <div class="value-placeholder" id="clPlaceholder">Scan a card to search Card Ladder</div>
-        <div style="text-align:center; margin-top:8px; font-size:12px; color:var(--muted); font-style:italic;">⏳ Card Ladder live pricing — Coming Soon</div>
         <div id="clLinkWrap" style="display:none;">
-          <!-- CL value data -->
+          <!-- CL value data (only shown if token provided) -->
           <div id="clValueData" style="display:none; margin-bottom:12px;">
             <div class="value-grid">
               <div class="value-box">
@@ -544,25 +542,35 @@
               </div>
             </div>
           </div>
-          <!-- Open in new tab button -->
-          <div style="text-align:center; padding: 8px 0;">
-            <a id="clLink" href="#" target="_blank" rel="noopener noreferrer" onclick="window.open(this.href,'_blank'); return false;" style="
-              display: inline-block;
-              padding: 10px 18px;
-              background: var(--surface2);
-              border: 1px solid var(--green);
-              border-radius: 10px;
-              color: var(--green);
-              font-size: 13px;
-              font-weight: 700;
-              text-decoration: none;
-            ">Open Card Ladder ↗</a>
+
+          <!-- Card name being searched -->
+          <div id="clCardName" style="font-size:12px; color:var(--muted); text-align:center; margin-bottom:12px;"></div>
+
+          <!-- Open Card Ladder search -->
+          <a id="clLink" href="#" target="_blank" rel="noopener noreferrer" style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            background: var(--surface2);
+            border: 1px solid var(--green);
+            border-radius: 12px;
+            color: var(--green);
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            margin-bottom: 10px;
+          ">
+            <span>🔍 Search on Card Ladder</span>
+            <span style="font-size:16px;">↗</span>
+          </a>
+
+          <!-- Cert number copy (graded cards only) -->
+          <div id="clCertDisplay" style="display:none; background:var(--surface2); border-radius:10px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Cert # — tap to copy</div>
+            <div id="clCertNum" onclick="navigator.clipboard.writeText(this.dataset.cert); this.textContent='✓ Copied!'; setTimeout(()=>{ this.textContent=this.dataset.cert; },1500);" style="font-size:22px; font-weight:800; color:var(--green); cursor:pointer; letter-spacing:2px;"></div>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">Paste this into Card Ladder search</div>
           </div>
-          <div id="clCertDisplay" style="display:none; margin-top:10px; text-align:center; background:var(--surface2); border-radius:8px; padding:10px;">
-            <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">CERT # — tap to copy</div>
-            <div id="clCertNum" onclick="navigator.clipboard.writeText(this.textContent); this.textContent='✓ Copied!'; setTimeout(()=>{ this.textContent=this.dataset.cert; },1500);" style="font-size:20px; font-weight:800; color:var(--green); cursor:pointer; letter-spacing:1px;"></div>
-          </div>
-          <div style="font-size:11px; color:var(--muted); margin-top:6px; text-align:center;" id="clCardName"></div>
         </div>
       </div>
     </div>
@@ -882,17 +890,18 @@
         : '';
     }
 
-    // Card Ladder tab — show values + search link
-    const query = [d.year, d.name, d.grade].filter(Boolean).join(' ');
-    if (query) {
-      lastCardQuery = query;
+    // Card Ladder tab — build real search URL from card data
+    const clQueryParts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+    const clQuery = clQueryParts.join(' ');
+    if (clQuery) {
+      lastCardQuery = clQuery;
 
-      // Build Card Ladder URL — use cert# for graded, name search for raw
-      let clUrl;
-      clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date';
-      document.getElementById('clLink').href = clUrl;
-      document.getElementById('clCardName').textContent = query;
-      // Show cert number for easy copy-paste
+      // Build Card Ladder search URL
+      const clSearchUrl = 'https://www.cardladder.com/cards?query=' + encodeURIComponent(clQuery);
+      document.getElementById('clLink').href = clSearchUrl;
+      document.getElementById('clCardName').textContent = clQuery;
+
+      // Show cert number for graded cards — user can paste into CL search
       if (d.cert) {
         const certEl = document.getElementById('clCertNum');
         const certVal = d.cert.replace(/\s+/g, '');
@@ -902,10 +911,11 @@
       } else {
         document.getElementById('clCertDisplay').style.display = 'none';
       }
+
       document.getElementById('clPlaceholder').style.display = 'none';
       document.getElementById('clLinkWrap').style.display = 'block';
 
-      // Populate CL value fields if available
+      // Populate CL value fields if token was provided
       if (d.cl_value || d.cl_last_sale) {
         document.getElementById('cl-value').textContent = d.cl_value ? '$' + d.cl_value : '—';
         document.getElementById('cl-last').textContent  = d.cl_last_sale ? '$' + d.cl_last_sale : '—';
