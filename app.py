@@ -1102,18 +1102,22 @@ def scan():
         # Use higher quality for uploads so Gemini can read fine print
         data = analyze_card(frame, quality=95 if is_upload else 85)
 
-        is_raw_card = (not data.get("grade") or data.get("grade", "").lower() == "raw")
-        has_grade   = not is_raw_card
-
-        # Second pass for graded slabs — read the slab label
-        if is_upload and has_grade and raw_image_bytes:
+        # Second pass for uploads: always run label analysis first.
+        # The first pass often misses the grade on graded slabs — label pass corrects it.
+        if is_upload and raw_image_bytes:
             try:
                 label_data = analyze_label(raw_image_bytes)
-                for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
-                    if label_data.get(field):
-                        data[field] = label_data[field]
+                # If label found a real grade (not raw), it's a graded slab — trust the label
+                label_grade = label_data.get("grade", "") or ""
+                if label_grade and label_grade.lower() not in ("raw", ""):
+                    for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
+                        if label_data.get(field):
+                            data[field] = label_data[field]
+                    data["_graded_via_label"] = True
             except Exception as label_err:
                 app.logger.warning(f"Label second pass failed: {label_err}")
+
+        is_raw_card = (not data.get("grade") or data.get("grade", "").lower() == "raw")
 
         # Second pass for raw cards — focused on year, set, parallel, serial, fine print
         if is_raw_card and raw_image_bytes:
