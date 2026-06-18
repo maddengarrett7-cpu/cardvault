@@ -1367,6 +1367,35 @@ def _admin_set_plan(email, plan, secret):
         return f"Error: {e}", 500
     return redirect('/admin/dashboard')
 
+@app.route('/admin/reset-user-pw', methods=['POST'])
+def admin_reset_user_pw():
+    # Gated by owner session — no URL secret needed
+    if not session.get('user_id'):
+        return "Forbidden", 403
+    user = get_user_by_id(session['user_id'])
+    if not user or user['email'] != OWNER_EMAIL:
+        return "Forbidden", 403
+    email = request.form.get('email', '').lower()
+    from database import get_db
+    from werkzeug.security import generate_password_hash
+    new_password = "CardScan123!"
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("UPDATE users SET password_hash = %s WHERE email = %s",
+                       (generate_password_hash(new_password), email))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("UPDATE users SET password_hash = ? WHERE email = ?",
+                      (generate_password_hash(new_password), email))
+            db.commit()
+        db.close()
+    except Exception as e:
+        return f"Error: {e}", 500
+    return redirect('/admin/dashboard')
+
 @app.route('/admin/delete-user', methods=['POST'])
 def admin_delete_user():
     if not check_admin(request.form.get('secret')):
@@ -1537,7 +1566,13 @@ def admin_dashboard():
         email_btn = (
             f'<button onclick="openEmail(\'{email}\')" style="background:#1a1a2a;color:#88aaff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;margin-left:4px;">✉</button>'
         )
-        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{total}</td><td>{str(joined)[:10]}</td><td style='white-space:nowrap'>{upgrade_btn}{delete_btn}{email_btn}</td></tr>"
+        reset_pw_btn = (
+            f'<form method="POST" action="/admin/reset-user-pw" style="display:inline" onsubmit="return confirm(\'Reset password for {email} to CardScan123! ?\')">'
+            f'<input type="hidden" name="email" value="{email}">'
+            f'<button style="background:#1a1a3a;color:#aaaaff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;margin-left:4px;">🔑</button>'
+            f'</form>'
+        )
+        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{total}</td><td>{str(joined)[:10]}</td><td style='white-space:nowrap'>{upgrade_btn}{delete_btn}{email_btn}{reset_pw_btn}</td></tr>"
 
     rows = ''.join([make_row(u) for u in recent_users])
     top_scanner_rows = ''.join([f"<tr><td>{u[0]}</td><td style='color:#00ff87;font-weight:700'>{u[1]}</td></tr>" for u in top_scanners])
