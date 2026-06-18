@@ -1085,7 +1085,7 @@ def scan():
         return jsonify({
             'success': False,
             'limit_reached': True,
-            'error': f'Free limit reached ({limit} scans/day). Upgrade to SlabScan Pro for unlimited scans.'
+            'error': f'Free limit reached ({limit} scans/day). Upgrade to CardScan Pro for unlimited scans.'
         })
     try:
         # Accept image from browser camera
