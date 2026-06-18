@@ -161,14 +161,28 @@ if DATABASE_URL:
         today = str(date.today())
         FREE_LIMIT = 10
 
-        if user['subscription_status'] == 'pro':
-            cur.close()
-            conn.close()
-            return True, 0, -1
-
+        # Reset scans_today if it's a new day
         scans_today = user['scans_today'] if user['scans_date'] == today else 0
 
+        if user['subscription_status'] == 'pro':
+            # Pro users: always allowed, but still track counts
+            cur.execute(
+                "UPDATE users SET scans_today = %s, scans_date = %s, total_scans = COALESCE(total_scans, 0) + 1 WHERE id = %s",
+                (scans_today + 1, today, user_id)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True, scans_today + 1, -1
+
         if scans_today >= FREE_LIMIT:
+            # Reset the DB value if date changed but we're still at limit (edge case)
+            if user['scans_date'] != today:
+                cur.execute(
+                    "UPDATE users SET scans_today = 0, scans_date = %s WHERE id = %s",
+                    (today, user_id)
+                )
+                conn.commit()
             cur.close()
             conn.close()
             return False, scans_today, FREE_LIMIT
@@ -296,18 +310,25 @@ else:
         today = str(date.today())
         FREE_LIMIT = 10
 
-        if user['subscription_status'] == 'pro':
-            conn.close()
-            return True, 0, -1
-
+        # Reset scans_today if it's a new day
         scans_today = user['scans_today'] if user['scans_date'] == today else 0
+
+        if user['subscription_status'] == 'pro':
+            # Pro users: always allowed, but still track counts
+            conn.execute(
+                "UPDATE users SET scans_today = ?, scans_date = ?, total_scans = COALESCE(total_scans, 0) + 1 WHERE id = ?",
+                (scans_today + 1, today, user_id)
+            )
+            conn.commit()
+            conn.close()
+            return True, scans_today + 1, -1
 
         if scans_today >= FREE_LIMIT:
             conn.close()
             return False, scans_today, FREE_LIMIT
 
         conn.execute(
-            "UPDATE users SET scans_today = ?, scans_date = ? WHERE id = ?",
+            "UPDATE users SET scans_today = ?, scans_date = ?, total_scans = COALESCE(total_scans, 0) + 1 WHERE id = ?",
             (scans_today + 1, today, user_id)
         )
         conn.commit()
