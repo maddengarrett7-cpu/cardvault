@@ -1272,30 +1272,6 @@ def scan_bulk_confirm():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@app.route('/admin/reset-daily-scans/<secret>')
-def admin_reset_daily_scans(secret):
-    if not check_admin(secret):
-        return "Forbidden", 403
-    from database import get_db
-    from datetime import date
-    db = get_db()
-    try:
-        today = str(date.today())
-        if hasattr(db, 'cursor'):
-            cur = db.cursor()
-            cur.execute("UPDATE users SET scans_today = 0, scans_date = %s", (today,))
-            count = cur.rowcount
-            db.commit()
-            cur.close()
-        else:
-            cur = db.execute("UPDATE users SET scans_today = 0, scans_date = ?", (today,))
-            count = cur.rowcount
-            db.commit()
-        db.close()
-    except Exception as e:
-        return f"Error: {e}", 500
-    return f"✅ Reset scans_today to 0 for {count} users. Date set to {today}."
-
 @app.route('/admin/reset-password/<secret>')
 def admin_reset_password(secret):
     if not check_admin(secret):
