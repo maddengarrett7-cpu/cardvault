@@ -29,7 +29,7 @@ from database import init_db, get_user_by_email, get_user_by_id, create_user, \
     update_stripe_customer, update_subscription, check_and_increment_scans, \
     save_google_tokens, save_google_sheet_id, clear_google_tokens, \
     create_session, validate_session, delete_session, \
-    save_reset_token, get_reset_token, delete_reset_token, update_password
+    save_reset_token, get_reset_token, delete_reset_token, update_password, DATABASE_URL
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
