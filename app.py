@@ -1079,14 +1079,6 @@ def value():
 @app.route('/scan', methods=['POST'])
 @login_required
 def scan():
-    # Check scan limits
-    allowed, scans_used, limit = check_and_increment_scans(session['user_id'])
-    if not allowed:
-        return jsonify({
-            'success': False,
-            'limit_reached': True,
-            'error': f'Free limit reached ({limit} scans/day). Upgrade to CardScan Pro for unlimited scans.'
-        })
     try:
         # Accept image from browser camera
         body = request.get_json()
@@ -1120,8 +1112,8 @@ def scan():
                 for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
                     if label_data.get(field):
                         data[field] = label_data[field]
-            except Exception:
-                pass
+            except Exception as label_err:
+                app.logger.warning(f"Label second pass failed: {label_err}")
 
         # Second pass for raw cards — focused on year, set, parallel, serial, fine print
         if is_raw_card and raw_image_bytes:
@@ -1131,8 +1123,17 @@ def scan():
                 for field in ["year", "brand", "set", "parallel", "serial", "card_number", "sport"]:
                     if raw_data.get(field) and not data.get(field):
                         data[field] = raw_data[field]
-            except Exception:
-                pass
+            except Exception as raw_err:
+                app.logger.warning(f"Raw second pass failed: {raw_err}")
+
+        # Only count the scan after Gemini succeeds
+        allowed, scans_used, limit = check_and_increment_scans(session['user_id'])
+        if not allowed:
+            return jsonify({
+                'success': False,
+                'limit_reached': True,
+                'error': f'Free limit reached ({limit} scans/day). Upgrade to CardScan Pro for unlimited scans.'
+            })
 
         # Merge serial into parallel exactly once, cleanly
         _merge_serial(data)
@@ -1211,9 +1212,12 @@ def scan():
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         err = str(e)
-        if "503" in err or "UNAVAILABLE" in err:
-            return jsonify({'success': False, 'error': 'Scanner is busy right now — please try again in a moment'})
-        return jsonify({'success': False, 'error': err})
+        app.logger.error(f"Scan error: {err}")
+        if any(x in err for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded")):
+            return jsonify({'success': False, 'error': 'Scanner is busy right now — your scan was not counted. Please try again in a moment.'})
+        if "JSONDecodeError" in err or "json" in err.lower():
+            return jsonify({'success': False, 'error': 'Could not read the card — please retake the photo with better lighting and try again. Scan was not counted.'})
+        return jsonify({'success': False, 'error': 'Something went wrong — your scan was not counted. Please try again.'})
 
 @app.route('/scan-bulk', methods=['POST'])
 @login_required
