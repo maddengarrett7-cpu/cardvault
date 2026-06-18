@@ -1284,6 +1284,34 @@ def scan_bulk_confirm():
         return jsonify({'success': False, 'error': str(e)})
 
 
+@app.route('/admin/reset-user-password/<secret>/<email>')
+def admin_reset_user_password(secret, email):
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db
+    from werkzeug.security import generate_password_hash
+    new_password = "CardScan123!"
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("UPDATE users SET password_hash = %s WHERE email = %s",
+                       (generate_password_hash(new_password), email.lower()))
+            count = cur.rowcount
+            db.commit()
+            cur.close()
+        else:
+            cur = db.execute("UPDATE users SET password_hash = ? WHERE email = ?",
+                      (generate_password_hash(new_password), email.lower()))
+            count = cur.rowcount
+            db.commit()
+        db.close()
+    except Exception as e:
+        return f"Error: {e}", 500
+    if count == 0:
+        return f"❌ No user found with email: {email}"
+    return f"✅ Password reset for {email} — temp password: <strong>CardScan123!</strong> — tell them to change it after logging in."
+
 @app.route('/admin/reset-password/<secret>')
 def admin_reset_password(secret):
     if not check_admin(secret):
