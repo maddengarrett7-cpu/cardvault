@@ -1160,14 +1160,32 @@
 
     const imageData = await readFileAsBase64(file);
 
-    const result = await apiFetch('/scan-bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: imageData })
-    });
+    // Animated loading message so user knows it's working
+    const loadingMsgs = [
+      '🔍 Detecting cards with AI...',
+      '📖 Reading labels...',
+      '🧠 Identifying cards...',
+      '⏳ Almost there...'
+    ];
+    let msgIdx = 0;
+    const loadingInterval = setInterval(() => {
+      msgIdx = (msgIdx + 1) % loadingMsgs.length;
+      document.getElementById('bulkStatus').textContent = loadingMsgs[msgIdx];
+    }, 3000);
+
+    let result;
+    try {
+      result = await apiFetch('/scan-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData })
+      });
+    } finally {
+      clearInterval(loadingInterval);
+    }
 
     if (!result.success) {
-      document.getElementById('bulkStatus').textContent = '✗ ' + result.error;
+      document.getElementById('bulkStatus').textContent = '✗ ' + result.error + ' — try again';
       return;
     }
 

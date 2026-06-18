@@ -141,21 +141,27 @@ def generate_frames():
 
 _FALLBACK_MODEL = "gemini-2.5-flash"
 
-def gemini_generate(client, model, contents, retries=5):
+def gemini_generate(client, model, contents, retries=2):
     """Call Gemini with exponential backoff and model fallback on overload."""
     import time as _time
     last_err = None
     for attempt in range(retries + 1):
-        # After half the retries, fall back to the lighter model
-        active_model = _FALLBACK_MODEL if attempt >= (retries // 2) else model
+        # After first retry, fall back to the lighter model
+        active_model = _FALLBACK_MODEL if attempt >= 1 else model
         try:
-            return client.models.generate_content(model=active_model, contents=contents)
+            return client.models.generate_content(
+                model=active_model,
+                contents=contents,
+                config=genai_types.GenerateContentConfig(
+                    http_options=genai_types.HttpOptions(timeout=25000)
+                )
+            )
         except Exception as e:
             last_err = e
             err_str = str(e)
             is_overload = any(x in err_str for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded"))
             if attempt < retries and is_overload:
-                wait = min(2 ** attempt, 30)  # 1s, 2s, 4s, 8s, 16s … cap at 30s
+                wait = min(2 ** attempt, 8)  # 1s, 2s max — keep well under Railway timeout
                 _time.sleep(wait)
                 continue
             raise
