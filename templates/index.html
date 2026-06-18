@@ -605,33 +605,45 @@
 <!-- Upgrade Modal -->
 <div class="cl-modal-overlay" id="upgradeModal">
   <div class="cl-modal" style="text-align:center; max-width:400px;">
-    <div style="font-size:40px; margin-bottom:12px;">⚡</div>
-    <h3 style="margin-bottom:6px;">You've hit the free limit</h3>
-    <p style="font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6;">
-      Free plan includes <strong style="color:var(--text)">10 scans/day</strong>.<br>
-      Upgrade to <strong style="color:var(--green)">CardScan Pro</strong> for unlimited scans & eBay values.
+    <button onclick="document.getElementById('upgradeModal').classList.remove('open')" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;">✕</button>
+
+    <div style="font-size:44px; margin-bottom:10px;">🔓</div>
+    <h3 style="font-size:20px; margin-bottom:6px;">Unlock CardScan Pro</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:18px; line-height:1.6;">
+      You've used all your free scans for today.<br>Go Pro for unlimited access.
     </p>
+
+    <!-- Feature list -->
+    <div style="text-align:left; background:rgba(0,230,118,0.05); border:1px solid rgba(0,230,118,0.15); border-radius:12px; padding:14px 16px; margin-bottom:18px;">
+      <div style="font-size:13px; color:var(--text); line-height:2;">
+        <div>✅ <strong>Unlimited scans</strong> every day</div>
+        <div>✅ <strong>Instant eBay values</strong> on every card</div>
+        <div>✅ <strong>Bulk scan</strong> multiple cards at once</div>
+        <div>✅ <strong>Google Sheets</strong> auto-logging</div>
+        <div>✅ <strong>Raw &amp; graded</strong> card support</div>
+      </div>
+    </div>
 
     <!-- Plan toggle -->
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
-      <div id="planMonthly" onclick="selectPlan('monthly')" style="border:2px solid var(--green); border-radius:12px; padding:14px; cursor:pointer; background:rgba(0,230,118,0.06);">
+      <div id="planMonthly" onclick="selectPlan('monthly')" style="border:2px solid var(--border); border-radius:12px; padding:14px; cursor:pointer;">
         <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Monthly</div>
         <div style="font-size:22px; font-weight:800; color:var(--text);">$7.99</div>
         <div style="font-size:11px; color:var(--muted);">per month</div>
       </div>
-      <div id="planAnnual" onclick="selectPlan('annual')" style="border:2px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; position:relative;">
-        <div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--green); color:#000; font-size:10px; font-weight:800; padding:2px 8px; border-radius:20px; white-space:nowrap;">SAVE $37</div>
+      <div id="planAnnual" onclick="selectPlan('annual')" style="border:2px solid var(--green); border-radius:12px; padding:14px; cursor:pointer; position:relative; background:rgba(0,230,118,0.06);">
+        <div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--green); color:#000; font-size:10px; font-weight:800; padding:2px 8px; border-radius:20px; white-space:nowrap;">BEST VALUE</div>
         <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Annual</div>
         <div style="font-size:22px; font-weight:800; color:var(--text);">$59</div>
-        <div style="font-size:11px; color:var(--muted);">per year</div>
+        <div style="font-size:11px; color:var(--green); font-weight:600;">save $37/yr</div>
       </div>
     </div>
 
-    <button onclick="startCheckout()" style="width:100%; padding:14px; background:var(--green); color:#000; border:none; border-radius:12px; font-weight:800; font-size:16px; cursor:pointer; margin-bottom:10px;">
-      Upgrade to Pro
+    <button onclick="startCheckout()" style="width:100%; padding:15px; background:var(--green); color:#000; border:none; border-radius:12px; font-weight:800; font-size:16px; cursor:pointer; margin-bottom:10px; letter-spacing:0.3px;">
+      Upgrade to Pro ⚡
     </button>
-    <button onclick="document.getElementById('upgradeModal').classList.remove('open')" style="width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); cursor:pointer; font-size:14px;">
-      Maybe Later
+    <button onclick="document.getElementById('upgradeModal').classList.remove('open')" style="width:100%; padding:11px; background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:13px;">
+      Maybe later
     </button>
   </div>
 </div>
@@ -1499,7 +1511,7 @@
     a.click();
   }
 
-  let selectedPlan = 'monthly';
+  let selectedPlan = 'annual';
 
   function selectPlan(plan) {
     selectedPlan = plan;
