@@ -890,16 +890,18 @@
         : '';
     }
 
-    // Card Ladder tab — build real search URL from card data
-    const clQueryParts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
-    const clQuery = clQueryParts.join(' ');
+    // Card Ladder tab — cert search for graded, name search for raw
+    const clQuery = (d.cert && d.cert !== '—')
+      ? d.cert.replace(/\s+/g, '')
+      : [d.year, d.name, d.set, d.parallel].filter(Boolean).join(' ');
+
     if (clQuery) {
       lastCardQuery = clQuery;
-
-      // Build Card Ladder search URL
       const clSearchUrl = 'https://www.cardladder.com/cards?query=' + encodeURIComponent(clQuery);
       document.getElementById('clLink').href = clSearchUrl;
-      document.getElementById('clCardName').textContent = clQuery;
+      document.getElementById('clCardName').textContent = (d.cert && d.cert !== '—')
+        ? 'Cert #' + d.cert
+        : clQuery;
 
       // Show cert number for graded cards — user can paste into CL search
       if (d.cert) {
@@ -1287,6 +1289,21 @@
   }
   // ── End Bulk Scan ─────────────────────────────────────────────────────────
 
+  function openCardLadder(d) {
+    let query;
+    if (d.cert && d.cert !== '—') {
+      // Graded card — search by cert number (most precise)
+      query = d.cert.replace(/\s+/g, '');
+    } else {
+      // Raw card — search by year + name + set + parallel
+      const parts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+      if (!parts.length) return;
+      query = parts.join(' ');
+    }
+    const url = 'https://www.cardladder.com/cards?query=' + encodeURIComponent(query);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
   // Friendly error messages based on error content
   function friendlyError(errMsg) {
     const e = (errMsg || '').toLowerCase();
@@ -1371,6 +1388,9 @@
     cardEl.style.display = d.card ? 'block' : 'none';
 
     updateValuePanel(d);
+
+    // Auto-open Card Ladder search after scan
+    openCardLadder(d);
 
     if (window.innerWidth <= 768)
       document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
