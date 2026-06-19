@@ -438,6 +438,12 @@
       </div>
     </div>
 
+    <!-- Raw / Graded toggle -->
+    <div style="display:flex; gap:6px; margin-top:10px;">
+      <button id="modeRaw" onclick="setScanMode('raw')" style="flex:1; padding:8px; border-radius:8px; border:2px solid var(--green); background:var(--green); color:#000; font-weight:800; font-size:13px; cursor:pointer;">🃏 Raw</button>
+      <button id="modeGraded" onclick="setScanMode('graded')" style="flex:1; padding:8px; border-radius:8px; border:2px solid var(--border); background:transparent; color:var(--muted); font-weight:800; font-size:13px; cursor:pointer;">🏆 Graded</button>
+    </div>
+
     <!-- Inline scan button (desktop only) -->
     <div style="display:flex; gap:8px; margin-top:8px; align-items:center;" class="scan-btn-inline">
       <button class="scan-btn" id="scanBtn" onclick="scanCard()" style="flex:1;">📷 &nbsp; SCAN CARD</button>
@@ -774,6 +780,31 @@
   let scanHistory = [];
   let totalScanned = 0;
   let totalGraded = 0;
+  let scanMode = 'raw'; // 'raw' or 'graded'
+
+  function setScanMode(mode) {
+    scanMode = mode;
+    const rawBtn    = document.getElementById('modeRaw');
+    const gradedBtn = document.getElementById('modeGraded');
+    if (mode === 'raw') {
+      rawBtn.style.background    = 'var(--green)';
+      rawBtn.style.borderColor   = 'var(--green)';
+      rawBtn.style.color         = '#000';
+      gradedBtn.style.background = 'transparent';
+      gradedBtn.style.borderColor= 'var(--border)';
+      gradedBtn.style.color      = 'var(--muted)';
+      document.getElementById('statusBar').textContent = 'Raw mode — hold card in frame and press SCAN';
+    } else {
+      gradedBtn.style.background = 'var(--green)';
+      gradedBtn.style.borderColor= 'var(--green)';
+      gradedBtn.style.color      = '#000';
+      rawBtn.style.background    = 'transparent';
+      rawBtn.style.borderColor   = 'var(--border)';
+      rawBtn.style.color         = 'var(--muted)';
+      document.getElementById('statusBar').textContent = 'Graded mode — hold slab in frame and press SCAN';
+    }
+  }
+
   let totalValue = 0;
   let totalPaid = 0;
   let activeTab = 'ebay';
@@ -1473,7 +1504,7 @@
       });
 
       const result = await doScanRequest(
-        { image: imageData, is_upload: true, cl_token: clToken, sheet_id: userSheetUrl },
+        { image: imageData, is_upload: true, cl_token: clToken, sheet_id: userSheetUrl, scan_mode: scanMode },
         status
       );
 
@@ -1537,7 +1568,7 @@
     try {
       const imageData = captureFrame();
       const result = await doScanRequest(
-        { image: imageData, cl_token: clToken, sheet_id: userSheetUrl },
+        { image: imageData, cl_token: clToken, sheet_id: userSheetUrl, scan_mode: scanMode },
         status
       );
 
