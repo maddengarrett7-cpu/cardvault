@@ -890,26 +890,15 @@
         : '';
     }
 
-    // Card Ladder tab — cert lookup for graded, name search for raw
-    const hasCert = d.cert && d.cert !== '—';
-    let clSearchUrl;
-    if (hasCert) {
-      const cert = d.cert.replace(/\s+/g, '');
-      const grade = (d.grade || '').toLowerCase();
-      const grader = grade.includes('bgs') ? 'bgs' : grade.includes('sgc') ? 'sgc' : grade.includes('cgc') ? 'cgc' : 'psa';
-      const gradeNum = (d.grade || '').match(/[\d.]+/)?.[0] || '10';
-      const clGrade = 'g' + gradeNum.replace('.', '');
-      clSearchUrl = `https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=grader%3A${grader}%7Cgrade%3A${clGrade}%7CprofileId%3A${grader}-${cert}`;
-    } else {
-      const parts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
-      clSearchUrl = parts.length ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&query=' + encodeURIComponent(parts.join(' ')) : null;
-    }
-    const clQuery = hasCert ? d.cert : [d.year, d.name, d.set, d.parallel].filter(Boolean).join(' ');
+    // Card Ladder tab — search by year + name + set + parallel using &q=
+    const clParts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+    const clQuery = clParts.join(' ');
+    const clSearchUrl = clParts.length ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(clQuery) : null;
 
     if (clQuery) {
       lastCardQuery = clQuery;
       document.getElementById('clLink').href = clSearchUrl || '#';
-      document.getElementById('clCardName').textContent = hasCert ? 'Cert #' + d.cert : clQuery;
+      document.getElementById('clCardName').textContent = clQuery;
 
       // Show cert number for graded cards — user can paste into CL search
       if (d.cert) {
@@ -1298,24 +1287,10 @@
   // ── End Bulk Scan ─────────────────────────────────────────────────────────
 
   function openCardLadder(d) {
-    let url;
-    if (d.cert && d.cert !== '—') {
-      // Graded card — use exact CL sales history format with cert profileId
-      const cert = d.cert.replace(/\s+/g, '');
-      const grade = (d.grade || '').toLowerCase();
-      const grader = grade.includes('bgs') ? 'bgs'
-                   : grade.includes('sgc') ? 'sgc'
-                   : grade.includes('cgc') ? 'cgc'
-                   : 'psa';
-      const gradeNum = (d.grade || '').match(/[\d.]+/)?.[0] || '10';
-      const clGrade = 'g' + gradeNum.replace('.', '');
-      url = `https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=grader%3A${grader}%7Cgrade%3A${clGrade}%7CprofileId%3A${grader}-${cert}`;
-    } else {
-      // Raw card — search by year + name + set + parallel
-      const parts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
-      if (!parts.length) return;
-      url = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&query=' + encodeURIComponent(parts.join(' '));
-    }
+    // Card Ladder searches by card name/details using &q= parameter
+    const parts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+    if (!parts.length) return;
+    const url = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(parts.join(' '));
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
@@ -1547,18 +1522,8 @@
     }
     list.innerHTML = scanHistory.map(d => {
       const psaUrl = null;
-      let clUrl = null;
-      if (d.cert && d.cert !== '—') {
-        const cert = d.cert.replace(/\s+/g, '');
-        const grade = (d.grade || '').toLowerCase();
-        const grader = grade.includes('bgs') ? 'bgs' : grade.includes('sgc') ? 'sgc' : grade.includes('cgc') ? 'cgc' : 'psa';
-        const gradeNum = (d.grade || '').match(/[\d.]+/)?.[0] || '10';
-        const clGrade = 'g' + gradeNum.replace('.', '');
-        clUrl = `https://app.cardladder.com/sales-history?direction=desc&sort=date&filters=grader%3A${grader}%7Cgrade%3A${clGrade}%7CprofileId%3A${grader}-${cert}`;
-      } else {
-        const parts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
-        if (parts.length) clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&query=' + encodeURIComponent(parts.join(' '));
-      }
+      const clParts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+      const clUrl = clParts.length ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(clParts.join(' ')) : null;
       const ebayUrl = d.ebay_search_url || null;
 
       return `
