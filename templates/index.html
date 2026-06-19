@@ -726,6 +726,9 @@
       <h2 style="font-size:18px; font-weight:800; margin:0;">⚡ Bulk Scan Review</h2>
       <button onclick="closeBulkModal()" style="background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer;">✕</button>
     </div>
+    <div id="bulkSheetWarning" style="display:none; background:#2a1a1a; border:1px solid #ff6b6b; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:13px; color:#ff6b6b;">
+      ⚠️ No Google Sheet connected — your cards won't save anywhere. <button onclick="closeBulkModal(); openSettings();" style="background:none; border:none; color:#ff6b6b; text-decoration:underline; cursor:pointer; font-size:13px; padding:0;">Connect one now →</button>
+    </div>
     <div id="bulkStatus" style="font-size:14px; color:var(--muted); margin-bottom:16px;"></div>
     <div id="bulkCardList" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;"></div>
     <div id="bulkPriceSection" style="display:none; margin-bottom:20px;">
@@ -1201,6 +1204,7 @@
     input.value = '';
 
     document.getElementById('bulkModal').style.display = 'block';
+    document.getElementById('bulkSheetWarning').style.display = userSheetUrl ? 'none' : 'block';
     document.getElementById('bulkStatus').textContent = '🔍 Detecting cards with AI...';
     document.getElementById('bulkCardList').innerHTML = '';
     document.getElementById('bulkPriceSection').style.display = 'none';
@@ -1300,8 +1304,16 @@
 
   async function bulkConfirm() {
     if (!bulkCards.length) return;
+
+    // Block if no sheet connected
+    if (!userSheetUrl) {
+      document.getElementById('bulkStatus').textContent = '📊 No Google Sheet connected — tap "Connect Sheets" in the top menu first.';
+      document.getElementById('bulkStatus').style.color = '#ff6b6b';
+      return;
+    }
+
     document.getElementById('bulkConfirmBtn').disabled = true;
-    document.getElementById('bulkStatus').textContent = `⏳ Sheeting ${bulkCards.length} cards...`;
+    document.getElementById('bulkStatus').textContent = `⏳ Adding ${bulkCards.length} cards to your sheet...`;
 
     const result = await apiFetch('/scan-bulk-confirm', {
       method: 'POST',
@@ -1311,6 +1323,7 @@
 
     if (result.success) {
       document.getElementById('bulkStatus').textContent = `✓ ${result.message || result.sheeted + ' cards added to your sheet!'}`;
+      document.getElementById('bulkStatus').style.color = 'var(--green)';
       document.getElementById('bulkCardList').innerHTML = '';
       document.getElementById('bulkPriceSection').style.display = 'none';
       bulkCards = [];
