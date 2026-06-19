@@ -1094,6 +1094,58 @@ def value():
     })
 
 
+@app.route('/update-value', methods=['POST'])
+@login_required
+def update_value():
+    """Update the value column on the most recently written sheet row."""
+    try:
+        body = request.get_json()
+        value = body.get('value', '').strip()
+        card_desc = body.get('card', '').strip()
+        custom_sheet = body.get('sheet_id', '')
+        custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
+
+        user = get_user_by_id(session['user_id'])
+        sheet_id = custom_sheet_id or (user.get('google_sheet_id') if user else None) or SPREADSHEET_ID
+        if not sheet_id:
+            return jsonify({'success': False, 'error': 'No Google Sheet connected.'})
+
+        svc = get_user_sheets_service(user)
+        tab = get_first_sheet_tab(sheet_id, svc)
+        headers = get_sheet_headers(sheet_id, svc)
+        mapping = detect_column_mapping(headers) if headers else {}
+
+        # Find the value column index
+        value_col = mapping.get('value')
+        if value_col is None:
+            return jsonify({'success': False, 'error': 'No value/price column found in your sheet.'})
+
+        # Find the last row by getting all data
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=f"{tab}!A:Z"
+        ).execute()
+        rows = result.get('values', [])
+        last_row = len(rows)  # 1-indexed, includes header
+
+        if last_row < 2:
+            return jsonify({'success': False, 'error': 'No cards in sheet yet.'})
+
+        # Write value to last row
+        col_letter = chr(ord('A') + value_col)
+        cell = f"{tab}!{col_letter}{last_row}"
+        svc.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range=cell,
+            valueInputOption='USER_ENTERED',
+            body={'values': [[f'${value}']]}
+        ).execute()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/scan', methods=['POST'])
 @login_required
 def scan():

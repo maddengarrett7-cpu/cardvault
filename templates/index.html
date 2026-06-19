@@ -498,6 +498,23 @@
         <span class="result-value editable" id="r-hp" onclick="editField('r-hp')" title="Tap to edit">—</span>
       </div>
       <div class="card-full editable" id="r-card" onclick="editField('r-card')" title="Tap to edit"></div>
+
+      <!-- Value input — pushes to sheet -->
+      <div id="valueInputRow" style="display:none; margin-top:14px;">
+        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">My Value — saves to sheet</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div style="position:relative; flex:1;">
+            <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--muted); font-weight:700;">$</span>
+            <input id="myValueInput" type="number" step="0.01" min="0" placeholder="0.00"
+              style="width:100%; padding:10px 10px 10px 22px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:15px; font-weight:700; outline:none;"
+              onfocus="this.style.borderColor='var(--green)'"
+              onblur="this.style.borderColor='var(--border)'"
+              onkeydown="if(event.key==='Enter') saveMyValue()">
+          </div>
+          <button onclick="saveMyValue()" style="padding:10px 16px; background:var(--green); color:#000; border:none; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; white-space:nowrap;">Save ↗</button>
+        </div>
+        <div id="myValueStatus" style="font-size:12px; color:var(--green); margin-top:6px; display:none;">✓ Saved to sheet!</div>
+      </div>
     </div>
 
     <div class="panel-box" id="valuePanel" style="display:none;">
@@ -550,19 +567,21 @@
           <a id="clLink" href="#" target="_blank" rel="noopener noreferrer" style="
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 14px 16px;
-            background: var(--surface2);
-            border: 1px solid var(--green);
-            border-radius: 12px;
+            justify-content: center;
+            gap: 10px;
+            padding: 16px;
+            background: #1a2e1a;
+            border: 2px solid var(--green);
+            border-radius: 14px;
             color: var(--green);
-            font-size: 14px;
-            font-weight: 700;
+            font-size: 17px;
+            font-weight: 800;
             text-decoration: none;
             margin-bottom: 10px;
+            letter-spacing: 0.3px;
           ">
-            <span>🔍 Search on Card Ladder</span>
-            <span style="font-size:16px;">↗</span>
+            <img src="https://www.cardladder.com/favicon.ico" style="width:20px;height:20px;border-radius:4px;" onerror="this.style.display='none'">
+            <span>Search Card Ladder ↗</span>
           </a>
 
           <!-- Cert number copy (graded cards only) -->
@@ -1286,6 +1305,33 @@
   }
   // ── End Bulk Scan ─────────────────────────────────────────────────────────
 
+  async function saveMyValue() {
+    const val = document.getElementById('myValueInput').value.trim();
+    if (!val) return;
+    const card = scanHistory[0];
+    if (!card) return;
+    const statusEl = document.getElementById('myValueStatus');
+    statusEl.style.display = 'none';
+    try {
+      const res = await apiFetch('/update-value', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: val, card: card.card || '', sheet_id: userSheetUrl })
+      });
+      if (res.success) {
+        statusEl.textContent = '✓ Saved to sheet!';
+        statusEl.style.color = 'var(--green)';
+      } else {
+        statusEl.textContent = '✗ ' + (res.error || 'Could not save');
+        statusEl.style.color = '#ff6b6b';
+      }
+    } catch(e) {
+      statusEl.textContent = '✗ ' + friendlyError(e.message);
+      statusEl.style.color = '#ff6b6b';
+    }
+    statusEl.style.display = 'block';
+  }
+
   function openCardLadder(d) {
     // Card Ladder searches by card name/details using &q= parameter
     const parts = [d.year, d.name, d.set, d.parallel, d.grade].filter(Boolean);
@@ -1381,6 +1427,11 @@
 
     // Auto-open Card Ladder search after scan
     openCardLadder(d);
+
+    // Show value input box
+    document.getElementById('myValueInput').value = d.ebay_avg ? d.ebay_avg.toFixed(2) : '';
+    document.getElementById('myValueStatus').style.display = 'none';
+    document.getElementById('valueInputRow').style.display = 'block';
 
     if (window.innerWidth <= 768)
       document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
