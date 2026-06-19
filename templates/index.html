@@ -1444,7 +1444,7 @@
     return result;
   }
 
-  function applyScanResult(d, imageData, status) {
+  function applyScanResult(d, imageData, status, result) {
     const isTCG = d.card_type === 'tcg';
     document.getElementById('label-name').textContent = isTCG ? 'Card Name' : 'Player';
     document.getElementById('row-year').style.display    = isTCG ? 'none' : 'flex';
@@ -1492,8 +1492,13 @@
     scanHistory.unshift(d);
     updateHistory();
 
-    status.className = 'status-bar success';
-    status.textContent = userSheetUrl ? '✓ Scanned & synced to your Google Sheet!' : '✓ Card scanned!';
+    if (result && result.sheet_warning) {
+      status.className = 'status-bar error';
+      status.textContent = '⚠️ Scanned but sheet error: ' + result.sheet_warning;
+    } else {
+      status.className = 'status-bar success';
+      status.textContent = userSheetUrl ? '✓ Scanned & synced to your Google Sheet!' : '✓ Card scanned!';
+    }
     showFlipPrompt(d);
   }
 
@@ -1532,7 +1537,7 @@
       if (result.success) {
         const d = result.data;
         d.photo = 'data:image/jpeg;base64,' + imageData;
-        applyScanResult(d, imageData, status);
+        applyScanResult(d, imageData, status, result);
       } else {
         status.className = 'status-bar error';
         status.textContent = '✗ ' + friendlyError(result.error);
@@ -1596,7 +1601,7 @@
       if (result.success) {
         const d = result.data;
         d.photo = 'data:image/jpeg;base64,' + imageData;
-        applyScanResult(d, imageData, status);
+        applyScanResult(d, imageData, status, result);
       } else {
         status.className = 'status-bar error';
         status.textContent = '✗ ' + friendlyError(result.error);

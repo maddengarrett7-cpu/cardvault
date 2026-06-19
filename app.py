@@ -498,7 +498,6 @@ def get_user_sheets_service(user):
 
 def append_to_sheet(data, custom_sheet_id=None, user=None):
     user = user or {}
-    svc = get_user_sheets_service(user)
 
     # Use user's saved sheet, then custom passed in, then fallback
     sheet_id = (
@@ -507,10 +506,23 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
         or SPREADSHEET_ID
     )
     if not sheet_id:
-        return  # No sheet configured — skip silently
+        raise Exception("No Google Sheet connected. Tap 'Connect Sheets' in the menu to set one up.")
 
-    tab = get_first_sheet_tab(sheet_id, svc)
-    headers = get_sheet_headers(sheet_id, svc)
+    try:
+        svc = get_user_sheets_service(user)
+    except Exception as e:
+        raise Exception(f"Could not connect to Google Sheets: {str(e)}")
+
+    try:
+        tab = get_first_sheet_tab(sheet_id, svc)
+        headers = get_sheet_headers(sheet_id, svc)
+    except Exception as e:
+        err = str(e)
+        if "403" in err or "permission" in err.lower():
+            raise Exception("Sheet permission denied — make sure the sheet is shared with the CardScan service account.")
+        if "404" in err:
+            raise Exception("Sheet not found — check that the Google Sheet URL is correct.")
+        raise Exception(f"Could not read sheet: {err}")
 
     if headers:
         mapping = detect_column_mapping(headers)
@@ -526,12 +538,20 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
             value,
         ]]
 
-    svc.spreadsheets().values().append(
+    try:
+        svc.spreadsheets().values().append(
         spreadsheetId=sheet_id,
         range=f"{tab}!A1",
         valueInputOption="USER_ENTERED",
         body={"values": row},
-    ).execute()
+        ).execute()
+    except Exception as e:
+        err = str(e)
+        if "403" in err or "permission" in err.lower():
+            raise Exception("Sheet permission denied — make sure the sheet is shared with the CardScan service account.")
+        if "404" in err:
+            raise Exception("Sheet not found — check that the Google Sheet URL is correct.")
+        raise Exception(f"Could not write to sheet: {err}")
 
 def lookup_psa_cert(cert_number):
     """Fetch PSA cert info from PSA's public cert verification page."""
@@ -1282,8 +1302,14 @@ def scan():
         user = get_user_by_id(session['user_id'])
         custom_sheet = body.get("sheet_id", "") if body else ""
         custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
-        append_to_sheet(data, custom_sheet_id, user=user)
-        return jsonify({'success': True, 'data': data})
+        sheet_warning = None
+        try:
+            append_to_sheet(data, custom_sheet_id, user=user)
+        except Exception as sheet_err:
+            app.logger.warning(f"Sheet write failed: {sheet_err}")
+            sheet_warning = str(sheet_err)
+
+        return jsonify({'success': True, 'data': data, 'sheet_warning': sheet_warning})
     except Exception as e:
         err = str(e)
         app.logger.error(f"Scan error: {err}")
