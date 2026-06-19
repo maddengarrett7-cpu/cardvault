@@ -1261,7 +1261,7 @@
     });
 
     if (result.success) {
-      document.getElementById('bulkStatus').textContent = `✓ ${result.sheeted} cards added to your sheet!`;
+      document.getElementById('bulkStatus').textContent = `✓ ${result.message || result.sheeted + ' cards added to your sheet!'}`;
       document.getElementById('bulkCardList').innerHTML = '';
       document.getElementById('bulkPriceSection').style.display = 'none';
       bulkCards = [];

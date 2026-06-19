@@ -1293,11 +1293,30 @@ def scan_bulk_confirm():
         cards = body.get('cards', [])
         custom_sheet = body.get('sheet_id', '')
         custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
+
+        # Make sure there's actually a sheet to write to
+        sheet_id = custom_sheet_id or user.get("google_sheet_id") or SPREADSHEET_ID
+        if not sheet_id:
+            return jsonify({'success': False, 'error': 'No Google Sheet connected. Go to Connect Sheets in the settings to set one up.'})
+
         sheeted = 0
+        errors = []
         for card in cards:
-            append_to_sheet(card, custom_sheet_id, user=user)
-            sheeted += 1
-        return jsonify({'success': True, 'sheeted': sheeted})
+            try:
+                append_to_sheet(card, custom_sheet_id, user=user)
+                sheeted += 1
+            except Exception as card_err:
+                errors.append(str(card_err))
+
+        if sheeted == 0:
+            return jsonify({'success': False, 'error': f'Could not write to sheet: {errors[0] if errors else "Unknown error"}'})
+
+        return jsonify({
+            'success': True,
+            'sheeted': sheeted,
+            'errors': len(errors),
+            'message': f'{sheeted} cards added to your sheet!' + (f' ({len(errors)} failed)' if errors else '')
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
