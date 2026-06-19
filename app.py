@@ -1169,23 +1169,38 @@ def scan():
             if not ret:
                 return jsonify({'success': False, 'error': 'Could not capture image'})
 
-        # Use higher quality for uploads so Gemini can read fine print
-        data = analyze_card(frame, quality=95 if is_upload else 85)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # Second pass for uploads: always run label analysis first.
-        # The first pass often misses the grade on graded slabs — label pass corrects it.
+        # Run first pass and second pass IN PARALLEL to cut scan time in half
         if is_upload and raw_image_bytes:
-            try:
-                label_data = analyze_label(raw_image_bytes)
-                # If label found a real grade (not raw), it's a graded slab — trust the label
-                label_grade = label_data.get("grade", "") or ""
-                if label_grade and label_grade.lower() not in ("raw", ""):
-                    for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
-                        if label_data.get(field):
-                            data[field] = label_data[field]
-                    data["_graded_via_label"] = True
-            except Exception as label_err:
-                app.logger.warning(f"Label second pass failed: {label_err}")
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            frame_bytes = buf.tobytes()
+
+            def run_card():
+                return analyze_card(frame, quality=95)
+
+            def run_label():
+                return analyze_label(raw_image_bytes)
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_card  = executor.submit(run_card)
+                future_label = executor.submit(run_label)
+
+                data = future_card.result()
+
+                try:
+                    label_data = future_label.result()
+                    label_grade = label_data.get("grade", "") or ""
+                    if label_grade and label_grade.lower() not in ("raw", ""):
+                        for field in ["name", "year", "brand", "set", "parallel", "grade", "cert", "card"]:
+                            if label_data.get(field):
+                                data[field] = label_data[field]
+                        data["_graded_via_label"] = True
+                except Exception as label_err:
+                    app.logger.warning(f"Label second pass failed: {label_err}")
+        else:
+            # Camera scan — single pass only
+            data = analyze_card(frame, quality=85)
 
         is_raw_card = (not data.get("grade") or data.get("grade", "").lower() == "raw")
 
@@ -1193,7 +1208,6 @@ def scan():
         if is_raw_card and raw_image_bytes:
             try:
                 raw_data = analyze_raw_card(raw_image_bytes)
-                # Second pass only fills nulls — two-call first pass is authoritative
                 for field in ["year", "brand", "set", "parallel", "serial", "card_number", "sport"]:
                     if raw_data.get(field) and not data.get(field):
                         data[field] = raw_data[field]
