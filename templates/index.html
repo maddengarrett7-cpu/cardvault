@@ -1532,8 +1532,10 @@
     }
     list.innerHTML = scanHistory.map(d => {
       const psaUrl = null;
-      let clUrl = null;
-      clUrl = 'https://app.cardladder.com/sales-history?direction=desc&sort=date';
+      const clQuery = (d.cert && d.cert !== '—')
+        ? d.cert.replace(/\s+/g, '')
+        : [d.year, d.name, d.set, d.parallel].filter(Boolean).join(' ');
+      const clUrl = clQuery ? 'https://www.cardladder.com/cards?query=' + encodeURIComponent(clQuery) : null;
       const ebayUrl = d.ebay_search_url || null;
 
       return `
