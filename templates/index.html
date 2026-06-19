@@ -891,7 +891,7 @@
     }
 
     // Card Ladder tab — search by year + name + set + parallel using &q=
-    const clParts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+    const clParts = [d.year, d.name, d.set, d.parallel, d.grade].filter(Boolean);
     const clQuery = clParts.join(' ');
     const clSearchUrl = clParts.length ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(clQuery) : null;
 
@@ -1288,7 +1288,7 @@
 
   function openCardLadder(d) {
     // Card Ladder searches by card name/details using &q= parameter
-    const parts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+    const parts = [d.year, d.name, d.set, d.parallel, d.grade].filter(Boolean);
     if (!parts.length) return;
     const url = 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(parts.join(' '));
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -1522,7 +1522,7 @@
     }
     list.innerHTML = scanHistory.map(d => {
       const psaUrl = null;
-      const clParts = [d.year, d.name, d.set, d.parallel].filter(Boolean);
+      const clParts = [d.year, d.name, d.set, d.parallel, d.grade].filter(Boolean);
       const clUrl = clParts.length ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(clParts.join(' ')) : null;
       const ebayUrl = d.ebay_search_url || null;
 
