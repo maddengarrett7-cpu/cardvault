@@ -635,6 +635,10 @@ def login():
             create_session(user['id'], token)
             session['user_id'] = user['id']
             session['session_token'] = token
+            remember = request.form.get('remember_me') == '1'
+            if remember:
+                session.permanent = True
+                app.permanent_session_lifetime = timedelta(days=30)
             return redirect(url_for('index'))
         return render_template('login.html', error='Invalid email or password', mode='login')
     return render_template('login.html', mode='login')

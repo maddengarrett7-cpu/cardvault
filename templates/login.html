@@ -147,7 +147,11 @@
       <label>Password</label>
       <input type="password" name="password" placeholder="••••••••" required>
       {% if mode == 'login' %}
-      <div style="text-align:right; margin-top:-8px; margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:-8px; margin-bottom:16px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; color:#888;">
+          <input type="checkbox" name="remember_me" value="1" style="accent-color:var(--green); width:14px; height:14px;">
+          Remember me
+        </label>
         <a href="/forgot-password" style="font-size:13px; color:#888; text-decoration:none;">Forgot password?</a>
       </div>
       {% endif %}
