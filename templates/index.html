@@ -1287,10 +1287,115 @@
   }
   // ── End Bulk Scan ─────────────────────────────────────────────────────────
 
+  // Friendly error messages based on error content
+  function friendlyError(errMsg) {
+    const e = (errMsg || '').toLowerCase();
+    if (e.includes('busy') || e.includes('503') || e.includes('unavailable') || e.includes('overload'))
+      return '⚠️ Scanner is busy right now — tap to try again';
+    if (e.includes('limit reached') || e.includes('limit_reached'))
+      return errMsg; // show as-is, upgrade modal handles it
+    if (e.includes('network') || e.includes('failed to fetch'))
+      return '📡 Connection lost — check your internet and try again';
+    if (e.includes('sheet') || e.includes('spreadsheet'))
+      return '📊 Could not write to your sheet — try reconnecting Google Sheets in settings';
+    if (e.includes('could not read') || e.includes('json') || e.includes('parse'))
+      return '📷 Couldn\'t read the card — try better lighting or a clearer photo';
+    if (e.includes('session') || e.includes('login'))
+      return '🔒 Session expired — please log in again';
+    return '⚠️ Something went wrong — tap to try again';
+  }
+
+  // Shared scan API call with one auto-retry on transient errors
+  async function doScanRequest(payload, statusEl, retryLabel) {
+    const isTransient = (msg) => {
+      const m = (msg || '').toLowerCase();
+      return m.includes('busy') || m.includes('503') || m.includes('unavailable') || m.includes('overload') || m.includes('network') || m.includes('server error');
+    };
+
+    let result;
+    try {
+      result = await apiFetch('/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      if (isTransient(e.message)) {
+        statusEl.textContent = '🔄 Retrying...';
+        await new Promise(r => setTimeout(r, 2000));
+        result = await apiFetch('/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    // Auto-retry once on transient server errors
+    if (result && !result.success && !result.limit_reached && isTransient(result.error)) {
+      statusEl.textContent = '🔄 Retrying...';
+      await new Promise(r => setTimeout(r, 2000));
+      result = await apiFetch('/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    return result;
+  }
+
+  function applyScanResult(d, imageData, status) {
+    const isTCG = d.card_type === 'tcg';
+    document.getElementById('label-name').textContent = isTCG ? 'Card Name' : 'Player';
+    document.getElementById('row-year').style.display    = isTCG ? 'none' : 'flex';
+    document.getElementById('row-cardnum').style.display = isTCG ? 'flex' : 'none';
+    document.getElementById('row-rarity').style.display  = isTCG ? 'flex' : 'none';
+    document.getElementById('row-hp').style.display      = (isTCG && d.hp) ? 'flex' : 'none';
+
+    document.getElementById('r-name').textContent     = d.name  || '—';
+    document.getElementById('r-year').textContent     = d.year  || '—';
+    document.getElementById('r-set').textContent      = d.set   || '—';
+    document.getElementById('r-grade').textContent    = d.grade || '—';
+    document.getElementById('r-cert').textContent     = d.cert  || '—';
+    document.getElementById('r-serial').textContent   = d.serial || '—';
+    document.getElementById('row-serial').style.display = d.serial ? 'flex' : 'none';
+    document.getElementById('r-cardnum').textContent  = d.card_number || '—';
+    document.getElementById('r-rarity').textContent   = d.rarity || '—';
+    document.getElementById('r-hp').textContent       = d.hp ? d.hp + ' HP' : '—';
+
+    const cardEl = document.getElementById('r-card');
+    cardEl.textContent = d.card || '';
+    cardEl.style.display = d.card ? 'block' : 'none';
+
+    updateValuePanel(d);
+
+    if (window.innerWidth <= 768)
+      document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    totalScanned++;
+    if (d.grade && d.grade !== 'Raw') totalGraded++;
+    if (d.ebay_avg) totalValue += d.ebay_avg;
+    if (d.paid) { const p = parseFloat(d.paid.replace(/[^0-9.]/g,'')); if (!isNaN(p)) totalPaid += p; }
+    document.getElementById('stat-total').textContent  = totalScanned;
+    document.getElementById('stat-graded').textContent = totalGraded;
+    document.getElementById('stat-value').textContent  = '$' + totalValue.toFixed(2);
+    document.getElementById('stat-paid').textContent   = '$' + totalPaid.toFixed(2);
+
+    scanHistory.unshift(d);
+    updateHistory();
+
+    status.className = 'status-bar success';
+    status.textContent = userSheetUrl ? '✓ Scanned & synced to your Google Sheet!' : '✓ Card scanned!';
+    showFlipPrompt(d);
+  }
+
   async function scanUpload(input) {
     if (!input.files || !input.files[0]) return;
     const file = input.files[0];
-    input.value = ''; // reset so same file can be selected again
+    input.value = '';
 
     const status = document.getElementById('statusBar');
     setScanBtns(true, 'Analyzing...');
@@ -1306,11 +1411,10 @@
         reader.readAsDataURL(file);
       });
 
-      const result = await apiFetch('/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData, is_upload: true, cl_token: clToken, sheet_id: userSheetUrl })
-      });
+      const result = await doScanRequest(
+        { image: imageData, is_upload: true, cl_token: clToken, sheet_id: userSheetUrl },
+        status
+      );
 
       if (result.limit_reached) {
         status.className = 'status-bar error';
@@ -1323,57 +1427,14 @@
       if (result.success) {
         const d = result.data;
         d.photo = 'data:image/jpeg;base64,' + imageData;
-
-        const isTCG = d.card_type === 'tcg';
-        document.getElementById('label-name').textContent = isTCG ? 'Card Name' : 'Player';
-        document.getElementById('row-year').style.display    = isTCG ? 'none' : 'flex';
-        document.getElementById('row-cardnum').style.display = isTCG ? 'flex' : 'none';
-        document.getElementById('row-rarity').style.display  = isTCG ? 'flex' : 'none';
-        document.getElementById('row-hp').style.display      = (isTCG && d.hp) ? 'flex' : 'none';
-
-        document.getElementById('r-name').textContent    = d.name  || '—';
-        document.getElementById('r-year').textContent    = d.year  || '—';
-        document.getElementById('r-set').textContent     = d.set   || '—';
-        document.getElementById('r-grade').textContent   = d.grade || '—';
-        document.getElementById('r-cert').textContent    = d.cert  || '—';
-        document.getElementById('r-serial').textContent   = d.serial || '—';
-        document.getElementById('row-serial').style.display = d.serial ? 'flex' : 'none';
-        document.getElementById('r-cardnum').textContent = d.card_number || '—';
-        document.getElementById('r-rarity').textContent  = d.rarity || '—';
-        document.getElementById('r-hp').textContent      = d.hp ? d.hp + ' HP' : '—';
-
-        const cardEl = document.getElementById('r-card');
-        cardEl.textContent = d.card || '';
-        cardEl.style.display = d.card ? 'block' : 'none';
-
-        updateValuePanel(d);
-
-        if (window.innerWidth <= 768) {
-          document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        totalScanned++;
-        if (d.grade && d.grade !== 'Raw') totalGraded++;
-        if (d.ebay_avg) totalValue += d.ebay_avg;
-        if (d.paid) { const p = parseFloat(d.paid.replace(/[^0-9.]/g,'')); if (!isNaN(p)) totalPaid += p; }
-        document.getElementById('stat-total').textContent  = totalScanned;
-        document.getElementById('stat-graded').textContent = totalGraded;
-        document.getElementById('stat-value').textContent  = '$' + totalValue.toFixed(2);
-        document.getElementById('stat-paid').textContent   = '$' + totalPaid.toFixed(2);
-
-        scanHistory.unshift(d);
-        updateHistory();
-
-        status.className = 'status-bar success';
-        status.textContent = userSheetUrl ? '✓ Scanned & synced to your Google Sheet!' : '✓ Card scanned!';
-        showFlipPrompt(d);
+        applyScanResult(d, imageData, status);
       } else {
         status.className = 'status-bar error';
-        status.textContent = '✗ ' + result.error;
+        status.textContent = '✗ ' + friendlyError(result.error);
       }
     } catch (e) {
       status.className = 'status-bar error';
-      status.textContent = '✗ Error: ' + e.message;
+      status.textContent = '✗ ' + friendlyError(e.message);
     }
     setScanBtns(false, '📷   SCAN CARD');
   }
@@ -1414,11 +1475,10 @@
 
     try {
       const imageData = captureFrame();
-      const result = await apiFetch('/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData, cl_token: clToken, sheet_id: userSheetUrl })
-      });
+      const result = await doScanRequest(
+        { image: imageData, cl_token: clToken, sheet_id: userSheetUrl },
+        status
+      );
 
       if (result.limit_reached) {
         status.className = 'status-bar error';
@@ -1430,64 +1490,15 @@
 
       if (result.success) {
         const d = result.data;
-        d.photo = 'data:image/jpeg;base64,' + imageData; // save card photo
-
-        const isTCG = d.card_type === 'tcg';
-
-        // Toggle label and TCG-only rows
-        document.getElementById('label-name').textContent = isTCG ? 'Card Name' : 'Player';
-        document.getElementById('row-year').style.display    = isTCG ? 'none' : 'flex';
-        document.getElementById('row-cardnum').style.display = isTCG ? 'flex' : 'none';
-        document.getElementById('row-rarity').style.display  = isTCG ? 'flex' : 'none';
-        document.getElementById('row-hp').style.display      = (isTCG && d.hp) ? 'flex' : 'none';
-
-        // Populate fields
-        document.getElementById('r-name').textContent    = d.name  || '—';
-        document.getElementById('r-year').textContent    = d.year  || '—';
-        document.getElementById('r-set').textContent     = d.set   || '—';
-        document.getElementById('r-grade').textContent   = d.grade || '—';
-        document.getElementById('r-cert').textContent    = d.cert  || '—';
-        document.getElementById('r-serial').textContent   = d.serial || '—';
-        document.getElementById('row-serial').style.display = d.serial ? 'flex' : 'none';
-        document.getElementById('r-cardnum').textContent = d.card_number || '—';
-        document.getElementById('r-rarity').textContent  = d.rarity || '—';
-        document.getElementById('r-hp').textContent      = d.hp ? d.hp + ' HP' : '—';
-
-        const cardEl = document.getElementById('r-card');
-        cardEl.textContent = d.card || '';
-        cardEl.style.display = d.card ? 'block' : 'none';
-
-        updateValuePanel(d);
-
-        // Auto-scroll to results on mobile
-        if (window.innerWidth <= 768) {
-          document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        totalScanned++;
-        if (d.grade && d.grade !== 'Raw') totalGraded++;
-        if (d.ebay_avg) totalValue += d.ebay_avg;
-        if (d.paid) { const p = parseFloat(d.paid.replace(/[^0-9.]/g,'')); if (!isNaN(p)) totalPaid += p; }
-        document.getElementById('stat-total').textContent  = totalScanned;
-        document.getElementById('stat-graded').textContent = totalGraded;
-        document.getElementById('stat-value').textContent  = '$' + totalValue.toFixed(2);
-        document.getElementById('stat-paid').textContent   = '$' + totalPaid.toFixed(2);
-
-        scanHistory.unshift(d);
-        updateHistory();
-
-        status.className = 'status-bar success';
-        status.textContent = userSheetUrl ? '✓ Scanned & synced to your Google Sheet!' : '✓ Card scanned!';
-
-        // Ask to scan price on back
-        showFlipPrompt(d);
+        d.photo = 'data:image/jpeg;base64,' + imageData;
+        applyScanResult(d, imageData, status);
       } else {
         status.className = 'status-bar error';
-        status.textContent = '✗ ' + result.error;
+        status.textContent = '✗ ' + friendlyError(result.error);
       }
     } catch (e) {
       status.className = 'status-bar error';
-      status.textContent = '✗ Error: ' + e.message;
+      status.textContent = '✗ ' + friendlyError(e.message);
     }
 
     setScanBtns(false, '📷   SCAN CARD');
