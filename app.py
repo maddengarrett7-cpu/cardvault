@@ -1560,6 +1560,54 @@ def admin_send_email():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/admin/broadcast', methods=['POST'])
+def admin_broadcast():
+    """Send an email to all users."""
+    body = request.get_json()
+    if not check_admin(body.get('secret')):
+        return jsonify({'success': False, 'error': 'Forbidden'})
+    subject = body.get('subject', '').strip()
+    message = body.get('body', '').strip()
+    if not subject or not message:
+        return jsonify({'success': False, 'error': 'Missing subject or message'})
+    from database import get_db
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("SELECT email FROM users")
+            emails = [r[0] for r in cur.fetchall()]
+            cur.close()
+        else:
+            emails = [r[0] for r in db.execute("SELECT email FROM users").fetchall()]
+        db.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+    sent, failed = 0, []
+    html = f'''<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0a0a0a;color:#fff;">
+      <h2 style="font-size:22px;font-weight:800;">Card<span style="color:#00e676;">Scan</span></h2>
+      <div style="color:#ccc;line-height:1.8;margin-top:16px;font-size:15px;">{message.replace(chr(10), "<br>")}</div>
+      <a href="https://cardscan.live" style="display:inline-block;margin-top:24px;background:#00e676;color:#000;font-weight:800;padding:12px 24px;border-radius:10px;text-decoration:none;">Open CardScan</a>
+      <p style="color:#555;font-size:12px;margin-top:32px;">You're receiving this because you have a CardScan account.</p>
+    </div>'''
+
+    for email in emails:
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = f'CardScan <{GMAIL_USER}>'
+            msg['To'] = email
+            msg.attach(MIMEText(html, 'html'))
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.sendmail(GMAIL_USER, email, msg.as_string())
+            sent += 1
+        except Exception as e:
+            failed.append(f"{email}: {str(e)}")
+
+    return jsonify({'success': True, 'sent': sent, 'failed': len(failed), 'errors': failed[:5]})
+
 @app.route('/admin/upgrade', methods=['POST'])
 def admin_upgrade():
     return _admin_set_plan(request.form.get('email'), 'pro', request.form.get('secret'))
@@ -1724,7 +1772,10 @@ td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
 .email-box .cancel{{background:#333;color:#888;margin-left:10px}}
 </style></head>
 <body>
-<h1>📊 CardScan Admin</h1>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+  <h1>📊 CardScan Admin</h1>
+  <button onclick="document.getElementById('broadcastModal').classList.add('open')" style="background:#1a1a2a;color:#88aaff;border:1px solid #334;border-radius:8px;padding:10px 18px;cursor:pointer;font-weight:700;font-size:13px;">📢 Email All Users</button>
+</div>
 <p style="color:#555;font-size:13px;margin-bottom:24px;">Last refreshed: {str(date.today())}</p>
 
 <div class="stats">
@@ -1777,6 +1828,21 @@ td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
   </div>
 </div>
 
+<!-- Broadcast modal -->
+<div class="email-modal" id="broadcastModal">
+  <div class="email-box">
+    <h3 style="margin-bottom:4px;">📢 Broadcast to All Users</h3>
+    <p style="color:#888;font-size:12px;margin-bottom:16px;">Sends to every account. Double-check before sending.</p>
+    <input type="text" id="broadcastSubject" placeholder="Subject">
+    <textarea id="broadcastBody" placeholder="Message..." style="height:160px;"></textarea>
+    <div>
+      <button onclick="sendBroadcast()">Send to All</button>
+      <button class="cancel" onclick="document.getElementById('broadcastModal').classList.remove('open')">Cancel</button>
+    </div>
+    <div id="broadcastStatus" style="margin-top:10px;font-size:13px;color:#00ff87;"></div>
+  </div>
+</div>
+
 <script>
 function openEmail(email) {{
   document.getElementById('emailTo').value = email;
@@ -1797,6 +1863,21 @@ async function sendAdminEmail() {{
   const data = await res.json();
   document.getElementById('emailStatus').textContent = data.success ? '✓ Email sent!' : '✗ ' + data.error;
   if (data.success) setTimeout(() => document.getElementById('emailModal').classList.remove('open'), 1500);
+}}
+async function sendBroadcast() {{
+  const subject = document.getElementById('broadcastSubject').value;
+  const body = document.getElementById('broadcastBody').value;
+  if (!subject || !body) {{ alert('Please fill in subject and message.'); return; }}
+  document.getElementById('broadcastStatus').textContent = '⏳ Sending...';
+  const res = await fetch('/admin/broadcast', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{subject, body, secret: '{secret}'}})
+  }});
+  const data = await res.json();
+  document.getElementById('broadcastStatus').textContent = data.success
+    ? `✓ Sent to ${{data.sent}} users! (${{data.failed}} failed)`
+    : '✗ ' + data.error;
 }}
 </script>
 </body></html>"""
