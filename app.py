@@ -614,7 +614,10 @@ def index():
     if 'user_id' not in session:
         return render_template('landing.html')
     user = get_user_by_id(session['user_id'])
-    return render_template('index.html', user=user)
+    # Build full sheet URL from saved sheet_id if available
+    saved_sheet_id = user.get('google_sheet_id') if user else None
+    saved_sheet_url = f"https://docs.google.com/spreadsheets/d/{saved_sheet_id}" if saved_sheet_id else ""
+    return render_template('index.html', user=user, saved_sheet_url=saved_sheet_url)
 
 @app.route('/home')
 def landing():
@@ -779,6 +782,18 @@ def oauth_callback():
         return redirect("/?sheets=connected")
     except Exception as e:
         return redirect(f"/?sheets=error&msg={str(e)}")
+
+@app.route('/save-sheet-url', methods=['POST'])
+@login_required
+def save_sheet_url():
+    """Save the user's sheet URL to their account so it persists across devices."""
+    body = request.get_json()
+    sheet_url = body.get('sheet_url', '').strip()
+    sheet_id = extract_sheet_id(sheet_url) if sheet_url else None
+    if not sheet_id:
+        return jsonify({'success': False, 'error': 'Invalid sheet URL'})
+    save_google_sheet_id(session['user_id'], sheet_id)
+    return jsonify({'success': True, 'sheet_id': sheet_id})
 
 @app.route('/disconnect-sheets', methods=['POST'])
 @login_required

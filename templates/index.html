@@ -812,7 +812,9 @@
   let totalPaid = 0;
   let activeTab = 'ebay';
   let lastCardQuery = '';
-  let userSheetUrl = localStorage.getItem('sheet_url') || '';
+  // Use server-saved sheet URL (persists across devices) then fall back to localStorage
+  let userSheetUrl = '{{ saved_sheet_url }}' || localStorage.getItem('sheet_url') || '';
+  if (userSheetUrl) localStorage.setItem('sheet_url', userSheetUrl); // keep in sync
   let clToken = localStorage.getItem('cl_token') || '';
 
   function saveCLToken() {
@@ -852,6 +854,13 @@
     if (!val) { alert('Please paste your Google Sheet URL.'); return; }
     userSheetUrl = val;
     localStorage.setItem('sheet_url', userSheetUrl);
+
+    // Save to account so it persists across all devices
+    fetch('/save-sheet-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheet_url: userSheetUrl })
+    }).catch(() => {}); // fire and forget
 
     // Detect columns from sheet headers
     try {
