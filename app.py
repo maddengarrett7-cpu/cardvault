@@ -417,14 +417,16 @@ def extract_sheet_id(sheet_url_or_id):
 
 # Keyword map: field -> list of header keywords that match it
 FIELD_KEYWORDS = {
-    "card":  ["card", "description", "title", "full", "listing"],
-    "name":  ["name", "player", "athlete"],
-    "year":  ["year", "yr", "season"],
-    "brand": ["brand", "set", "series", "product"],
-    "grade": ["grade", "condition", "psa", "bgs", "sgc", "slab"],
-    "cert":  ["cert", "certification", "serial", "slab #", "cert #", "id"],
-    "value": ["value", "ebay", "avg", "market", "worth", "$"],
-    "paid":  ["paid", "cost", "bought", "purchase", "price"],
+    "card":     ["card", "description", "title", "full", "listing"],
+    "name":     ["name", "player", "athlete"],
+    "year":     ["year", "yr", "season"],
+    "brand":    ["brand", "manufacturer", "company"],
+    "set":      ["set", "series", "product", "collection"],
+    "parallel": ["parallel", "variant", "variation", "color", "finish"],
+    "grade":    ["grade", "condition", "psa", "bgs", "sgc", "slab"],
+    "cert":     ["cert", "certification", "slab #", "cert #"],
+    "value":    ["value", "ebay", "avg", "market", "worth", "$"],
+    "paid":     ["paid", "cost", "bought", "purchase", "price"],
     "tracking": ["tracking", "track", "ship"],
 }
 
@@ -442,14 +444,16 @@ def build_row(data, mapping, num_cols):
     """Build a row array aligned to the sheet's existing columns."""
     ebay_avg = data.get("ebay_avg")
     values = {
-        "card":  data.get("card")  or "",
-        "name":  data.get("name")  or "",
-        "year":  str(data.get("year") or ""),
-        "brand": data.get("brand") or "",
-        "grade": data.get("grade") or "",
-        "cert":  data.get("cert")  or "Raw",
-        "value": f"${ebay_avg:.2f}" if ebay_avg else "",
-        "paid":  data.get("paid") or "",
+        "card":     data.get("card")     or "",
+        "name":     data.get("name")     or "",
+        "year":     str(data.get("year") or ""),
+        "brand":    data.get("brand")    or "",
+        "set":      data.get("set")      or "",
+        "parallel": data.get("parallel") or "",
+        "grade":    data.get("grade")    or "",
+        "cert":     data.get("cert")     or "",
+        "value":    f"${ebay_avg:.2f}" if ebay_avg else "",
+        "paid":     data.get("paid")     or "",
         "tracking": "",
     }
     row = [""] * num_cols
@@ -524,19 +528,32 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
             raise Exception("Sheet not found — check that the Google Sheet URL is correct.")
         raise Exception(f"Could not read sheet: {err}")
 
+    ebay_avg = data.get("ebay_avg")
+    value_str = f"${ebay_avg:.2f}" if ebay_avg else ""
+
+    # Default row order used when no headers or insufficient column matches
+    default_row = [
+        data.get("card")  or "",
+        data.get("name")  or "",
+        str(data.get("year") or ""),
+        data.get("brand") or "",
+        data.get("set")   or "",
+        data.get("parallel") or "",
+        data.get("grade") or "",
+        data.get("cert")  or "",
+        value_str,
+        data.get("paid")  or "",
+    ]
+
     if headers:
         mapping = detect_column_mapping(headers)
-        row = [build_row(data, mapping, len(headers))]
+        # If fewer than 3 fields detected the mapping is unreliable — use default order
+        if len(mapping) >= 3:
+            row = [build_row(data, mapping, len(headers))]
+        else:
+            row = [default_row[:len(headers)] + [""] * max(0, len(headers) - len(default_row))]
     else:
-        ebay_avg = data.get("ebay_avg")
-        value = f"${ebay_avg:.2f}" if ebay_avg else ""
-        row = [[
-            data.get("card") or "",
-            "",
-            "",
-            data.get("cert") or "Raw",
-            value,
-        ]]
+        row = [default_row]
 
     try:
         svc.spreadsheets().values().append(
