@@ -1268,15 +1268,27 @@ def scan():
         # Merge serial into parallel exactly once, cleanly
         _merge_serial(data)
 
-        # Rebuild card description
-        if is_raw_card and data.get("card_type") != "tcg":
-            parts = [p for p in [
-                str(data.get("year") or ""),
-                data.get("brand") or "",
-                data.get("set") or "",
-                data.get("name") or "",
-                data.get("parallel") or "",
-            ] if p]
+        # Always rebuild card description from individual fields
+        # so it's never just the grade or a partial label read
+        if data.get("card_type") != "tcg":
+            if is_raw_card:
+                parts = [p for p in [
+                    str(data.get("year") or ""),
+                    data.get("brand") or "",
+                    data.get("set") or "",
+                    data.get("name") or "",
+                    data.get("parallel") or "",
+                ] if p]
+            else:
+                # Graded — include grade in description
+                parts = [p for p in [
+                    str(data.get("year") or ""),
+                    data.get("brand") or "",
+                    data.get("set") or "",
+                    data.get("name") or "",
+                    data.get("parallel") or "",
+                    data.get("grade") or "",
+                ] if p]
             if parts:
                 data["card"] = " ".join(parts)
 
