@@ -1,4 +1,4 @@
-const CACHE = 'slabscan-v1';
+const CACHE = 'cardscan-v2';
 const ASSETS = ['/', '/static/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -18,10 +18,14 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Always network-first for scan/API calls
+  // Always network-first for API calls — never cache these
   if (e.request.url.includes('/scan') ||
       e.request.url.includes('/value') ||
-      e.request.url.includes('/sheet')) {
+      e.request.url.includes('/sheet') ||
+      e.request.url.includes('/update-value') ||
+      e.request.url.includes('/login') ||
+      e.request.url.includes('/logout') ||
+      e.request.method !== 'GET') {
     return;
   }
   e.respondWith(

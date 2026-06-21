@@ -1,12 +1,13 @@
 {
-  "name": "SlabScan — Sports Card Scanner",
-  "short_name": "SlabScan",
-  "description": "Scan and value your sports cards instantly",
+  "name": "CardScan — Sports Card Scanner",
+  "short_name": "CardScan",
+  "description": "Scan and value your sports cards instantly with AI",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
-  "theme_color": "#00e676",
+  "theme_color": "#0a0a0a",
   "orientation": "portrait",
+  "categories": ["sports", "utilities", "finance"],
   "icons": [
     {
       "src": "/static/icons/icon-192.png",
@@ -25,7 +26,8 @@
     {
       "src": "/static/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "form_factor": "narrow"
     }
   ]
 }
