@@ -548,77 +548,61 @@
 
     <div class="panel-box" id="valuePanel" style="display:none;">
       <h2>Market Value</h2>
-      <div class="source-tabs">
-        <button class="source-tab active" id="tabEbay" onclick="switchTab('ebay')">eBay Sold</button>
-        <button class="source-tab" id="tabCL" onclick="switchTab('cl')">Card Ladder</button>
-      </div>
-      <div id="ebayContent">
-        <div class="value-placeholder" id="valuePlaceholder">Scan a card to see market value</div>
-        <div id="valueData" style="display:none">
-          <div class="value-grid">
-            <div class="value-box">
-              <div class="value-num" id="v-avg">—</div>
-              <div class="value-label">Avg</div>
-            </div>
-            <div class="value-box">
-              <div class="value-num" id="v-high">—</div>
-              <div class="value-label">High</div>
-            </div>
-            <div class="value-box">
-              <div class="value-num" id="v-low">—</div>
-              <div class="value-label">Low</div>
+      <div class="value-placeholder" id="valuePlaceholder">Scan a card to see market value</div>
+
+      <div id="valueData" style="display:none;">
+        <!-- Side by side: eBay | Card Ladder -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+
+          <!-- eBay -->
+          <div style="background:var(--surface2); border-radius:12px; padding:14px;">
+            <div style="font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; font-weight:700;">eBay Sold</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div>
+                <div class="value-num" id="v-avg" style="font-size:22px;">—</div>
+                <div class="value-label">Avg</div>
+              </div>
+              <div style="display:flex; gap:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text);" id="v-high">—</div>
+                  <div style="font-size:10px; color:var(--muted);">High</div>
+                </div>
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text);" id="v-low">—</div>
+                  <div style="font-size:10px; color:var(--muted);">Low</div>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="recent-sales" id="recentSales"></div>
+
+          <!-- Card Ladder -->
+          <div style="background:var(--surface2); border-radius:12px; padding:14px;">
+            <div style="font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; font-weight:700;">Card Ladder</div>
+            <div id="clValueInline" style="display:none; margin-bottom:8px;">
+              <div class="value-num" id="cl-value" style="font-size:22px;">—</div>
+              <div class="value-label">CL Value</div>
+              <div style="font-size:13px; font-weight:700; color:var(--text); margin-top:6px;" id="cl-last">—</div>
+              <div style="font-size:10px; color:var(--muted);">Last Sale</div>
+            </div>
+            <a id="clLink" href="#" target="_blank" rel="noopener noreferrer" style="
+              display:flex; align-items:center; justify-content:center; gap:6px;
+              padding:8px; background:#1a2e1a; border:1px solid var(--green);
+              border-radius:8px; color:var(--green); font-size:12px; font-weight:700;
+              text-decoration:none; margin-top:4px;
+            ">
+              <img src="https://www.cardladder.com/favicon.ico" style="width:14px;height:14px;border-radius:2px;" onerror="this.style.display='none'">
+              Search ↗
+            </a>
+          </div>
         </div>
-      </div>
-      <div id="clContent" style="display:none">
-        <div class="value-placeholder" id="clPlaceholder">Scan a card to search Card Ladder</div>
-        <div id="clLinkWrap" style="display:none;">
-          <!-- CL value data (only shown if token provided) -->
-          <div id="clValueData" style="display:none; margin-bottom:12px;">
-            <div class="value-grid">
-              <div class="value-box">
-                <div class="value-num" id="cl-value">—</div>
-                <div class="value-label">CL Value</div>
-              </div>
-              <div class="value-box">
-                <div class="value-num" id="cl-last">—</div>
-                <div class="value-label">Last Sale</div>
-              </div>
-            </div>
-          </div>
 
-          <!-- Card name being searched -->
-          <div id="clCardName" style="font-size:12px; color:var(--muted); text-align:center; margin-bottom:12px;"></div>
+        <!-- Recent eBay sales -->
+        <div class="recent-sales" id="recentSales"></div>
 
-          <!-- Open Card Ladder search -->
-          <a id="clLink" href="#" target="_blank" rel="noopener noreferrer" style="
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 16px;
-            background: #1a2e1a;
-            border: 2px solid var(--green);
-            border-radius: 14px;
-            color: var(--green);
-            font-size: 17px;
-            font-weight: 800;
-            text-decoration: none;
-            margin-bottom: 10px;
-            letter-spacing: 0.3px;
-          ">
-            <img src="https://www.cardladder.com/favicon.ico" style="width:20px;height:20px;border-radius:4px;" onerror="this.style.display='none'">
-            <span>Search Card Ladder ↗</span>
-          </a>
-
-          <!-- Cert number copy (graded cards only) -->
-          <div id="clCertDisplay" style="display:none; background:var(--surface2); border-radius:10px; padding:12px; text-align:center;">
-            <div style="font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Cert # — tap to copy</div>
-            <div id="clCertNum" onclick="navigator.clipboard.writeText(this.dataset.cert); this.textContent='✓ Copied!'; setTimeout(()=>{ this.textContent=this.dataset.cert; },1500);" style="font-size:22px; font-weight:800; color:var(--green); cursor:pointer; letter-spacing:2px;"></div>
-            <div style="font-size:11px; color:var(--muted); margin-top:4px;">Paste this into Card Ladder search</div>
-          </div>
+        <!-- Cert copy for graded cards -->
+        <div id="clCertDisplay" style="display:none; background:var(--surface2); border-radius:10px; padding:12px; text-align:center; margin-top:10px;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Cert # — tap to copy</div>
+          <div id="clCertNum" onclick="navigator.clipboard.writeText(this.dataset.cert); this.textContent='✓ Copied!'; setTimeout(()=>{ this.textContent=this.dataset.cert; },1500);" style="font-size:22px; font-weight:800; color:var(--green); cursor:pointer; letter-spacing:2px;"></div>
         </div>
       </div>
     </div>
@@ -1069,28 +1053,28 @@
     if (userSheetUrl) window.open(userSheetUrl, '_blank');
   }
 
-  function switchTab(tab) {
-    activeTab = tab;
-    document.getElementById('tabEbay').classList.toggle('active', tab === 'ebay');
-    document.getElementById('tabCL').classList.toggle('active', tab === 'cl');
-    document.getElementById('ebayContent').style.display = tab === 'ebay' ? 'block' : 'none';
-    document.getElementById('clContent').style.display = tab === 'cl' ? 'block' : 'none';
-  }
+  function switchTab(tab) { /* kept for compatibility */ }
 
   function updateValuePanel(d) {
     const hasEbay = d.ebay_avg != null;
-    document.getElementById('valuePlaceholder').style.display = hasEbay ? 'none' : 'block';
-    document.getElementById('valueData').style.display = hasEbay ? 'block' : 'none';
+    const clParts = [d.year, d.name, d.set, d.parallel, d.grade].filter(Boolean);
+    const clQuery = clParts.join(' ');
+    const clSearchUrl = clParts.length ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(clQuery) : null;
 
+    const hasAnything = hasEbay || clQuery;
+    document.getElementById('valuePlaceholder').style.display = hasAnything ? 'none' : 'block';
+    document.getElementById('valueData').style.display = hasAnything ? 'block' : 'none';
+    document.getElementById('valuePanel').style.display = 'block';
+
+    // eBay values
     if (hasEbay) {
-      document.getElementById('v-avg').textContent  = '$' + d.ebay_avg;
-      document.getElementById('v-high').textContent = '$' + d.ebay_high;
-      document.getElementById('v-low').textContent  = '$' + d.ebay_low;
-
+      document.getElementById('v-avg').textContent  = '$' + d.ebay_avg.toFixed(2);
+      document.getElementById('v-high').textContent = '$' + (d.ebay_high || 0).toFixed(2);
+      document.getElementById('v-low').textContent  = '$' + (d.ebay_low || 0).toFixed(2);
       const sales = d.ebay_sales || [];
       const searchUrl = d.ebay_search_url || '#';
       document.getElementById('recentSales').innerHTML = sales.length
-        ? `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+        ? `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px;">
              ${d.ebay_count} Recent Sales &nbsp;·&nbsp;
              <a href="${searchUrl}" target="_blank" style="color:var(--green);text-decoration:none;">View on eBay ↗</a>
            </div>`
@@ -1101,40 +1085,36 @@
               <span class="sale-price">$${s.price.toFixed(2)}</span>
             </div>`).join('')
         : '';
+    } else {
+      document.getElementById('v-avg').textContent = '—';
+      document.getElementById('v-high').textContent = '—';
+      document.getElementById('v-low').textContent = '—';
+      document.getElementById('recentSales').innerHTML = '';
     }
 
-    // Card Ladder tab — search by year + name + set + parallel using &q=
-    const clParts = [d.year, d.name, d.set, d.parallel, d.grade].filter(Boolean);
-    const clQuery = clParts.join(' ');
-    const clSearchUrl = clParts.length ? 'https://app.cardladder.com/sales-history?direction=desc&sort=date&q=' + encodeURIComponent(clQuery) : null;
-
-    if (clQuery) {
+    // Card Ladder
+    if (clSearchUrl) {
       lastCardQuery = clQuery;
-      document.getElementById('clLink').href = clSearchUrl || '#';
-      document.getElementById('clCardName').textContent = clQuery;
+      document.getElementById('clLink').href = clSearchUrl;
 
-      // Show cert number for graded cards — user can paste into CL search
-      if (d.cert) {
-        const certEl = document.getElementById('clCertNum');
-        const certVal = d.cert.replace(/\s+/g, '');
-        certEl.textContent = certVal;
-        certEl.dataset.cert = certVal;
-        document.getElementById('clCertDisplay').style.display = 'block';
-      } else {
-        document.getElementById('clCertDisplay').style.display = 'none';
-      }
-
-      document.getElementById('clPlaceholder').style.display = 'none';
-      document.getElementById('clLinkWrap').style.display = 'block';
-
-      // Populate CL value fields if token was provided
       if (d.cl_value || d.cl_last_sale) {
         document.getElementById('cl-value').textContent = d.cl_value ? '$' + d.cl_value : '—';
         document.getElementById('cl-last').textContent  = d.cl_last_sale ? '$' + d.cl_last_sale : '—';
-        document.getElementById('clValueData').style.display = 'block';
+        document.getElementById('clValueInline').style.display = 'block';
       } else {
-        document.getElementById('clValueData').style.display = 'none';
+        document.getElementById('clValueInline').style.display = 'none';
       }
+    }
+
+    // Cert copy for graded cards
+    if (d.cert && d.cert !== '—') {
+      const certEl = document.getElementById('clCertNum');
+      const certVal = d.cert.replace(/\s+/g, '');
+      certEl.textContent = certVal;
+      certEl.dataset.cert = certVal;
+      document.getElementById('clCertDisplay').style.display = 'block';
+    } else {
+      document.getElementById('clCertDisplay').style.display = 'none';
     }
   }
 
