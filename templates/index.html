@@ -750,6 +750,14 @@
     <div id="bulkSheetWarning" style="display:none; background:#2a1a1a; border:1px solid #ff6b6b; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:13px; color:#ff6b6b;">
       ⚠️ No Google Sheet connected — your cards won't save anywhere. <button onclick="closeBulkModal(); openSettings();" style="background:none; border:none; color:#ff6b6b; text-decoration:underline; cursor:pointer; font-size:13px; padding:0;">Connect one now →</button>
     </div>
+    <!-- Drag & drop zone -->
+    <div id="bulkDropZone" style="border:2px dashed var(--border); border-radius:12px; padding:28px; text-align:center; margin-bottom:16px; cursor:pointer; transition:all 0.2s;" onclick="document.getElementById('bulkUploadInput2').click()" ondragover="bulkDragOver(event)" ondragleave="bulkDragLeave(event)" ondrop="bulkDrop(event)">
+      <div style="font-size:28px; margin-bottom:8px;">📸</div>
+      <div style="font-weight:700; color:var(--text); margin-bottom:4px;">Drop your photo here</div>
+      <div style="font-size:12px; color:var(--muted);">or click to browse — drag from anywhere on your computer</div>
+      <input type="file" id="bulkUploadInput2" accept="image/*" style="display:none;" onchange="bulkScanUpload(this)">
+    </div>
+
     <div id="bulkStatus" style="font-size:14px; color:var(--muted); margin-bottom:16px;"></div>
     <div id="bulkCardList" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;"></div>
     <div id="bulkPriceSection" style="display:none; margin-bottom:20px;">
@@ -1228,12 +1236,37 @@
   // ── Bulk Scan ────────────────────────────────────────────────────────────
   let bulkCards = [];
 
+  function bulkDragOver(e) {
+    e.preventDefault();
+    const zone = document.getElementById('bulkDropZone');
+    zone.style.borderColor = 'var(--green)';
+    zone.style.background = 'rgba(0,230,118,0.05)';
+  }
+
+  function bulkDragLeave(e) {
+    const zone = document.getElementById('bulkDropZone');
+    zone.style.borderColor = 'var(--border)';
+    zone.style.background = 'transparent';
+  }
+
+  function bulkDrop(e) {
+    e.preventDefault();
+    bulkDragLeave(e);
+    const file = e.dataTransfer.files[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    // Create a fake input object with the dropped file
+    processBulkFile(file);
+  }
+
   async function bulkScanUpload(input) {
     if (!input.files || !input.files[0]) return;
-    const file = input.files[0];
+    processBulkFile(input.files[0]);
     input.value = '';
+  }
 
+  async function processBulkFile(file) {
     document.getElementById('bulkModal').style.display = 'block';
+    document.getElementById('bulkDropZone').style.display = 'none';
     document.getElementById('bulkSheetWarning').style.display = userSheetUrl ? 'none' : 'block';
     document.getElementById('bulkStatus').textContent = '🔍 Detecting cards with AI...';
     document.getElementById('bulkCardList').innerHTML = '';
@@ -1366,6 +1399,9 @@
 
   function closeBulkModal() {
     document.getElementById('bulkModal').style.display = 'none';
+    document.getElementById('bulkDropZone').style.display = 'block';
+    document.getElementById('bulkStatus').textContent = '';
+    document.getElementById('bulkCardList').innerHTML = '';
     bulkCards = [];
   }
 
