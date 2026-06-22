@@ -1261,9 +1261,11 @@ def scan():
                 'error': f'Free limit reached ({limit} scans/day). Upgrade to CardScan Pro for unlimited scans.'
             })
 
-        # Normalize name to Title Case (Gemini often returns ALL CAPS)
-        if data.get("name") and data["name"].isupper():
-            data["name"] = data["name"].title()
+        # Normalize all text fields to Title Case (Gemini often returns ALL CAPS)
+        for field in ["name", "brand", "set", "parallel", "card"]:
+            val = data.get(field)
+            if val and isinstance(val, str) and val.isupper():
+                data[field] = val.title()
 
         # Merge serial into parallel exactly once, cleanly
         _merge_serial(data)
