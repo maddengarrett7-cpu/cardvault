@@ -240,12 +240,17 @@ if DATABASE_URL:
     def save_scan(user_id, data):
         conn = get_db()
         cur = conn.cursor()
+        year = data.get('year')
+        try:
+            year = int(year) if year else None
+        except (ValueError, TypeError):
+            year = None
         cur.execute("""
             INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             user_id,
-            data.get('card'), data.get('name'), data.get('year'),
+            data.get('card'), data.get('name'), year,
             data.get('brand'), data.get('set'), data.get('parallel'),
             data.get('grade'), data.get('cert'), data.get('serial'),
             data.get('card_type'), data.get('ebay_avg'),

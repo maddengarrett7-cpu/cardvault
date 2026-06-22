@@ -1527,6 +1527,10 @@ def scan_bulk_confirm():
                 sheeted += 1
             except Exception as card_err:
                 errors.append(str(card_err))
+            try:
+                save_scan(session['user_id'], card)
+            except Exception as e:
+                app.logger.warning(f"Bulk scan history save failed: {e}")
 
         if sheeted == 0:
             return jsonify({'success': False, 'error': f'Could not write to sheet: {errors[0] if errors else "Unknown error"}'})
