@@ -754,7 +754,8 @@
     <div id="bulkDropZone" style="border:2px dashed var(--border); border-radius:12px; padding:28px; text-align:center; margin-bottom:16px; cursor:pointer; transition:all 0.2s;" onclick="document.getElementById('bulkUploadInput2').click()" ondragover="bulkDragOver(event)" ondragleave="bulkDragLeave(event)" ondrop="bulkDrop(event)">
       <div style="font-size:28px; margin-bottom:8px;">📸</div>
       <div style="font-weight:700; color:var(--text); margin-bottom:4px;">Drop your photo here</div>
-      <div style="font-size:12px; color:var(--muted);">or click to browse — drag from anywhere on your computer</div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">or click to browse — drag from anywhere on your computer</div>
+      <div style="font-size:12px; color:var(--green); font-weight:700;">⌘V to paste a copied photo</div>
       <input type="file" id="bulkUploadInput2" accept="image/*" style="display:none;" onchange="bulkScanUpload(this)">
     </div>
 
@@ -1235,6 +1236,20 @@
 
   // ── Bulk Scan ────────────────────────────────────────────────────────────
   let bulkCards = [];
+
+  // Paste from clipboard (Cmd+V) anywhere on the page when bulk modal is open
+  document.addEventListener('paste', (e) => {
+    const bulkModal = document.getElementById('bulkModal');
+    if (bulkModal.style.display === 'none' || !bulkModal.style.display) return;
+    const items = e.clipboardData.items;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) processBulkFile(file);
+        break;
+      }
+    }
+  });
 
   function bulkDragOver(e) {
     e.preventDefault();
