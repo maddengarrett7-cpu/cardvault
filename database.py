@@ -262,7 +262,8 @@ if DATABASE_URL:
         """, (user_id, limit, offset))
         rows = [dict(r) for r in cur.fetchall()]
         cur.execute("SELECT COUNT(*) FROM scan_history WHERE user_id = %s", (user_id,))
-        total = cur.fetchone()[0]
+        row = cur.fetchone()
+        total = list(row.values())[0] if row else 0
         cur.close(); conn.close()
         return rows, total
 
