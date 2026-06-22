@@ -573,6 +573,12 @@
                 </div>
               </div>
             </div>
+            <a id="ebayLink" href="#" target="_blank" rel="noopener noreferrer" style="
+              display:flex; align-items:center; justify-content:center; gap:6px;
+              padding:8px; background:var(--surface); border:1px solid var(--border);
+              border-radius:8px; color:var(--muted); font-size:12px; font-weight:700;
+              text-decoration:none; margin-top:10px;
+            ">View on eBay ↗</a>
           </div>
 
           <!-- Card Ladder -->
@@ -1073,11 +1079,9 @@
       document.getElementById('v-low').textContent  = '$' + (d.ebay_low || 0).toFixed(2);
       const sales = d.ebay_sales || [];
       const searchUrl = d.ebay_search_url || '#';
+      if (searchUrl) document.getElementById('ebayLink').href = searchUrl;
       document.getElementById('recentSales').innerHTML = sales.length
-        ? `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px;">
-             ${d.ebay_count} Recent Sales &nbsp;·&nbsp;
-             <a href="${searchUrl}" target="_blank" style="color:var(--green);text-decoration:none;">View on eBay ↗</a>
-           </div>`
+        ? `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px;">${d.ebay_count} Recent Sales</div>`
           + sales.map(s => `
             <div class="sale-item">
               <span class="sale-title">${s.title}</span>
