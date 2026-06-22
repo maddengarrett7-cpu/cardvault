@@ -33,6 +33,9 @@
     .value-num { font-size:18px; font-weight:800; color:var(--green); }
     .value-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
     .scan-date { font-size:11px; color:var(--muted); margin-top:4px; }
+    .market-row { display:flex; gap:10px; margin-top:8px; flex-wrap:wrap; }
+    .market-pill { font-size:11px; padding:3px 8px; border-radius:6px; background:var(--surface2); border:1px solid var(--border); color:var(--muted); }
+    .market-pill strong { color:var(--green); }
     .empty { text-align:center; padding:60px 20px; color:var(--muted); }
     .empty h2 { font-size:18px; margin-bottom:8px; color:var(--text); }
     .empty a { color:var(--green); text-decoration:none; font-weight:700; }
@@ -97,6 +100,14 @@
         {% if scan.cert %}<span>Cert: {{ scan.cert }}</span>{% endif %}
       </div>
       <div class="scan-date">{{ scan.scanned_at | string | truncate(16, True, '') }}</div>
+      {% if scan.ebay_high or scan.ebay_low or scan.cl_value or scan.cl_last_sale %}
+      <div class="market-row">
+        {% if scan.ebay_high %}<span class="market-pill">High <strong>${{ "%.0f"|format(scan.ebay_high) }}</strong></span>{% endif %}
+        {% if scan.ebay_low %}<span class="market-pill">Low <strong>${{ "%.0f"|format(scan.ebay_low) }}</strong></span>{% endif %}
+        {% if scan.cl_value %}<span class="market-pill">CL Value <strong>${{ "%.0f"|format(scan.cl_value) }}</strong></span>{% endif %}
+        {% if scan.cl_last_sale %}<span class="market-pill">CL Last Sale <strong>${{ "%.0f"|format(scan.cl_last_sale) }}</strong></span>{% endif %}
+      </div>
+      {% endif %}
     </div>
 
     <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">

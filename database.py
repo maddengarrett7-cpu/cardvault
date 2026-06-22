@@ -78,6 +78,19 @@ if DATABASE_URL:
             except Exception:
                 conn.rollback()
 
+        for col, definition in [
+            ("cl_value", "FLOAT"),
+            ("cl_last_sale", "FLOAT"),
+            ("ebay_sales", "TEXT"),
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS {col} {definition}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+
+
         cur.close()
         conn.close()
 
@@ -245,9 +258,13 @@ if DATABASE_URL:
             year = int(year) if year else None
         except (ValueError, TypeError):
             year = None
+        import json as _json
+        ebay_sales = data.get('ebay_sales')
+        if isinstance(ebay_sales, list):
+            ebay_sales = _json.dumps(ebay_sales)
         cur.execute("""
-            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, cl_value, cl_last_sale, ebay_sales)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             user_id,
             data.get('card'), data.get('name'), year,
@@ -255,6 +272,7 @@ if DATABASE_URL:
             data.get('grade'), data.get('cert'), data.get('serial'),
             data.get('card_type'), data.get('ebay_avg'),
             data.get('ebay_high'), data.get('ebay_low'),
+            data.get('cl_value'), data.get('cl_last_sale'), ebay_sales,
         ))
         conn.commit(); cur.close(); conn.close()
 
