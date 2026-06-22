@@ -47,6 +47,9 @@ if DATABASE_URL:
             ("google_sheet_id", "TEXT"),
             ("total_scans", "INTEGER DEFAULT 0"),
             ("plan_type", "TEXT DEFAULT 'monthly'"),
+            ("referral_code", "TEXT"),
+            ("referred_by", "TEXT"),
+            ("bonus_scans", "INTEGER DEFAULT 0"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
@@ -159,7 +162,8 @@ if DATABASE_URL:
 
         user = dict(user)
         today = str(date.today())
-        FREE_LIMIT = 10
+        bonus = user.get('bonus_scans') or 0
+        FREE_LIMIT = 10 + bonus
 
         # Reset scans_today if it's a new day
         scans_today = user['scans_today'] if user['scans_date'] == today else 0

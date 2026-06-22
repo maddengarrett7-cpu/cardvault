@@ -673,16 +673,29 @@ def signup():
         password = request.form.get('password', '').strip()
         if not email or not password or len(password) < 6:
             return render_template('login.html', error='Please enter a valid email and password (min 6 chars)', mode='signup')
+        ref_code = request.form.get('ref', '').strip().upper()
         user = create_user(email, generate_password_hash(password))
         if not user:
             return render_template('login.html', error='An account with that email already exists', mode='signup')
+
+        # Generate unique referral code for this user
+        user_ref_code = email.split('@')[0].upper()[:6] + str(user['id'])
+        _db_set_referral_code(user['id'], user_ref_code)
+
+        # Apply referral bonus if valid code used
+        if ref_code:
+            referrer = _db_get_user_by_referral_code(ref_code)
+            if referrer and referrer['id'] != user['id']:
+                _db_apply_referral(user['id'], referrer['id'], ref_code)
+
         import secrets
         token = secrets.token_hex(32)
         create_session(user['id'], token)
         session['user_id'] = user['id']
         session['session_token'] = token
         return redirect(url_for('index'))
-    return render_template('login.html', mode='signup')
+    ref = request.args.get('ref', '')
+    return render_template('login.html', mode='signup', ref=ref)
 
 @app.route('/logout')
 def logout():
@@ -799,6 +812,72 @@ def oauth_callback():
         return redirect("/?sheets=connected")
     except Exception as e:
         return redirect(f"/?sheets=error&msg={str(e)}")
+
+def _db_set_referral_code(user_id, code):
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    try:
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("UPDATE users SET referral_code = %s WHERE id = %s", (code, user_id))
+            db.commit(); cur.close()
+        else:
+            db.execute("UPDATE users SET referral_code = ? WHERE id = ?", (code, user_id)); db.commit()
+    except: pass
+    finally: db.close()
+
+def _db_get_user_by_referral_code(code):
+    from database import get_db, DATABASE_URL
+    import psycopg2.extras
+    db = get_db()
+    try:
+        if DATABASE_URL:
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT * FROM users WHERE referral_code = %s", (code,))
+            row = cur.fetchone(); cur.close(); db.close()
+            return dict(row) if row else None
+        else:
+            row = db.execute("SELECT * FROM users WHERE referral_code = ?", (code,)).fetchone()
+            db.close()
+            return dict(row) if row else None
+    except: db.close(); return None
+
+def _db_apply_referral(new_user_id, referrer_id, code):
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    try:
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("UPDATE users SET referred_by = %s, bonus_scans = COALESCE(bonus_scans,0) + 20 WHERE id = %s", (code, new_user_id))
+            cur.execute("UPDATE users SET bonus_scans = COALESCE(bonus_scans,0) + 20 WHERE id = %s", (referrer_id,))
+            db.commit(); cur.close()
+        else:
+            db.execute("UPDATE users SET referred_by = ?, bonus_scans = COALESCE(bonus_scans,0) + 20 WHERE id = ?", (code, new_user_id)); db.commit()
+            db.execute("UPDATE users SET bonus_scans = COALESCE(bonus_scans,0) + 20 WHERE id = ?", (referrer_id,)); db.commit()
+    except: pass
+    finally: db.close()
+
+@app.route('/referral-info')
+@login_required
+def referral_info():
+    user = get_user_by_id(session['user_id'])
+    ref_code = user.get('referral_code') or ''
+    ref_url = f"{APP_BASE_URL}/signup?ref={ref_code}" if ref_code else ''
+    return jsonify({'code': ref_code, 'url': ref_url, 'bonus_scans': user.get('bonus_scans', 0)})
+
+@app.route('/change-password', methods=['POST'])
+@login_required
+def change_password():
+    body = request.get_json()
+    current  = body.get('current', '')
+    new_pw   = body.get('new_password', '')
+    if not current or not new_pw or len(new_pw) < 6:
+        return jsonify({'success': False, 'error': 'Invalid input'})
+    user = get_user_by_id(session['user_id'])
+    if not check_password_hash(user['password_hash'], current):
+        return jsonify({'success': False, 'error': 'Current password is incorrect'})
+    update_password(user['email'], generate_password_hash(new_pw))
+    return jsonify({'success': True})
 
 @app.route('/save-sheet-url', methods=['POST'])
 @login_required

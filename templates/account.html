@@ -240,6 +240,38 @@
     </div>
     {% endif %}
 
+    <!-- Referral Program -->
+    <div class="panel">
+      <h2>Refer a Friend</h2>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.6;">Share your link — you both get <strong style="color:var(--green);">20 bonus scans</strong> when they sign up.</p>
+      <div id="refLinkBox" style="display:flex; gap:8px; align-items:center;">
+        <input id="refLink" type="text" readonly style="flex:1; padding:10px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--green); font-size:13px; font-weight:600; outline:none;">
+        <button onclick="copyRefLink()" style="padding:10px 16px; background:var(--green); color:#000; border:none; border-radius:10px; font-weight:800; font-size:13px; cursor:pointer;" id="copyRefBtn">Copy</button>
+      </div>
+      <div id="refBonusLine" style="font-size:12px; color:var(--muted); margin-top:10px;"></div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="panel">
+      <h2>Security</h2>
+      <div id="changePwForm">
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:6px;">Current Password</label>
+          <input type="password" id="currentPw" placeholder="••••••••" style="width:100%; padding:10px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:14px; outline:none;">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:6px;">New Password</label>
+          <input type="password" id="newPw" placeholder="At least 6 characters" style="width:100%; padding:10px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:14px; outline:none;">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:6px;">Confirm New Password</label>
+          <input type="password" id="confirmPw" placeholder="Repeat new password" style="width:100%; padding:10px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:14px; outline:none;">
+        </div>
+        <div id="changePwStatus" style="font-size:13px; margin-bottom:12px; display:none;"></div>
+        <button onclick="changePassword()" style="width:100%; padding:12px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:14px; font-weight:700; cursor:pointer;">Update Password</button>
+      </div>
+    </div>
+
     <!-- Delete account -->
     <div class="panel" style="border-color:#3a1a1a;">
       <h2 style="color:#ff6b6b;">Danger Zone</h2>
@@ -270,8 +302,68 @@
   </div>
 
   <script>
+    // Load referral info
+    fetch('/referral-info').then(r => r.json()).then(data => {
+      if (data.url) {
+        document.getElementById('refLink').value = data.url;
+        if (data.bonus_scans > 0) {
+          document.getElementById('refBonusLine').textContent = `🎁 You have ${data.bonus_scans} bonus scans from referrals`;
+          document.getElementById('refBonusLine').style.color = 'var(--green)';
+        }
+      }
+    });
+
+    function copyRefLink() {
+      const val = document.getElementById('refLink').value;
+      navigator.clipboard.writeText(val);
+      const btn = document.getElementById('copyRefBtn');
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    }
+
     function confirmDelete() {
       document.getElementById('deleteModal').style.display = 'flex';
+    }
+
+    async function changePassword() {
+      const current = document.getElementById('currentPw').value;
+      const newPw   = document.getElementById('newPw').value;
+      const confirm = document.getElementById('confirmPw').value;
+      const statusEl = document.getElementById('changePwStatus');
+      statusEl.style.display = 'none';
+
+      if (!current || !newPw || !confirm) {
+        statusEl.textContent = 'Please fill in all fields.';
+        statusEl.style.color = '#ff6b6b';
+        statusEl.style.display = 'block';
+        return;
+      }
+      if (newPw.length < 6) {
+        statusEl.textContent = 'New password must be at least 6 characters.';
+        statusEl.style.color = '#ff6b6b';
+        statusEl.style.display = 'block';
+        return;
+      }
+      if (newPw !== confirm) {
+        statusEl.textContent = 'Passwords do not match.';
+        statusEl.style.color = '#ff6b6b';
+        statusEl.style.display = 'block';
+        return;
+      }
+      const res = await fetch('/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current, new_password: newPw })
+      });
+      const data = await res.json();
+      statusEl.textContent = data.success ? '✓ Password updated!' : '✗ ' + data.error;
+      statusEl.style.color = data.success ? 'var(--green)' : '#ff6b6b';
+      statusEl.style.display = 'block';
+      if (data.success) {
+        document.getElementById('currentPw').value = '';
+        document.getElementById('newPw').value = '';
+        document.getElementById('confirmPw').value = '';
+      }
     }
 
     let selectedPlan = 'monthly';

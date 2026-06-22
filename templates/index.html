@@ -622,22 +622,31 @@
     </div>
 
     <div class="panel-box">
-      <h2>Session Stats</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2 style="margin-bottom:0;">Collection</h2>
+        <button onclick="resetCollection()" style="background:none; border:none; color:var(--muted); font-size:11px; cursor:pointer;">Reset</button>
+      </div>
+      <!-- Collection totals (persisted across sessions) -->
+      <div style="background:rgba(0,230,118,0.06); border:1px solid rgba(0,230,118,0.2); border-radius:12px; padding:14px 16px; margin-bottom:12px; text-align:center;">
+        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Total Collection Value</div>
+        <div id="collection-value" style="font-size:28px; font-weight:800; color:var(--green);">$0.00</div>
+        <div id="collection-count" style="font-size:12px; color:var(--muted); margin-top:2px;">0 cards tracked</div>
+      </div>
       <div class="stats-grid">
         <div class="stat-box">
           <div class="stat-num" id="stat-total">0</div>
-          <div class="stat-label">Cards Scanned</div>
+          <div class="stat-label">This Session</div>
         </div>
         <div class="stat-box">
           <div class="stat-num" id="stat-graded">0</div>
           <div class="stat-label">Graded</div>
         </div>
-        <div class="stat-box" style="display:none;">
-          <div class="stat-num" id="stat-value" style="font-size:22px;">$0.00</div>
-          <div class="stat-label">Est. Value</div>
+        <div class="stat-box">
+          <div class="stat-num" id="stat-value" style="font-size:18px;">$0.00</div>
+          <div class="stat-label">Session Value</div>
         </div>
         <div class="stat-box">
-          <div class="stat-num" id="stat-paid" style="font-size:22px;">$0.00</div>
+          <div class="stat-num" id="stat-paid" style="font-size:18px;">$0.00</div>
           <div class="stat-label">Total Paid</div>
         </div>
       </div>
@@ -655,6 +664,65 @@
   </div>
 </div>
 
+
+<!-- Onboarding Modal -->
+<div class="cl-modal-overlay" id="onboardingModal">
+  <div class="cl-modal" style="max-width:440px;">
+    <div id="onboard-step-1">
+      <div style="font-size:36px; text-align:center; margin-bottom:12px;">👋</div>
+      <h3 style="font-size:20px; font-weight:800; margin-bottom:6px; text-align:center;">Welcome to CardScan!</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:20px; text-align:center; line-height:1.6;">Let's get you set up in 2 quick steps so your scans save automatically.</p>
+
+      <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+        <div style="background:var(--surface2); border-radius:12px; padding:14px 16px; display:flex; gap:12px; align-items:flex-start;">
+          <div style="font-size:22px;">📊</div>
+          <div>
+            <div style="font-weight:700; font-size:14px; margin-bottom:2px;">Connect Google Sheets</div>
+            <div style="font-size:12px; color:var(--muted);">Every card you scan gets logged automatically to your sheet</div>
+          </div>
+        </div>
+        <div style="background:var(--surface2); border-radius:12px; padding:14px 16px; display:flex; gap:12px; align-items:flex-start;">
+          <div style="font-size:22px;">📷</div>
+          <div>
+            <div style="font-weight:700; font-size:14px; margin-bottom:2px;">Scan your first card</div>
+            <div style="font-size:12px; color:var(--muted);">Point your camera or upload a photo — AI reads it instantly</div>
+          </div>
+        </div>
+      </div>
+
+      <button onclick="showOnboardStep(2)" style="width:100%; padding:14px; background:var(--green); color:#000; border:none; border-radius:12px; font-weight:800; font-size:15px; cursor:pointer;">Let's set up my sheet →</button>
+      <button onclick="dismissOnboarding()" style="width:100%; padding:10px; background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:13px; margin-top:8px;">Skip for now</button>
+    </div>
+
+    <div id="onboard-step-2" style="display:none;">
+      <div style="font-size:36px; text-align:center; margin-bottom:12px;">📊</div>
+      <h3 style="font-size:18px; font-weight:800; margin-bottom:6px; text-align:center;">Connect your Google Sheet</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:6px; line-height:1.6;">
+        1. Open or create a <a href="https://sheets.google.com" target="_blank" style="color:var(--green);">Google Sheet</a><br>
+        2. Copy the URL from your browser<br>
+        3. Paste it below
+      </p>
+      <p style="font-size:12px; color:var(--muted); margin-bottom:16px;">
+        Then share your sheet with:<br>
+        <code style="background:var(--surface2); padding:4px 8px; border-radius:6px; color:var(--green); font-size:11px; word-break:break-all;">card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com</code>
+        <button onclick="navigator.clipboard.writeText('card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com'); this.textContent='✓ Copied!'; setTimeout(()=>this.textContent='Copy',1500);" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:12px;margin-left:6px;">Copy</button>
+      </p>
+      <input id="onboardSheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/..."
+        style="width:100%; padding:12px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:13px; margin-bottom:12px; outline:none;"
+        onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--border)'">
+      <div id="onboardSheetStatus" style="font-size:12px; color:#ff6b6b; margin-bottom:10px; display:none;"></div>
+      <button onclick="saveOnboardSheet()" style="width:100%; padding:14px; background:var(--green); color:#000; border:none; border-radius:12px; font-weight:800; font-size:15px; cursor:pointer;">Connect Sheet ✓</button>
+      <button onclick="dismissOnboarding()" style="width:100%; padding:10px; background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:13px; margin-top:8px;">Skip — I'll do this later</button>
+    </div>
+
+    <div id="onboard-step-3" style="display:none; text-align:center;">
+      <div style="font-size:48px; margin-bottom:12px;">🎉</div>
+      <h3 style="font-size:20px; font-weight:800; margin-bottom:8px;">You're all set!</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6;">Your sheet is connected. Every scan will now log automatically. Start scanning!</p>
+      <button onclick="dismissOnboarding()" style="width:100%; padding:14px; background:var(--green); color:#000; border:none; border-radius:12px; font-weight:800; font-size:15px; cursor:pointer;">Start Scanning 📷</button>
+    </div>
+  </div>
+</div>
 
 <!-- Upgrade Modal -->
 <div class="cl-modal-overlay" id="upgradeModal">
@@ -813,6 +881,31 @@
   let scanHistory = [];
   let totalScanned = 0;
   let totalGraded = 0;
+  // Collection tracker — persists across sessions in localStorage
+  let collectionData = JSON.parse(localStorage.getItem('collection_data') || '{"value":0,"count":0}');
+
+  function updateCollectionDisplay() {
+    document.getElementById('collection-value').textContent = '$' + collectionData.value.toFixed(2);
+    document.getElementById('collection-count').textContent = collectionData.count + ' card' + (collectionData.count !== 1 ? 's' : '') + ' tracked';
+  }
+
+  function addToCollection(ebayAvg) {
+    if (!ebayAvg) return;
+    collectionData.value += ebayAvg;
+    collectionData.count += 1;
+    localStorage.setItem('collection_data', JSON.stringify(collectionData));
+    updateCollectionDisplay();
+  }
+
+  function resetCollection() {
+    if (!confirm('Reset your collection tracker? This only clears the local counter, not your Google Sheet.')) return;
+    collectionData = { value: 0, count: 0 };
+    localStorage.setItem('collection_data', JSON.stringify(collectionData));
+    updateCollectionDisplay();
+  }
+
+  updateCollectionDisplay();
+
   let scanMode = 'raw'; // 'raw' or 'graded'
 
   function setScanMode(mode) {
@@ -845,6 +938,32 @@
   // Use server-saved sheet URL (persists across devices) then fall back to localStorage
   let userSheetUrl = '{{ saved_sheet_url }}' || localStorage.getItem('sheet_url') || '';
   if (userSheetUrl) localStorage.setItem('sheet_url', userSheetUrl); // keep in sync
+
+  // Show onboarding for new users who haven't connected a sheet
+  function showOnboarding() {
+    document.getElementById('onboardingModal').classList.add('open');
+  }
+  function showOnboardStep(n) {
+    [1,2,3].forEach(i => document.getElementById(`onboard-step-${i}`).style.display = i === n ? 'block' : 'none');
+  }
+  function dismissOnboarding() {
+    document.getElementById('onboardingModal').classList.remove('open');
+    localStorage.setItem('onboarding_dismissed', '1');
+  }
+  async function saveOnboardSheet() {
+    const val = document.getElementById('onboardSheetUrl').value.trim();
+    const statusEl = document.getElementById('onboardSheetStatus');
+    if (!val) { statusEl.textContent = 'Please paste your sheet URL.'; statusEl.style.display='block'; return; }
+    userSheetUrl = val;
+    localStorage.setItem('sheet_url', val);
+    fetch('/save-sheet-url', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({sheet_url: val}) });
+    showOnboardStep(3);
+    updateSheetBtn();
+  }
+
+  // Trigger onboarding for new users (no sheet + never dismissed)
+  const isNewUser = !userSheetUrl && !localStorage.getItem('onboarding_dismissed');
+  if (isNewUser) setTimeout(showOnboarding, 800);
   let clToken = localStorage.getItem('cl_token') || '';
 
   function saveCLToken() {
@@ -1600,6 +1719,8 @@
     document.getElementById('stat-graded').textContent = totalGraded;
     document.getElementById('stat-value').textContent  = '$' + totalValue.toFixed(2);
     document.getElementById('stat-paid').textContent   = '$' + totalPaid.toFixed(2);
+    // Add to persistent collection tracker
+    if (d.ebay_avg) addToCollection(d.ebay_avg);
 
     scanHistory.unshift(d);
     updateHistory();
