@@ -163,12 +163,27 @@ if DATABASE_URL:
         user = dict(user)
         today = str(date.today())
         bonus = user.get('bonus_scans') or 0
-        FREE_LIMIT = 10 + bonus
+
+        # 7-day free trial: unlimited scans for new users
+        from datetime import datetime, timedelta
+        created_at = user.get('created_at')
+        on_trial = False
+        if created_at:
+            if hasattr(created_at, 'date'):
+                days_old = (datetime.utcnow() - created_at.replace(tzinfo=None)).days
+            else:
+                try:
+                    days_old = (datetime.utcnow() - datetime.fromisoformat(str(created_at))).days
+                except:
+                    days_old = 999
+            on_trial = days_old < 7
+
+        FREE_LIMIT = 999999 if on_trial else (10 + bonus)
 
         # Reset scans_today if it's a new day
         scans_today = user['scans_today'] if user['scans_date'] == today else 0
 
-        if user['subscription_status'] == 'pro':
+        if user['subscription_status'] == 'pro' or on_trial:
             # Pro users: always allowed, but still track counts
             cur.execute(
                 "UPDATE users SET scans_today = %s, scans_date = %s, total_scans = COALESCE(total_scans, 0) + 1 WHERE id = %s",
