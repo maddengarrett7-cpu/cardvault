@@ -29,7 +29,8 @@ from database import init_db, get_user_by_email, get_user_by_id, create_user, \
     update_stripe_customer, update_subscription, check_and_increment_scans, \
     save_google_tokens, save_google_sheet_id, clear_google_tokens, \
     create_session, validate_session, delete_session, \
-    save_reset_token, get_reset_token, delete_reset_token, update_password, DATABASE_URL
+    save_reset_token, get_reset_token, delete_reset_token, update_password, \
+    DATABASE_URL, save_scan, get_scan_history
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
@@ -1014,6 +1015,16 @@ def privacy():
 def terms():
     return render_template('terms.html')
 
+@app.route('/history')
+@login_required
+def history():
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    scans, total = get_scan_history(session['user_id'], limit=limit, offset=offset)
+    total_pages = (total + limit - 1) // limit
+    return render_template('history.html', scans=scans, total=total, page=page, total_pages=total_pages)
+
 @app.route('/account')
 @login_required
 def account():
@@ -1437,6 +1448,12 @@ def scan():
         except Exception as sheet_err:
             app.logger.warning(f"Sheet write failed: {sheet_err}")
             sheet_warning = str(sheet_err)
+
+        # Save to scan history
+        try:
+            save_scan(session['user_id'], data)
+        except Exception as e:
+            app.logger.warning(f"Scan history save failed: {e}")
 
         return jsonify({'success': True, 'data': data, 'sheet_warning': sheet_warning})
     except Exception as e:

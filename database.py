@@ -40,6 +40,26 @@ if DATABASE_URL:
                 last_seen TIMESTAMP DEFAULT NOW()
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS scan_history (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                scanned_at TIMESTAMP DEFAULT NOW(),
+                card TEXT,
+                name TEXT,
+                year INTEGER,
+                brand TEXT,
+                set_name TEXT,
+                parallel TEXT,
+                grade TEXT,
+                cert TEXT,
+                serial TEXT,
+                card_type TEXT,
+                ebay_avg FLOAT,
+                ebay_high FLOAT,
+                ebay_low FLOAT
+            )
+        """)
         # Migrate: add columns if missing
         for col, definition in [
             ("google_access_token", "TEXT"),
@@ -215,6 +235,35 @@ if DATABASE_URL:
         conn.close()
         return True, scans_today + 1, FREE_LIMIT
 
+    def save_scan(user_id, data):
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            user_id,
+            data.get('card'), data.get('name'), data.get('year'),
+            data.get('brand'), data.get('set'), data.get('parallel'),
+            data.get('grade'), data.get('cert'), data.get('serial'),
+            data.get('card_type'), data.get('ebay_avg'),
+            data.get('ebay_high'), data.get('ebay_low'),
+        ))
+        conn.commit(); cur.close(); conn.close()
+
+    def get_scan_history(user_id, limit=100, offset=0):
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT * FROM scan_history WHERE user_id = %s
+            ORDER BY scanned_at DESC LIMIT %s OFFSET %s
+        """, (user_id, limit, offset))
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT COUNT(*) FROM scan_history WHERE user_id = %s", (user_id,))
+        total = cur.fetchone()[0]
+        cur.close(); conn.close()
+        return rows, total
+
 else:
     # SQLite fallback for local dev
     import sqlite3
@@ -252,8 +301,44 @@ else:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
             except Exception:
                 pass
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS scan_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                scanned_at TEXT DEFAULT (datetime('now')),
+                card TEXT, name TEXT, year INTEGER, brand TEXT,
+                set_name TEXT, parallel TEXT, grade TEXT, cert TEXT,
+                serial TEXT, card_type TEXT, ebay_avg REAL,
+                ebay_high REAL, ebay_low REAL
+            )
+        """)
         conn.commit()
         conn.close()
+
+    def save_scan(user_id, data):
+        conn = get_db()
+        conn.execute("""
+            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            user_id,
+            data.get('card'), data.get('name'), data.get('year'),
+            data.get('brand'), data.get('set'), data.get('parallel'),
+            data.get('grade'), data.get('cert'), data.get('serial'),
+            data.get('card_type'), data.get('ebay_avg'),
+            data.get('ebay_high'), data.get('ebay_low'),
+        ))
+        conn.commit(); conn.close()
+
+    def get_scan_history(user_id, limit=100, offset=0):
+        conn = get_db()
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM scan_history WHERE user_id = ? ORDER BY scanned_at DESC LIMIT ? OFFSET ?",
+            (user_id, limit, offset)
+        ).fetchall()]
+        total = conn.execute("SELECT COUNT(*) FROM scan_history WHERE user_id = ?", (user_id,)).fetchone()[0]
+        conn.close()
+        return rows, total
 
     def get_user_by_email(email):
         conn = get_db()

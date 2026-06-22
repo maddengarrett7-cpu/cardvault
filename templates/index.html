@@ -407,6 +407,7 @@
     <button class="btn-outline" id="openSheetBtn" onclick="openUserSheet()" style="display:none">Open Sheet ↗</button>
     <button class="btn-outline" id="connectSheetsBtn" onclick="openSettings()">📊 Connect Sheets</button>
     <button class="btn-outline" id="installBtn" style="display:none; border-color:#00e676; color:#00e676;" onclick="installApp()">⬇ Install App</button>
+    <a href="/history" class="btn-outline">📋 History</a>
     <a href="/account" class="btn-outline" style="{% if user.subscription_status == 'pro' %}border-color:var(--green);color:var(--green);{% endif %}">
       {% if user.subscription_status == 'pro' %}⚡ Pro{% else %}👤 Account{% endif %}
     </a>
@@ -417,6 +418,7 @@
   <!-- Mobile dropdown menu -->
   <div class="mobile-menu" id="mobileMenu">
     <a href="/home" class="btn-outline" onclick="closeMenu()">🏠 Home</a>
+    <a href="/history" class="btn-outline" onclick="closeMenu()">📋 History</a>
     <button class="btn-outline" onclick="exportCSV(); closeMenu()">⬇ Export to Excel/CSV</button>
     <button class="btn-outline" id="mobileOpenSheetBtn" onclick="openUserSheet(); closeMenu()" style="display:none">Open Sheet ↗</button>
     <button class="btn-outline" id="mobileConnectSheetsBtn" onclick="openSettings(); closeMenu()">📊 Connect Sheets</button>
