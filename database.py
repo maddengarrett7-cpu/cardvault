@@ -15,6 +15,8 @@ if DATABASE_URL:
     def init_db():
         conn = get_db()
         cur = conn.cursor()
+
+        # Create core tables
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -40,30 +42,26 @@ if DATABASE_URL:
                 last_seen TIMESTAMP DEFAULT NOW()
             )
         """)
+        conn.commit()
+
+        # Create scan_history table separately
         try:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS scan_history (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                     scanned_at TIMESTAMP DEFAULT NOW(),
-                    card TEXT,
-                    name TEXT,
-                    year INTEGER,
-                    brand TEXT,
-                    set_name TEXT,
-                    parallel TEXT,
-                    grade TEXT,
-                    cert TEXT,
-                    serial TEXT,
-                    card_type TEXT,
-                    ebay_avg FLOAT,
-                    ebay_high FLOAT,
-                    ebay_low FLOAT
+                    card TEXT, name TEXT, year INTEGER, brand TEXT,
+                    set_name TEXT, parallel TEXT, grade TEXT, cert TEXT,
+                    serial TEXT, card_type TEXT, ebay_avg FLOAT,
+                    ebay_high FLOAT, ebay_low FLOAT
                 )
             """)
+            conn.commit()
         except Exception:
             conn.rollback()
-        # Migrate: add columns if missing
+
+        # Migrate: add columns one by one, each in its own transaction
         for col, definition in [
             ("google_access_token", "TEXT"),
             ("google_refresh_token", "TEXT"),
@@ -76,9 +74,10 @@ if DATABASE_URL:
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
+                conn.commit()
             except Exception:
                 conn.rollback()
-        conn.commit()
+
         cur.close()
         conn.close()
 
