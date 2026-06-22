@@ -40,26 +40,29 @@ if DATABASE_URL:
                 last_seen TIMESTAMP DEFAULT NOW()
             )
         """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS scan_history (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                scanned_at TIMESTAMP DEFAULT NOW(),
-                card TEXT,
-                name TEXT,
-                year INTEGER,
-                brand TEXT,
-                set_name TEXT,
-                parallel TEXT,
-                grade TEXT,
-                cert TEXT,
-                serial TEXT,
-                card_type TEXT,
-                ebay_avg FLOAT,
-                ebay_high FLOAT,
-                ebay_low FLOAT
-            )
-        """)
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS scan_history (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    scanned_at TIMESTAMP DEFAULT NOW(),
+                    card TEXT,
+                    name TEXT,
+                    year INTEGER,
+                    brand TEXT,
+                    set_name TEXT,
+                    parallel TEXT,
+                    grade TEXT,
+                    cert TEXT,
+                    serial TEXT,
+                    card_type TEXT,
+                    ebay_avg FLOAT,
+                    ebay_high FLOAT,
+                    ebay_low FLOAT
+                )
+            """)
+        except Exception:
+            conn.rollback()
         # Migrate: add columns if missing
         for col, definition in [
             ("google_access_token", "TEXT"),

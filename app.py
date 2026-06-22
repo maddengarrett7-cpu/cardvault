@@ -829,10 +829,10 @@ def _db_set_referral_code(user_id, code):
 
 def _db_get_user_by_referral_code(code):
     from database import get_db, DATABASE_URL
-    import psycopg2.extras
     db = get_db()
     try:
         if DATABASE_URL:
+            import psycopg2.extras
             cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("SELECT * FROM users WHERE referral_code = %s", (code,))
             row = cur.fetchone(); cur.close(); db.close()
