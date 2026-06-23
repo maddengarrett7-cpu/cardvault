@@ -1880,7 +1880,7 @@ def admin_dashboard():
             pro_users = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM users WHERE scans_date = CURRENT_DATE::text")
             active_today = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM scan_history WHERE scanned_at >= CURRENT_DATE")
+            cur.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = CURRENT_DATE::text")
             scans_today = cur.fetchone()[0] or 0
             cur.execute("SELECT COUNT(*) FROM scan_history")
             total_scans_ever = cur.fetchone()[0] or 0
