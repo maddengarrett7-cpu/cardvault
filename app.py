@@ -1100,11 +1100,75 @@ def terms():
 @login_required
 def history():
     page = int(request.args.get('page', 1))
+    search = request.args.get('search', '').strip()
+    grade_filter = request.args.get('grade', '').strip()
     limit = 20
     offset = (page - 1) * limit
-    scans, total = get_scan_history(session['user_id'], limit=limit, offset=offset)
+    scans, total = get_scan_history(session['user_id'], limit=limit, offset=offset, search=search, grade_filter=grade_filter)
     total_pages = (total + limit - 1) // limit
-    return render_template('history.html', scans=scans, total=total, page=page, total_pages=total_pages)
+    return render_template('history.html', scans=scans, total=total, page=page, total_pages=total_pages, search=search, grade_filter=grade_filter)
+
+
+@app.route('/history/delete/<int:scan_id>', methods=['POST'])
+@login_required
+def delete_scan(scan_id):
+    from database import get_db, DATABASE_URL
+    conn = get_db()
+    if DATABASE_URL:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM scan_history WHERE id = %s AND user_id = %s", (scan_id, session['user_id']))
+        conn.commit(); cur.close(); conn.close()
+    else:
+        conn.execute("DELETE FROM scan_history WHERE id = ? AND user_id = ?", (scan_id, session['user_id']))
+        conn.commit(); conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/history/export')
+@login_required
+def export_history():
+    import csv, io
+    scans, _ = get_scan_history(session['user_id'], limit=10000, offset=0)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Card', 'Name', 'Year', 'Brand', 'Set', 'Parallel', 'Grade', 'Cert', 'eBay Avg', 'Scanned At'])
+    for s in scans:
+        writer.writerow([
+            s.get('card',''), s.get('name',''), s.get('year',''),
+            s.get('brand',''), s.get('set_name',''), s.get('parallel',''),
+            s.get('grade',''), s.get('cert',''),
+            f"${s['ebay_avg']:.2f}" if s.get('ebay_avg') else '',
+            str(s.get('scanned_at',''))[:16]
+        ])
+    output.seek(0)
+    from flask import make_response
+    resp = make_response(output.getvalue())
+    resp.headers['Content-Type'] = 'text/csv'
+    resp.headers['Content-Disposition'] = 'attachment; filename=cardscan_history.csv'
+    return resp
+
+
+@app.route('/admin/grant-trial', methods=['POST'])
+def admin_grant_trial():
+    from database import get_db, DATABASE_URL
+    secret = request.form.get('secret') or (request.get_json() or {}).get('secret')
+    if not check_admin(secret):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    email = request.form.get('email') or (request.get_json() or {}).get('email')
+    days = int(request.form.get('days') or (request.get_json() or {}).get('days') or 7)
+    if not email:
+        return jsonify({'success': False, 'error': 'Email required'})
+    from datetime import date, timedelta
+    trial_end = str(date.today() + timedelta(days=days))
+    conn = get_db()
+    if DATABASE_URL:
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET subscription_status='pro', trial_end=%s WHERE email=%s", (trial_end, email.lower()))
+        conn.commit(); cur.close(); conn.close()
+    else:
+        conn.execute("UPDATE users SET subscription_status='pro', trial_end=? WHERE email=?", (trial_end, email.lower()))
+        conn.commit(); conn.close()
+    return jsonify({'success': True, 'message': f'{email} granted {days}-day Pro trial until {trial_end}'})
 
 @app.route('/account')
 @login_required
@@ -1454,6 +1518,26 @@ def scan():
                 'error': f'Free limit reached ({limit} scans/day). Upgrade to CardScan Pro for unlimited scans.'
             })
 
+        # Duplicate cert detection for graded cards
+        duplicate_warning = None
+        cert = data.get('cert')
+        if cert and cert != 'Raw':
+            from database import get_db, DATABASE_URL
+            try:
+                conn = get_db()
+                if DATABASE_URL:
+                    cur = conn.cursor()
+                    cur.execute("SELECT card FROM scan_history WHERE user_id = %s AND cert = %s LIMIT 1", (session['user_id'], cert))
+                    dup = cur.fetchone()
+                    cur.close(); conn.close()
+                else:
+                    dup = conn.execute("SELECT card FROM scan_history WHERE user_id = ? AND cert = ? LIMIT 1", (session['user_id'], cert)).fetchone()
+                    conn.close()
+                if dup:
+                    duplicate_warning = f"⚠️ Cert #{cert} already in your history"
+            except Exception:
+                pass
+
         # Normalize all text fields to Title Case (Gemini often returns ALL CAPS)
         for field in ["name", "brand", "set", "parallel", "card"]:
             val = data.get(field)
@@ -1559,7 +1643,7 @@ def scan():
         except Exception as e:
             app.logger.warning(f"Scan history save failed: {e}")
 
-        return jsonify({'success': True, 'data': data, 'sheet_warning': sheet_warning})
+        return jsonify({'success': True, 'data': data, 'sheet_warning': sheet_warning, 'duplicate_warning': duplicate_warning})
     except Exception as e:
         err = str(e)
         app.logger.error(f"Scan error: {err}")
@@ -1680,6 +1764,8 @@ def scan_bulk_confirm():
         sheeted = 0
         errors = []
         for card in cards:
+            # Deduct one scan per card confirmed
+            check_and_increment_scans(session['user_id'])
             if user.get('auto_sheet', True):
                 try:
                     append_to_sheet(card, custom_sheet_id, user=user)
@@ -2028,11 +2114,28 @@ def admin_dashboard():
             f'<button style="background:#1a1a3a;color:#aaaaff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;margin-left:4px;">🔑</button>'
             f'</form>'
         )
-        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{total}</td><td>{str(joined)[:10]}</td><td style='white-space:nowrap'>{upgrade_btn}{delete_btn}{email_btn}{reset_pw_btn}</td></tr>"
+        trial_btn = (
+            f'<button onclick="grantTrial(\'{email}\')" style="background:#1a2e1a;color:#00ff87;border:1px solid #00ff87;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;margin-left:4px;">🎁 Trial</button>'
+        ) if plan != 'pro' else ''
+        return f"<tr><td>{email}</td><td>{plan_label}</td><td>{scans}</td><td>{total}</td><td>{str(joined)[:10]}</td><td style='white-space:nowrap'>{upgrade_btn}{trial_btn}{delete_btn}{email_btn}{reset_pw_btn}</td></tr>"
 
     rows = ''.join([make_row(u) for u in recent_users])
     top_scanner_rows = ''.join([f"<tr><td>{u[0]}</td><td style='color:#00ff87;font-weight:700'>{u[1]}</td></tr>" for u in top_scanners])
     search_val = search or ''
+
+    # Referral stats
+    try:
+        if hasattr(db, 'cursor'):
+            db2 = get_db()
+            cur2 = db2.cursor()
+            cur2.execute("SELECT referred_by, COUNT(*) as cnt, SUM(CASE WHEN subscription_status='pro' THEN 1 ELSE 0 END) as converted FROM users WHERE referred_by IS NOT NULL GROUP BY referred_by ORDER BY cnt DESC LIMIT 10")
+            referral_rows_data = cur2.fetchall()
+            cur2.close(); db2.close()
+        else:
+            referral_rows_data = []
+    except Exception:
+        referral_rows_data = []
+    referral_rows = ''.join([f"<tr><td>{r[0]}</td><td style='color:#00ff87'>{r[1]}</td><td style='color:#ffd700'>{r[2]}</td></tr>" for r in referral_rows_data])
 
     return f"""<!DOCTYPE html><html>
 <head><title>CardScan Admin</title>
@@ -2074,6 +2177,18 @@ td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
 <script>
   document.getElementById('refreshTime').textContent = new Date().toLocaleTimeString();
   setTimeout(() => location.reload(), 60000);
+  async function grantTrial(email) {{
+    const days = prompt(`Grant how many days of Pro trial to ${{email}}?`, '7');
+    if (!days) return;
+    const res = await fetch('/admin/grant-trial', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{secret: '{secret}', email, days: parseInt(days)}})
+    }});
+    const data = await res.json();
+    alert(data.message || data.error);
+    if (data.success) location.reload();
+  }}
 </script>
 
 <div class="stats">
@@ -2107,6 +2222,11 @@ td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
     <table>
       <tr><th>Email</th><th>Total Scans</th></tr>
       {top_scanner_rows}
+    </table>
+    <h2 style="margin-top:24px;">Referral Tracking</h2>
+    <table>
+      <tr><th>Referral Code</th><th>Referred</th><th>Converted</th></tr>
+      {referral_rows if referral_rows else '<tr><td colspan=3 style="color:#555">No referrals yet</td></tr>'}
     </table>
   </div>
 </div>

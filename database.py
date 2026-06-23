@@ -72,6 +72,7 @@ if DATABASE_URL:
             ("referred_by", "TEXT"),
             ("bonus_scans", "INTEGER DEFAULT 0"),
             ("auto_sheet", "BOOLEAN DEFAULT TRUE"),
+            ("trial_end", "TEXT"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
@@ -277,15 +278,23 @@ if DATABASE_URL:
         ))
         conn.commit(); cur.close(); conn.close()
 
-    def get_scan_history(user_id, limit=100, offset=0):
+    def get_scan_history(user_id, limit=100, offset=0, search='', grade_filter=''):
         conn = get_db()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
-            SELECT * FROM scan_history WHERE user_id = %s
-            ORDER BY scanned_at DESC LIMIT %s OFFSET %s
-        """, (user_id, limit, offset))
+        where = "WHERE user_id = %s"
+        params = [user_id]
+        if search:
+            where += " AND (LOWER(card) LIKE %s OR LOWER(name) LIKE %s OR LOWER(set_name) LIKE %s)"
+            s = f"%{search.lower()}%"
+            params += [s, s, s]
+        if grade_filter == 'graded':
+            where += " AND grade IS NOT NULL AND grade != 'Raw' AND grade != ''"
+        elif grade_filter == 'raw':
+            where += " AND (grade IS NULL OR grade = 'Raw' OR grade = '')"
+        cur.execute(f"SELECT * FROM scan_history {where} ORDER BY scanned_at DESC LIMIT %s OFFSET %s",
+                    params + [limit, offset])
         rows = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT COUNT(*) FROM scan_history WHERE user_id = %s", (user_id,))
+        cur.execute(f"SELECT COUNT(*) FROM scan_history {where}", params)
         row = cur.fetchone()
         total = list(row.values())[0] if row else 0
         cur.close(); conn.close()

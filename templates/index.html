@@ -1872,7 +1872,10 @@
     scanHistory.unshift(d);
     updateHistory();
 
-    if (result && result.sheet_warning) {
+    if (result && result.duplicate_warning) {
+      status.className = 'status-bar error';
+      status.textContent = result.duplicate_warning;
+    } else if (result && result.sheet_warning) {
       status.className = 'status-bar error';
       status.textContent = '⚠️ Scanned but sheet error: ' + result.sheet_warning;
     } else {

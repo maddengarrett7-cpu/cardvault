@@ -68,6 +68,13 @@
     .stat { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px; text-align:center; }
     .stat-num { font-size:24px; font-weight:800; color:var(--green); }
     .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px; }
+    .search-bar { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+    .search-bar input { flex:1; min-width:160px; padding:9px 12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; outline:none; }
+    .search-bar input:focus { border-color:var(--green); }
+    .search-bar select { padding:9px 12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; outline:none; cursor:pointer; }
+    .search-bar button { padding:9px 16px; background:var(--green); color:#000; border:none; border-radius:8px; font-weight:800; font-size:13px; cursor:pointer; white-space:nowrap; }
+    .delete-btn { background:none; border:none; color:#555; cursor:pointer; font-size:14px; padding:4px 8px; border-radius:6px; flex-shrink:0; }
+    .delete-btn:hover { color:#ff6b6b; background:rgba(255,107,107,0.1); }
     @media (max-width:600px) {
       .scan-card { flex-direction:column; align-items:flex-start; }
       .scan-value { text-align:left; }
@@ -87,8 +94,23 @@
 <div class="container">
   <div class="page-header">
     <h1>📋 Scan History</h1>
-    <span class="total-badge">{{ total }} total scans</span>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span class="total-badge">{{ total }} scans</span>
+      <a href="/history/export" class="btn" style="font-size:12px; padding:6px 12px;">⬇ Export CSV</a>
+    </div>
   </div>
+
+  <!-- Search & Filter -->
+  <form class="search-bar" method="GET" action="/history">
+    <input type="text" name="search" placeholder="Search by player, set, card..." value="{{ search }}">
+    <select name="grade">
+      <option value="" {% if not grade_filter %}selected{% endif %}>All cards</option>
+      <option value="graded" {% if grade_filter == 'graded' %}selected{% endif %}>Graded only</option>
+      <option value="raw" {% if grade_filter == 'raw' %}selected{% endif %}>Raw only</option>
+    </select>
+    <button type="submit">Search</button>
+    {% if search or grade_filter %}<a href="/history" class="btn" style="padding:9px 12px; font-size:13px;">✕ Clear</a>{% endif %}
+  </form>
 
   {% if scans %}
   <!-- Summary stats -->
@@ -110,7 +132,7 @@
   </div>
 
   {% for scan in scans %}
-  <div class="scan-card" onclick="openModal({{ loop.index0 }})">
+  <div class="scan-card" id="scan-{{ scan.id }}" onclick="openModal({{ loop.index0 }})" style="position:relative;">
     <div class="scan-info">
       <div class="scan-name">{{ scan.card or scan.name or 'Unknown Card' }}</div>
       <div class="scan-meta">
@@ -135,6 +157,7 @@
       </div>
       {% endif %}
       <span style="color:var(--muted); font-size:16px;">›</span>
+      <button class="delete-btn" onclick="event.stopPropagation(); deleteScan({{ scan.id }})" title="Delete">🗑</button>
     </div>
   </div>
   {% endfor %}
@@ -180,6 +203,16 @@
   </div>
 
   <script>
+    async function deleteScan(id) {
+      if (!confirm('Remove this scan from history?')) return;
+      const res = await fetch(`/history/delete/${id}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const el = document.getElementById(`scan-${id}`);
+        if (el) el.remove();
+      }
+    }
+
     const scans = {{ scans | tojson }};
 
     function openModal(i) {
