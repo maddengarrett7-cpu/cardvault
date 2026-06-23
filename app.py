@@ -43,16 +43,19 @@ _GEMINI_KEY_POOL = [k for k in [
     os.environ.get("GEMINI_API_KEY_3"),
     os.environ.get("GEMINI_API_KEY_4"),
 ] if k]
+# Always ensure the primary key is in the pool
+if GEMINI_API_KEY and GEMINI_API_KEY not in _GEMINI_KEY_POOL:
+    _GEMINI_KEY_POOL.insert(0, GEMINI_API_KEY)
 _key_index = 0
 
 def _get_next_gemini_key():
-    """Round-robin through available API keys."""
+    """Round-robin through available API keys, always falls back to primary."""
     global _key_index
     if not _GEMINI_KEY_POOL:
         return GEMINI_API_KEY
     key = _GEMINI_KEY_POOL[_key_index % len(_GEMINI_KEY_POOL)]
     _key_index += 1
-    return key
+    return key or GEMINI_API_KEY
 GOOGLE_CREDS_FILE = os.path.join(os.path.dirname(__file__), "google_creds.json")
 SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
 EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
@@ -226,7 +229,7 @@ def analyze_label(image_data):
     return json.loads(text.strip())
 
 def analyze_card(frame, quality=85, year_hint=None, sport_hint=None, is_raw=True):
-    client = genai.Client(api_key=_get_next_gemini_key())
+    client = genai.Client(api_key=GEMINI_API_KEY)
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     image_data = buf.tobytes()
     rookie_hint = get_rookie_hint(year_hint, sport_hint) if is_raw else None
@@ -348,7 +351,7 @@ def extract_year_from_copyright(image_data):
 def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
     """Second pass for raw (ungraded) cards — focused on fine-print details
     that the general first pass tends to miss: year, set, parallel, card number."""
-    client = genai.Client(api_key=_get_next_gemini_key())
+    client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
         "This is a raw (ungraded) sports or trading card. "
         "Your ONLY job is to read the fine-print details that are easy to miss. "
