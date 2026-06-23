@@ -282,6 +282,41 @@ def analyze_card_back(image_data):
     return json.loads(text.strip())
 
 
+def extract_year_from_copyright(image_data):
+    """Crop the bottom 12% of the card image and run a focused year-only read."""
+    import numpy as np
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    # Decode, crop bottom strip, re-encode
+    arr = np.frombuffer(image_data, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    h = img.shape[0]
+    strip = img[int(h * 0.88):, :]   # bottom 12%
+    _, buf = cv2.imencode(".jpg", strip, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    strip_bytes = buf.tobytes()
+    prompt = (
+        "This is a cropped strip from the very bottom of a sports trading card. "
+        "It contains the copyright line, e.g. '© 2021 Panini America' or '2022 Topps'. "
+        "Read the 4-digit year from this copyright text. "
+        "Return ONLY a JSON object with one key: {\"year\": 2021} or {\"year\": null} if unreadable. "
+        "No markdown, no extra text."
+    )
+    try:
+        response = gemini_generate(
+            client, model="gemini-2.5-flash",
+            contents=[prompt, genai_types.Part.from_bytes(data=strip_bytes, mime_type="image/jpeg")],
+        )
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        return json.loads(text.strip()).get("year")
+    except Exception:
+        return None
+
+
 def analyze_raw_card(image_data):
     """Second pass for raw (ungraded) cards — focused on fine-print details
     that the general first pass tends to miss: year, set, parallel, card number."""
@@ -1329,6 +1364,9 @@ def scan():
                 ret, frame = cap.read()
             if not ret:
                 return jsonify({'success': False, 'error': 'Could not capture image'})
+            # Encode frame so second/third passes can use it
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            raw_image_bytes = buf.tobytes()
 
         scan_mode = body.get('scan_mode', 'raw') if body else 'raw'  # 'raw' or 'graded'
 
@@ -1339,23 +1377,38 @@ def scan():
             is_raw_card = False
 
         elif is_upload and raw_image_bytes:
-            # Upload in raw mode — single focused raw card pass
+            # Upload — high quality first pass
             data = analyze_card(frame, quality=95)
             is_raw_card = True
 
-            # Second pass for raw cards — fills in year, set, parallel, serial
+        else:
+            # Camera scan — first pass
+            data = analyze_card(frame, quality=85)
+            is_raw_card = (not data.get("grade") or data.get("grade", "").lower() == "raw")
+
+        # Second pass for ALL raw cards (upload or camera)
+        if is_raw_card and raw_image_bytes:
             try:
                 raw_data = analyze_raw_card(raw_image_bytes)
-                for field in ["year", "brand", "set", "parallel", "serial", "card_number", "sport"]:
+                # Always trust the second pass for year and brand — it looks harder
+                for field in ["year", "brand"]:
+                    if raw_data.get(field):
+                        data[field] = raw_data[field]
+                # Fill blanks for everything else
+                for field in ["set", "parallel", "serial", "card_number", "sport"]:
                     if raw_data.get(field) and not data.get(field):
                         data[field] = raw_data[field]
             except Exception as raw_err:
                 app.logger.warning(f"Raw second pass failed: {raw_err}")
 
-        else:
-            # Camera scan — single general pass
-            data = analyze_card(frame, quality=85)
-            is_raw_card = (not data.get("grade") or data.get("grade", "").lower() == "raw")
+            # Third pass — crop bottom strip for year if still missing
+            if not data.get("year"):
+                try:
+                    year = extract_year_from_copyright(raw_image_bytes)
+                    if year:
+                        data["year"] = year
+                except Exception as yr_err:
+                    app.logger.warning(f"Year crop pass failed: {yr_err}")
 
         # Only count the scan after Gemini succeeds
         allowed, scans_used, limit = check_and_increment_scans(session['user_id'])
