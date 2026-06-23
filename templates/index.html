@@ -496,9 +496,17 @@
         <span class="result-label">Year</span>
         <span class="result-value editable" id="r-year" onclick="editField('r-year')" title="Tap to edit">—</span>
       </div>
+      <div class="result-row" id="row-brand">
+        <span class="result-label">Brand</span>
+        <span class="result-value editable" id="r-brand" onclick="editField('r-brand')" title="Tap to edit">—</span>
+      </div>
       <div class="result-row" id="row-set">
         <span class="result-label">Set</span>
         <span class="result-value editable" id="r-set" onclick="editField('r-set')" title="Tap to edit">—</span>
+      </div>
+      <div class="result-row" id="row-parallel">
+        <span class="result-label">Parallel</span>
+        <span class="result-value editable" id="r-parallel" onclick="editField('r-parallel')" title="Tap to edit">—</span>
       </div>
       <div class="result-row" id="row-grade">
         <span class="result-label">Grade</span>
@@ -543,6 +551,16 @@
           <button onclick="saveMyValue()" style="padding:10px 16px; background:var(--green); color:#000; border:none; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; white-space:nowrap;">Save ↗</button>
         </div>
         <div id="myValueStatus" style="font-size:12px; color:var(--green); margin-top:6px; display:none;">✓ Saved to sheet!</div>
+      </div>
+
+      <!-- Re-sheet button — appears after a scan -->
+      <div id="resheetRow" style="display:none; margin-top:12px;">
+        <button onclick="resheetCard()" style="width:100%; padding:10px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); font-size:13px; font-weight:700; cursor:pointer;"
+          onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+          ↺ Re-sheet with edits
+        </button>
+        <div id="resheetStatus" style="font-size:12px; color:var(--green); margin-top:6px; display:none;"></div>
       </div>
     </div>
 
@@ -1178,7 +1196,8 @@
       // Update lastScan data so history/sheets stay in sync
       if (scanHistory.length > 0) {
         const fieldMap = {
-          'r-name': 'name', 'r-year': 'year', 'r-set': 'set',
+          'r-name': 'name', 'r-year': 'year', 'r-brand': 'brand',
+          'r-set': 'set', 'r-parallel': 'parallel',
           'r-grade': 'grade', 'r-cert': 'cert', 'r-card': 'card',
           'r-cardnum': 'card_number', 'r-rarity': 'rarity', 'r-hp': 'hp'
         };
@@ -1698,6 +1717,41 @@
     statusEl.style.display = 'block';
   }
 
+  async function resheetCard() {
+    const card = scanHistory[0];
+    if (!card) return;
+    // Pull current values from the displayed fields (user may have edited them)
+    card.name     = document.getElementById('r-name').textContent.replace('—','').trim() || card.name;
+    card.year     = document.getElementById('r-year').textContent.replace('—','').trim() || card.year;
+    card.brand    = document.getElementById('r-brand').textContent.replace('—','').trim() || card.brand;
+    card.set      = document.getElementById('r-set').textContent.replace('—','').trim() || card.set;
+    card.parallel = document.getElementById('r-parallel').textContent.replace('—','').trim() || card.parallel;
+    card.grade    = document.getElementById('r-grade').textContent.replace('—','').trim() || card.grade;
+    card.cert     = document.getElementById('r-cert').textContent.replace('—','').trim() || card.cert;
+    card.card     = document.getElementById('r-card').textContent.trim() || card.card;
+
+    const statusEl = document.getElementById('resheetStatus');
+    statusEl.style.display = 'none';
+    try {
+      const res = await apiFetch('/resheet-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card, sheet_id: userSheetUrl })
+      });
+      if (res.success) {
+        statusEl.textContent = '✓ Added to sheet!';
+        statusEl.style.color = 'var(--green)';
+      } else {
+        statusEl.textContent = '✗ ' + (res.error || 'Could not sheet');
+        statusEl.style.color = '#ff6b6b';
+      }
+    } catch(e) {
+      statusEl.textContent = '✗ ' + friendlyError(e.message);
+      statusEl.style.color = '#ff6b6b';
+    }
+    statusEl.style.display = 'block';
+  }
+
   function openCardLadder(d) {
     // Card Ladder searches by card name/details using &q= parameter
     const parts = [d.year, d.name, d.set, d.parallel, d.grade].filter(Boolean);
@@ -1774,11 +1828,13 @@
     document.getElementById('row-rarity').style.display  = isTCG ? 'flex' : 'none';
     document.getElementById('row-hp').style.display      = (isTCG && d.hp) ? 'flex' : 'none';
 
-    document.getElementById('r-name').textContent     = d.name  || '—';
-    document.getElementById('r-year').textContent     = d.year  || '—';
-    document.getElementById('r-set').textContent      = d.set   || '—';
-    document.getElementById('r-grade').textContent    = d.grade || '—';
-    document.getElementById('r-cert').textContent     = d.cert  || '—';
+    document.getElementById('r-name').textContent     = d.name     || '—';
+    document.getElementById('r-year').textContent     = d.year     || '—';
+    document.getElementById('r-brand').textContent    = d.brand    || '—';
+    document.getElementById('r-set').textContent      = d.set      || '—';
+    document.getElementById('r-parallel').textContent = d.parallel || '—';
+    document.getElementById('r-grade').textContent    = d.grade    || '—';
+    document.getElementById('r-cert').textContent     = d.cert     || '—';
     document.getElementById('r-serial').textContent   = d.serial || '—';
     document.getElementById('row-serial').style.display = d.serial ? 'flex' : 'none';
     document.getElementById('r-cardnum').textContent  = d.card_number || '—';
@@ -1796,6 +1852,8 @@
     document.getElementById('myValueInput').value = d.ebay_avg ? d.ebay_avg.toFixed(2) : '';
     document.getElementById('myValueStatus').style.display = 'none';
     document.getElementById('valueInputRow').style.display = 'block';
+    document.getElementById('resheetRow').style.display = 'block';
+    document.getElementById('resheetStatus').style.display = 'none';
 
     if (window.innerWidth <= 768)
       document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });

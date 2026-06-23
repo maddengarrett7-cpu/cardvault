@@ -1534,6 +1534,22 @@ def scan():
             return jsonify({'success': False, 'error': 'Could not read the card — please retake the photo with better lighting and try again. Scan was not counted.'})
         return jsonify({'success': False, 'error': 'Something went wrong — your scan was not counted. Please try again.'})
 
+@app.route('/resheet-card', methods=['POST'])
+@login_required
+def resheet_card():
+    """Append an edited single card scan to the user's sheet."""
+    user = get_user_by_id(session['user_id'])
+    body = request.get_json()
+    card = body.get('card', {})
+    custom_sheet = body.get('sheet_id', '')
+    custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
+    try:
+        append_to_sheet(card, custom_sheet_id, user=user)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/scan-bulk', methods=['POST'])
 @login_required
 def scan_bulk():
