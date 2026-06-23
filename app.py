@@ -25,6 +25,7 @@ from google.oauth2.service_account import Credentials
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from rookies import get_rookie_hint
 from database import init_db, get_user_by_email, get_user_by_id, create_user, \
     update_stripe_customer, update_subscription, check_and_increment_scans, \
     save_google_tokens, save_google_sheet_id, clear_google_tokens, \
@@ -34,6 +35,24 @@ from database import init_db, get_user_by_email, get_user_by_id, create_user, \
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
+
+# ── Gemini API key pool — add GEMINI_API_KEY_2, _3 etc in Railway env vars ─
+_GEMINI_KEY_POOL = [k for k in [
+    os.environ.get("GEMINI_API_KEY"),
+    os.environ.get("GEMINI_API_KEY_2"),
+    os.environ.get("GEMINI_API_KEY_3"),
+    os.environ.get("GEMINI_API_KEY_4"),
+] if k]
+_key_index = 0
+
+def _get_next_gemini_key():
+    """Round-robin through available API keys."""
+    global _key_index
+    if not _GEMINI_KEY_POOL:
+        return GEMINI_API_KEY
+    key = _GEMINI_KEY_POOL[_key_index % len(_GEMINI_KEY_POOL)]
+    _key_index += 1
+    return key
 GOOGLE_CREDS_FILE = os.path.join(os.path.dirname(__file__), "google_creds.json")
 SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
 EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
@@ -142,15 +161,18 @@ def generate_frames():
 
 _FALLBACK_MODEL = "gemini-2.5-flash"
 
-def gemini_generate(client, model, contents, retries=2):
-    """Call Gemini with exponential backoff and model fallback on overload."""
+def gemini_generate(client, model, contents, retries=3):
+    """Call Gemini with exponential backoff, key rotation, and model fallback on overload."""
     import time as _time
     last_err = None
     for attempt in range(retries + 1):
         # After first retry, fall back to the lighter model
-        active_model = _FALLBACK_MODEL if attempt >= 1 else model
+        active_model = _FALLBACK_MODEL if attempt >= 2 else model
+        # Rotate API key on each retry
+        active_key = _get_next_gemini_key()
+        active_client = genai.Client(api_key=active_key)
         try:
-            return client.models.generate_content(
+            return active_client.models.generate_content(
                 model=active_model,
                 contents=contents,
                 config=genai_types.GenerateContentConfig(
@@ -160,9 +182,9 @@ def gemini_generate(client, model, contents, retries=2):
         except Exception as e:
             last_err = e
             err_str = str(e)
-            is_overload = any(x in err_str for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded"))
+            is_overload = any(x in err_str for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded", "quota"))
             if attempt < retries and is_overload:
-                wait = min(2 ** attempt, 8)  # 1s, 2s max — keep well under Railway timeout
+                wait = min(2 ** attempt, 8)
                 _time.sleep(wait)
                 continue
             raise
@@ -203,10 +225,11 @@ def analyze_label(image_data):
             text = text[4:]
     return json.loads(text.strip())
 
-def analyze_card(frame, quality=85):
-    client = genai.Client(api_key=GEMINI_API_KEY)
+def analyze_card(frame, quality=85, year_hint=None, sport_hint=None, is_raw=True):
+    client = genai.Client(api_key=_get_next_gemini_key())
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     image_data = buf.tobytes()
+    rookie_hint = get_rookie_hint(year_hint, sport_hint) if is_raw else None
     prompt = (
         "Identify this trading card by reading the PRINTED TEXT on it. "
         "Do not guess the player name from the photo — read the name that is printed on the card.\n\n"
@@ -235,6 +258,8 @@ def analyze_card(frame, quality=85):
         "  Mosaic: Silver, Gold, Pink, Blue, Green, Red, Reactive Blue, Reactive Yellow\n"
         "Return ONLY the JSON object — no markdown, no code fences, no extra text."
     )
+    if rookie_hint:
+        prompt += f"\n\nROOKIE CARD REFERENCE — if you see an RC symbol or 'Rookie Card' text, match the player name against this list:\n{rookie_hint}"
     response = gemini_generate(
         client, model="gemini-2.5-flash",
         contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
@@ -269,6 +294,9 @@ def analyze_card_back(image_data):
         "  year, card_number, brand, set, name, team, rookie, serial\n"
         "Return ONLY the JSON object — no markdown, no code fences, no extra text."
     )
+    rookie_hint = get_rookie_hint(year_hint, sport_hint)
+    if rookie_hint:
+        prompt += f"\n\nROOKIE CARD REFERENCE — if you see an RC symbol, match the player name against this list:\n{rookie_hint}"
     response = gemini_generate(
         client,
         model="gemini-2.5-flash",
@@ -317,10 +345,10 @@ def extract_year_from_copyright(image_data):
         return None
 
 
-def analyze_raw_card(image_data):
+def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
     """Second pass for raw (ungraded) cards — focused on fine-print details
     that the general first pass tends to miss: year, set, parallel, card number."""
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=_get_next_gemini_key())
     prompt = (
         "This is a raw (ungraded) sports or trading card. "
         "Your ONLY job is to read the fine-print details that are easy to miss. "
@@ -1389,7 +1417,11 @@ def scan():
         # Second pass for ALL raw cards (upload or camera)
         if is_raw_card and raw_image_bytes:
             try:
-                raw_data = analyze_raw_card(raw_image_bytes)
+                raw_data = analyze_raw_card(
+                    raw_image_bytes,
+                    year_hint=data.get("year"),
+                    sport_hint=data.get("sport")
+                )
                 # Always trust the second pass for year and brand — it looks harder
                 for field in ["year", "brand"]:
                     if raw_data.get(field):
