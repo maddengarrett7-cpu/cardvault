@@ -487,7 +487,7 @@ def build_row(data, mapping, num_cols):
         "set":      data.get("set")      or "",
         "parallel": data.get("parallel") or "",
         "grade":    data.get("grade")    or "",
-        "cert":     data.get("cert")     or "",
+        "cert":     data.get("cert") or ("Raw" if (data.get("grade") or "").lower() == "raw" or not data.get("grade") else ""),
         "value":    f"${ebay_avg:.2f}" if ebay_avg else "",
         "paid":     data.get("paid")     or "",
         "tracking": "",
