@@ -1499,6 +1499,44 @@ def scan_bulk():
         return jsonify({'success': False, 'error': str(e)})
 
 
+@app.route('/scan-bulk-ebay', methods=['POST'])
+@login_required
+def scan_bulk_ebay():
+    """Pro-only: fetch eBay sold prices for a list of cards in parallel."""
+    user = get_user_by_id(session['user_id'])
+    if not user or user.get('subscription_status') != 'pro':
+        return jsonify({'success': False, 'error': 'Pro feature only.'})
+    try:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        body = request.get_json()
+        cards = body.get('cards', [])
+
+        def fetch(i, card):
+            query_parts = [p for p in [
+                str(card.get('year') or ''),
+                card.get('brand') or '',
+                card.get('set') or '',
+                card.get('name') or '',
+                card.get('parallel') or '',
+                card.get('grade') or '',
+            ] if p]
+            if not query_parts:
+                return i, None
+            result, _ = search_ebay_sold(' '.join(query_parts))
+            return i, result
+
+        results = [None] * len(cards)
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            futures = {ex.submit(fetch, i, card): i for i, card in enumerate(cards)}
+            for future in as_completed(futures):
+                i, result = future.result()
+                results[i] = result
+
+        return jsonify({'success': True, 'results': results})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/scan-bulk-prices', methods=['POST'])
 @login_required
 def scan_bulk_prices():
