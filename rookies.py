@@ -6,6 +6,16 @@ Only injected for raw cards — graded cards are identified by their label.
 
 ROOKIE_CLASSES = {
     "NBA": {
+        2025: [
+            "Cooper Flagg", "Dylan Harper", "Ace Bailey", "VJ Edgecombe",
+            "Tre Johnson", "Noa Essengue", "Kon Knueppel", "Khaman Maluach",
+            "Egor Demin", "Kasparas Jakucionis", "Liam McNeeley", "Collin Murray-Boyles",
+            "Jalil Bethea", "Johni Broome", "Dink Pate", "Nique Clifford",
+            "Will Riley", "Rasheer Fleming", "Jeremiah Fears", "Bam Imo",
+            "Hugo Gonzalez", "Walter Clayton Jr.", "Danny Wolf", "Asa Newell",
+            "Jase Richardson", "Thomas Sorber", "Eric Dixon", "Labaron Philon",
+            "Ian Jackson", "Kobe Bufkin",
+        ],
         2024: [
             "Zaccharie Risacher", "Alex Sarr", "Reed Sheppard", "Stephon Castle",
             "Ron Holland", "Tidjane Salaün", "Donovan Clingan", "Rob Dillingham",
@@ -54,6 +64,19 @@ ROOKIE_CLASSES = {
         ],
     },
     "NFL": {
+        2025: [
+            "Cam Ward", "Travis Hunter", "Abdul Carter", "Will Campbell",
+            "Ashton Jeanty", "Tetairoa McMillan", "Mason Graham", "Kelvin Banks Jr.",
+            "Malaki Starks", "Luther Burden III", "Jalon Walker", "Jihaad Campbell",
+            "Walter Nolen", "Mykel Williams", "James Pearce Jr.", "Shedeur Sanders",
+            "Darius Alexander", "Grey Zabel", "Omarion Hampton", "Emeka Egbuka",
+            "Tyler Warren", "Shemar Stewart", "Josh Simmons", "Tyleik Williams",
+            "Matthew Golden", "Armand Membou", "Josaiah Stewart", "Isaiah Campbell",
+            "Quinshon Judkins", "Nick Emmanwori", "Derrick Harmon", "Donovan Ezeiruaku",
+            "Kyle Williams", "Harold Perkins Jr.", "RJ Harvey", "Jack Sawyer",
+            "Princely Umanmielen", "Aireontae Ersery", "TreVeyon Henderson",
+            "Colston Loveland", "Elijah Arroyo", "Drew Allar", "Dillon Gabriel",
+        ],
         2024: [
             "Caleb Williams", "Jayden Daniels", "Drake Maye", "Marvin Harrison Jr.",
             "Joe Alt", "Malik Nabers", "JC Latham", "Michael Penix Jr.",
@@ -108,6 +131,11 @@ ROOKIE_CLASSES = {
         ],
     },
     "MLB": {
+        2025: [
+            "Roki Sasaki", "Jurrangelo Cijntje", "Rhett Lowder", "Jac Caglianone",
+            "Chase Burns", "Kyson Donahue", "Charlie Condon", "Bryce Eldridge",
+            "Travis Bazzana", "Wyatt Langford", "Jackson Chourio", "Jackson Merrill",
+        ],
         2024: [
             "Jackson Chourio", "Wyatt Langford", "Paul Skenes", "Jackson Merrill",
             "Yoshinobu Yamamoto", "Spencer Jones", "Dylan Crews", "Colt Keith",
