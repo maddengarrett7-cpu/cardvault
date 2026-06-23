@@ -892,6 +892,21 @@ def save_sheet_url():
     save_google_sheet_id(session['user_id'], sheet_id)
     return jsonify({'success': True, 'sheet_id': sheet_id})
 
+@app.route('/toggle-auto-sheet', methods=['POST'])
+@login_required
+def toggle_auto_sheet():
+    from database import get_db, DATABASE_URL
+    body = request.get_json()
+    enabled = bool(body.get('enabled', True))
+    conn = get_db()
+    if DATABASE_URL:
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET auto_sheet = %s WHERE id = %s", (enabled, session['user_id']))
+        conn.commit(); cur.close(); conn.close()
+    else:
+        conn.execute("UPDATE users SET auto_sheet = ? WHERE id = ?", (enabled, session['user_id'])); conn.commit(); conn.close()
+    return jsonify({'success': True, 'auto_sheet': enabled})
+
 @app.route('/disconnect-sheets', methods=['POST'])
 @login_required
 def disconnect_sheets():
@@ -1443,11 +1458,12 @@ def scan():
         custom_sheet = body.get("sheet_id", "") if body else ""
         custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
         sheet_warning = None
-        try:
-            append_to_sheet(data, custom_sheet_id, user=user)
-        except Exception as sheet_err:
-            app.logger.warning(f"Sheet write failed: {sheet_err}")
-            sheet_warning = str(sheet_err)
+        if user.get('auto_sheet', True):
+            try:
+                append_to_sheet(data, custom_sheet_id, user=user)
+            except Exception as sheet_err:
+                app.logger.warning(f"Sheet write failed: {sheet_err}")
+                sheet_warning = str(sheet_err)
 
         # Save to scan history
         try:
@@ -1522,11 +1538,12 @@ def scan_bulk_confirm():
         sheeted = 0
         errors = []
         for card in cards:
-            try:
-                append_to_sheet(card, custom_sheet_id, user=user)
-                sheeted += 1
-            except Exception as card_err:
-                errors.append(str(card_err))
+            if user.get('auto_sheet', True):
+                try:
+                    append_to_sheet(card, custom_sheet_id, user=user)
+                    sheeted += 1
+                except Exception as card_err:
+                    errors.append(str(card_err))
             try:
                 save_scan(session['user_id'], card)
             except Exception as e:

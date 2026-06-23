@@ -71,6 +71,7 @@ if DATABASE_URL:
             ("referral_code", "TEXT"),
             ("referred_by", "TEXT"),
             ("bonus_scans", "INTEGER DEFAULT 0"),
+            ("auto_sheet", "BOOLEAN DEFAULT TRUE"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
