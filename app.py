@@ -1880,9 +1880,9 @@ def admin_dashboard():
             pro_users = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM users WHERE scans_date = CURRENT_DATE::text")
             active_today = cur.fetchone()[0]
-            cur.execute("SELECT SUM(scans_today) FROM users WHERE scans_date = CURRENT_DATE::text")
+            cur.execute("SELECT COUNT(*) FROM scan_history WHERE scanned_at >= CURRENT_DATE")
             scans_today = cur.fetchone()[0] or 0
-            cur.execute("SELECT SUM(COALESCE(total_scans, 0)) FROM users")
+            cur.execute("SELECT COUNT(*) FROM scan_history")
             total_scans_ever = cur.fetchone()[0] or 0
             cur.execute("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days'")
             new_this_week = cur.fetchone()[0]
@@ -2015,7 +2015,15 @@ td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
   <h1>📊 CardScan Admin</h1>
   <button onclick="document.getElementById('broadcastModal').classList.add('open')" style="background:#1a1a2a;color:#88aaff;border:1px solid #334;border-radius:8px;padding:10px 18px;cursor:pointer;font-weight:700;font-size:13px;">📢 Email All Users</button>
 </div>
-<p style="color:#555;font-size:13px;margin-bottom:24px;">Last refreshed: {str(date.today())}</p>
+<p style="color:#555;font-size:13px;margin-bottom:24px;">
+  Last refreshed: <span id="refreshTime"></span>
+  <span style="margin-left:12px; color:#444;">Auto-refreshes every 60s</span>
+  <button onclick="location.reload()" style="margin-left:12px;background:#1a1a1a;color:#888;border:1px solid #333;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">↺ Refresh now</button>
+</p>
+<script>
+  document.getElementById('refreshTime').textContent = new Date().toLocaleTimeString();
+  setTimeout(() => location.reload(), 60000);
+</script>
 
 <div class="stats">
   <div class="stat"><div class="stat-num">{total_users}</div><div class="stat-label">Total Users</div></div>
