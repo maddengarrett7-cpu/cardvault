@@ -412,17 +412,20 @@ def analyze_bulk(image_data):
     """Detect multiple cards in a single image and return a list of card dicts."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
-        "This photo contains multiple sports card slabs or raw cards. "
-        "Identify EVERY card visible. Focus on reading the key details quickly.\n"
+        "This photo contains multiple raw (ungraded) sports cards or graded slabs.\n"
+        "For EACH card visible, read the printed text on the card face.\n"
+        "Focus on: the large player name, the set logo/name, and the brand.\n"
+        "Do NOT guess — if you cannot read a field clearly, use null.\n"
         "Return ONLY a valid JSON array. Each element:\n"
-        "  name  - player name exactly as printed\n"
-        "  year  - 4-digit year as integer or null\n"
-        "  brand - e.g. 'Panini', 'Topps'\n"
-        "  set   - e.g. 'Prizm', 'Chrome'\n"
-        "  grade - e.g. 'PSA 10', 'BGS 9.5', or 'Raw'\n"
-        "  cert  - cert number digits only or null\n"
-        "  card  - short description: 'YEAR BRAND SET PLAYER GRADE'\n"
-        "List LEFT TO RIGHT, TOP TO BOTTOM. Return ONLY the JSON array — no markdown, no explanation."
+        "  name  - player name as printed on the card\n"
+        "  year  - 4-digit year if visible, else null\n"
+        "  brand - 'Panini', 'Topps', 'Upper Deck', etc or null\n"
+        "  set   - 'Prizm', 'Chrome', 'Select', etc or null\n"
+        "  grade - 'PSA 10', 'BGS 9.5' if graded slab, else 'Raw'\n"
+        "  cert  - cert number if graded slab, else null\n"
+        "  card  - short description e.g. 'Panini Prizm Luka Doncic Raw'\n"
+        "List cards LEFT TO RIGHT, TOP TO BOTTOM. "
+        "Return ONLY the JSON array — no markdown, no code fences."
     )
     response = gemini_generate(client,
         model="gemini-2.5-flash",
