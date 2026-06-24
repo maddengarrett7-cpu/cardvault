@@ -1385,6 +1385,46 @@ def value():
     })
 
 
+@app.route('/undo-sheet', methods=['POST'])
+@login_required
+def undo_sheet():
+    """Delete the last row added to the sheet."""
+    try:
+        body = request.get_json()
+        custom_sheet = body.get('sheet_id', '')
+        custom_sheet_id = extract_sheet_id(custom_sheet) if custom_sheet else None
+        user = get_user_by_id(session['user_id'])
+        sheet_id = custom_sheet_id or (user.get('google_sheet_id') if user else None) or SPREADSHEET_ID
+        if not sheet_id:
+            return jsonify({'success': False, 'error': 'No Google Sheet connected.'})
+        svc = get_user_sheets_service(user)
+        # Get sheet metadata to find sheet ID for batchUpdate
+        meta = svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
+        first_sheet = meta['sheets'][0]
+        sheet_gid = first_sheet['properties']['sheetId']
+        tab = first_sheet['properties']['title']
+        # Get row count
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id, range=f"{tab}!A:A"
+        ).execute()
+        num_rows = len(result.get('values', []))
+        if num_rows < 2:
+            return jsonify({'success': False, 'error': 'No rows to undo.'})
+        # Delete the last row
+        svc.spreadsheets().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={'requests': [{'deleteDimension': {'range': {
+                'sheetId': sheet_gid,
+                'dimension': 'ROWS',
+                'startIndex': num_rows - 1,
+                'endIndex': num_rows
+            }}}]}
+        ).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/update-value', methods=['POST'])
 @login_required
 def update_value():

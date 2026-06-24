@@ -553,13 +553,20 @@
         <div id="myValueStatus" style="font-size:12px; color:var(--green); margin-top:6px; display:none;">✓ Saved to sheet!</div>
       </div>
 
-      <!-- Re-sheet button — appears after a scan -->
+      <!-- Re-sheet / Undo buttons — appear after a scan -->
       <div id="resheetRow" style="display:none; margin-top:12px;">
-        <button onclick="resheetCard()" style="width:100%; padding:10px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); font-size:13px; font-weight:700; cursor:pointer;"
-          onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'"
-          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
-          ↺ Re-sheet with edits
-        </button>
+        <div style="display:flex; gap:8px;">
+          <button onclick="resheetCard()" style="flex:1; padding:10px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); font-size:13px; font-weight:700; cursor:pointer;"
+            onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+            ↺ Re-sheet with edits
+          </button>
+          <button id="undoSheetBtn" onclick="undoSheet()" style="padding:10px 16px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--muted); font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap;"
+            onmouseover="this.style.borderColor='#ff6b6b';this.style.color='#ff6b6b'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+            ✕ Undo
+          </button>
+        </div>
         <div id="resheetStatus" style="font-size:12px; color:var(--green); margin-top:6px; display:none;"></div>
       </div>
     </div>
@@ -1717,6 +1724,36 @@
     statusEl.style.display = 'block';
   }
 
+  async function undoSheet() {
+    const btn = document.getElementById('undoSheetBtn');
+    const statusEl = document.getElementById('resheetStatus');
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const res = await apiFetch('/undo-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheet_id: userSheetUrl })
+      });
+      if (res.success) {
+        statusEl.textContent = '✓ Last row removed from sheet';
+        statusEl.style.color = 'var(--green)';
+        btn.style.display = 'none';
+      } else {
+        statusEl.textContent = '✗ ' + (res.error || 'Could not undo');
+        statusEl.style.color = '#ff6b6b';
+        btn.disabled = false;
+        btn.textContent = '✕ Undo';
+      }
+    } catch(e) {
+      statusEl.textContent = '✗ ' + friendlyError(e.message);
+      statusEl.style.color = '#ff6b6b';
+      btn.disabled = false;
+      btn.textContent = '✕ Undo';
+    }
+    statusEl.style.display = 'block';
+  }
+
   async function resheetCard() {
     const card = scanHistory[0];
     if (!card) return;
@@ -1854,6 +1891,10 @@
     document.getElementById('valueInputRow').style.display = 'block';
     document.getElementById('resheetRow').style.display = 'block';
     document.getElementById('resheetStatus').style.display = 'none';
+    const undoBtn = document.getElementById('undoSheetBtn');
+    undoBtn.style.display = userSheetUrl ? 'block' : 'none';
+    undoBtn.disabled = false;
+    undoBtn.textContent = '✕ Undo';
 
     if (window.innerWidth <= 768)
       document.getElementById('r-name').closest('.panel-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
