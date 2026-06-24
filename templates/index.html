@@ -1509,7 +1509,7 @@
       const info = document.createElement('div');
       info.style.cssText = 'flex:1; min-width:0;';
       info.innerHTML = `
-        <div style="font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${card.card || card.name || 'Unknown Card'}</div>
+        <div id="bulk-title-${i}" style="font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${card.card || card.name || 'Unknown Card'}</div>
         <div style="font-size:12px; color:var(--muted); margin-top:2px; display:flex; gap:10px; flex-wrap:wrap;">
           ${card.grade ? `<span>${card.grade}</span>` : ''}
           ${card.cert ? `<span>Cert #${card.cert}</span>` : ''}
@@ -1575,13 +1575,11 @@
 
   function updateBulkHeader(i) {
     const card = bulkCards[i];
-    // Rebuild card description from fields
     const parts = [card.year, card.brand, card.set, card.name, card.parallel, card.grade].filter(Boolean);
     if (parts.length) card.card = parts.join(' ');
-    renderBulkCards();
-    // Re-open the edit form that was just being used
-    const form = document.getElementById(`bulk-edit-${i}`);
-    if (form) form.style.display = 'block';
+    // Only update the header text — don't re-render the whole list
+    const titleEl = document.getElementById(`bulk-title-${i}`);
+    if (titleEl) titleEl.textContent = card.card || card.name || 'Unknown Card';
   }
 
   async function bulkPriceUpload(input) {
