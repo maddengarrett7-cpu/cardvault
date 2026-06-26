@@ -482,46 +482,95 @@ def extract_sheet_id(sheet_url_or_id):
         return match.group(1)
     return sheet_url_or_id.strip()
 
-# Keyword map: field -> list of header keywords that match it
+# Keyword map: field -> (exact_words, substring_words)
+# exact_words  — must match the full header word-for-word (e.g. "set" won't match "asset")
+# substring_kw — safe substrings that are unambiguous regardless of surrounding text
 FIELD_KEYWORDS = {
-    "card":     ["card", "description", "title", "full", "listing"],
-    "name":     ["name", "player", "athlete"],
-    "year":     ["year", "yr", "season"],
-    "brand":    ["brand", "manufacturer", "company"],
-    "set":      ["set", "series", "product", "collection"],
-    "parallel": ["parallel", "variant", "variation", "color", "finish"],
-    "grade":    ["grade", "condition", "psa", "bgs", "sgc", "slab"],
-    "cert":     ["cert", "certification", "slab #", "cert #"],
-    "value":    ["value", "ebay", "avg", "market", "worth", "$"],
-    "paid":     ["paid", "cost", "bought", "purchase", "price"],
-    "tracking": ["tracking", "track", "ship"],
+    "card":     (["card", "description", "listing", "title", "full name", "full card"],
+                 ["card desc", "card title"]),
+    "name":     (["name", "player", "athlete", "player name"],
+                 ["player"]),
+    "year":     (["year", "yr", "season"],
+                 ["year"]),
+    "brand":    (["brand", "manufacturer", "company", "make"],
+                 ["brand", "manuf"]),
+    "set":      (["set", "set name", "product", "series", "product name"],
+                 ["set name", "product"]),
+    "parallel": (["parallel", "variant", "variation", "color", "finish", "refractor"],
+                 ["parallel", "variant"]),
+    "serial":   (["serial", "print run", "numbered", "serial #", "serial number", "#/", "print"],
+                 ["serial", "print run", "numbered"]),
+    "grade":    (["grade", "condition", "psa", "bgs", "sgc", "cgc", "slab", "graded"],
+                 ["grade", "psa", "bgs", "sgc"]),
+    "cert":     (["cert", "cert #", "cert number", "certification", "slab #", "cert no"],
+                 ["cert#", "certno"]),
+    "sport":    (["sport", "league", "category"],
+                 ["sport"]),
+    "team":     (["team", "franchise"],
+                 ["team"]),
+    "card_number": (["card #", "card number", "card no", "#"],
+                    ["card#", "cardno"]),
+    "value":    (["value", "ebay avg", "market value", "est value", "worth", "ebay value", "current value"],
+                 ["ebay", "market val", "est. val"]),
+    "paid":     (["paid", "cost", "bought for", "purchase price", "buy price", "my cost"],
+                 ["paid", "cost"]),
+    "notes":    (["notes", "note", "memo", "comments", "comment"],
+                 ["notes"]),
+    "tracking": (["tracking", "tracking #", "ship", "shipment"],
+                 ["tracking"]),
 }
 
+import re as _re
+
+def _header_matches(header_raw, exact_words, substring_kw):
+    """Return True if header matches any exact word or safe substring keyword."""
+    h = header_raw.lower().strip()
+    # Exact whole-header match first
+    if h in exact_words:
+        return True
+    # Word-boundary match for each exact word (so "set" ≠ "asset")
+    for kw in exact_words:
+        pattern = r'(?<![a-z])' + _re.escape(kw) + r'(?![a-z])'
+        if _re.search(pattern, h):
+            return True
+    # Safe substring match
+    for kw in substring_kw:
+        if kw in h:
+            return True
+    return False
+
 def detect_column_mapping(headers):
-    """Map field names to column indices based on header keywords."""
+    """Map field names to column indices based on header keywords.
+    Uses word-boundary matching so 'set' won't match 'asset' or 'reset'."""
     mapping = {}
     for col_idx, header in enumerate(headers):
-        h = header.lower().strip()
-        for field, keywords in FIELD_KEYWORDS.items():
-            if field not in mapping and any(kw in h for kw in keywords):
+        for field, (exact_words, substring_kw) in FIELD_KEYWORDS.items():
+            if field not in mapping and _header_matches(header, exact_words, substring_kw):
                 mapping[field] = col_idx
     return mapping
 
 def build_row(data, mapping, num_cols):
     """Build a row array aligned to the sheet's existing columns."""
     ebay_avg = data.get("ebay_avg")
+    grade = data.get("grade") or ""
+    is_raw = grade.lower() == "raw" or not grade
     values = {
-        "card":     data.get("card")     or "",
-        "name":     data.get("name")     or "",
-        "year":     str(data.get("year") or ""),
-        "brand":    data.get("brand")    or "",
-        "set":      data.get("set")      or "",
-        "parallel": data.get("parallel") or "",
-        "grade":    data.get("grade")    or "",
-        "cert":     data.get("cert") or ("Raw" if (data.get("grade") or "").lower() == "raw" or not data.get("grade") else ""),
-        "value":    f"${ebay_avg:.2f}" if ebay_avg else "",
-        "paid":     data.get("paid")     or "",
-        "tracking": "",
+        "card":        data.get("card")        or "",
+        "name":        data.get("name")        or "",
+        "year":        str(data.get("year")    or ""),
+        "brand":       data.get("brand")       or "",
+        "set":         data.get("set")         or "",
+        "parallel":    data.get("parallel")    or "",
+        "serial":      data.get("serial")      or "",
+        "grade":       grade,
+        "cert":        data.get("cert")        or ("Raw" if is_raw else ""),
+        "sport":       data.get("sport")       or "",
+        "team":        data.get("team")        or "",
+        "card_number": data.get("card_number") or "",
+        "value":       f"${ebay_avg:.2f}"      if ebay_avg else "",
+        "paid":        data.get("paid")        or "",
+        "notes":       data.get("notes")       or "",
+        "tracking":    "",
     }
     row = [""] * num_cols
     for field, col_idx in mapping.items():
@@ -614,10 +663,12 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
 
     if headers:
         mapping = detect_column_mapping(headers)
-        # If fewer than 3 fields detected the mapping is unreliable — use default order
-        if len(mapping) >= 3:
+        if mapping:
+            # Use column mapping whenever at least 1 header was recognized —
+            # unrecognized columns simply stay blank rather than misaligning data
             row = [build_row(data, mapping, len(headers))]
         else:
+            # No headers matched at all — fall back to default column order
             row = [default_row[:len(headers)] + [""] * max(0, len(headers) - len(default_row))]
     else:
         row = [default_row]
@@ -2930,6 +2981,237 @@ def whatnot_confirm():
         except Exception:
             pass
     return jsonify({'success': True, 'sheeted': sheeted})
+
+
+# ── Mobile API ───────────────────────────────────────────────────────────────
+
+def mobile_auth(f):
+    """Authenticate mobile requests via X-Session-Token header or session cookie."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('X-Session-Token')
+        if token:
+            user_id = None
+            from database import get_db, DATABASE_URL
+            db = get_db()
+            try:
+                if DATABASE_URL:
+                    import psycopg2.extras
+                    cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                    cur.execute("SELECT user_id FROM sessions WHERE token = %s", (token,))
+                    row = cur.fetchone(); cur.close()
+                else:
+                    row = db.execute("SELECT user_id FROM sessions WHERE token = ?", (token,)).fetchone()
+                if row:
+                    user_id = row['user_id']
+            except Exception:
+                pass
+            finally:
+                db.close()
+            if not user_id:
+                return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+            request.mobile_user_id = user_id
+            return f(*args, **kwargs)
+        # Fall back to session cookie
+        if 'user_id' not in session:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        request.mobile_user_id = session['user_id']
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route('/api/mobile/login', methods=['POST'])
+def mobile_login():
+    body = request.get_json()
+    email = body.get('email', '').strip().lower()
+    password = body.get('password', '').strip()
+    user = get_user_by_email(email)
+    if not user or not check_password_hash(user['password_hash'], password):
+        return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
+    import secrets as _secrets
+    token = _secrets.token_hex(32)
+    create_session(user['id'], token)
+    return jsonify({
+        'success': True,
+        'session_token': token,
+        'user': {'id': user['id'], 'email': user['email'], 'subscription_status': user.get('subscription_status', 'free')},
+    })
+
+
+@app.route('/api/mobile/signup', methods=['POST'])
+def mobile_signup():
+    body = request.get_json()
+    email = body.get('email', '').strip().lower()
+    password = body.get('password', '').strip()
+    if not email or not password or len(password) < 6:
+        return jsonify({'success': False, 'error': 'Valid email and password (min 6 chars) required'}), 400
+    user = create_user(email, generate_password_hash(password))
+    if not user:
+        return jsonify({'success': False, 'error': 'An account with that email already exists'}), 409
+    import secrets as _secrets
+    token = _secrets.token_hex(32)
+    create_session(user['id'], token)
+    return jsonify({
+        'success': True,
+        'session_token': token,
+        'user': {'id': user['id'], 'email': user['email'], 'subscription_status': 'free'},
+    })
+
+
+@app.route('/api/mobile/scan', methods=['POST'])
+@mobile_auth
+def mobile_scan():
+    """Accept a base64 image from the mobile app and return card data."""
+    try:
+        import numpy as np
+        body = request.get_json()
+        raw_image_bytes = base64.b64decode(body['image'])
+        nparr = np.frombuffer(raw_image_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        scan_mode = body.get('scan_mode', 'raw')
+
+        if scan_mode == 'graded':
+            data = analyze_label(raw_image_bytes)
+            data['grade'] = data.get('grade') or 'Unknown'
+        else:
+            data = analyze_card(frame, quality=95)
+            is_raw = (not data.get('grade') or data.get('grade', '').lower() == 'raw')
+            if is_raw:
+                try:
+                    raw_data = analyze_raw_card(raw_image_bytes, year_hint=data.get('year'), sport_hint=data.get('sport'))
+                    for field in ['year', 'brand']:
+                        if raw_data.get(field): data[field] = raw_data[field]
+                    for field in ['set', 'parallel', 'serial', 'card_number', 'sport']:
+                        if raw_data.get(field) and not data.get(field): data[field] = raw_data[field]
+                except Exception: pass
+
+        allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
+        if not allowed:
+            return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day). Upgrade to Pro for unlimited scans.'})
+
+        # eBay value lookup
+        try:
+            query_parts = [p for p in [str(data.get('year') or ''), data.get('name', ''), data.get('grade', '')] if p]
+            ebay_result, _ = search_ebay_sold(' '.join(query_parts))
+            if ebay_result and ebay_result.get('avg'):
+                data['ebay_avg'] = ebay_result['avg']
+                data['ebay_sales'] = ebay_result.get('sales', [])
+        except Exception: pass
+
+        save_scan(request.mobile_user_id, data)
+        data['success'] = True
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/add-to-sheet', methods=['POST'])
+@mobile_auth
+def mobile_add_to_sheet():
+    """Log a card to the user's Google Sheet."""
+    try:
+        body = request.get_json()
+        user = get_user_by_id(request.mobile_user_id)
+        append_to_sheet(body, user=user)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/mobile/collection', methods=['GET'])
+@mobile_auth
+def mobile_collection():
+    """Return the user's scan history as a card collection."""
+    try:
+        scans, total = get_scan_history(request.mobile_user_id, limit=100, offset=0)
+        cards = []
+        for s in scans:
+            cards.append({
+                'id': s.get('id'),
+                'name': s.get('name'),
+                'card': s.get('card'),
+                'year': s.get('year'),
+                'brand': s.get('brand'),
+                'set': s.get('set_name'),
+                'parallel': s.get('parallel'),
+                'grade': s.get('grade'),
+                'cert': s.get('cert'),
+                'ebay_avg': s.get('ebay_avg'),
+                'scanned_at': str(s.get('scanned_at', ''))[:10],
+            })
+        return jsonify({'success': True, 'cards': cards, 'total': total})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/sheet-preview', methods=['GET'])
+@mobile_auth
+def mobile_sheet_preview():
+    """Return a live preview of the user's Google Sheet rows + stats."""
+    try:
+        user = get_user_by_id(request.mobile_user_id)
+        sheet_id = user.get('google_sheet_id') or SPREADSHEET_ID
+        if not sheet_id:
+            return jsonify({'success': False, 'error': 'No sheet connected'})
+
+        svc = get_user_sheets_service(user)
+        tab = get_first_sheet_tab(sheet_id, svc)
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id, range=f"{tab}!A:Z"
+        ).execute()
+        all_rows = result.get('values', [])
+        if not all_rows:
+            return jsonify({'success': True, 'rows': [], 'stats': {}, 'sheet_url': f'https://docs.google.com/spreadsheets/d/{sheet_id}'})
+
+        headers = all_rows[0]
+        mapping = detect_column_mapping(headers)
+        data_rows = all_rows[1:]
+
+        def cell(row, field):
+            idx = mapping.get(field)
+            if idx is not None and idx < len(row):
+                return row[idx]
+            return ''
+
+        rows = []
+        today = datetime.utcnow().strftime('%Y-%m-%d')
+        today_count = 0
+        total_value = 0
+        graded_count = 0
+
+        for row in reversed(data_rows[-50:]):  # last 50 rows, newest first
+            grade = cell(row, 'grade')
+            value_str = cell(row, 'value')
+            rows.append({
+                'card': cell(row, 'card'),
+                'name': cell(row, 'name'),
+                'year': cell(row, 'year'),
+                'set': cell(row, 'set'),
+                'grade': grade,
+                'value': value_str,
+            })
+            if grade and grade.lower() not in ('raw', ''):
+                graded_count += 1
+            if value_str:
+                try:
+                    total_value += float(value_str.replace('$', '').replace(',', ''))
+                except Exception:
+                    pass
+
+        return jsonify({
+            'success': True,
+            'rows': rows[:10],
+            'sheet_name': tab,
+            'sheet_url': f'https://docs.google.com/spreadsheets/d/{sheet_id}',
+            'stats': {
+                'total_cards': len(data_rows),
+                'total_value': round(total_value, 2),
+                'graded_count': graded_count,
+                'today_count': today_count,
+            },
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
