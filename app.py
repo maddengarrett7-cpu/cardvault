@@ -3065,14 +3065,21 @@ def mobile_signup():
 @app.route('/api/mobile/scan', methods=['POST'])
 @mobile_auth
 def mobile_scan():
-    """Accept a base64 image from the mobile app and return card data."""
+    """Accept an image from the mobile app (multipart or base64 JSON) and return card data."""
     try:
         import numpy as np
-        body = request.get_json()
-        raw_image_bytes = base64.b64decode(body['image'])
+
+        # Accept multipart file upload (preferred) or base64 JSON (fallback)
+        if request.files.get('image'):
+            raw_image_bytes = request.files['image'].read()
+            scan_mode = request.form.get('scan_mode', 'raw')
+        else:
+            body = request.get_json(force=True) or {}
+            raw_image_bytes = base64.b64decode(body.get('image', ''))
+            scan_mode = body.get('scan_mode', 'raw')
+
         nparr = np.frombuffer(raw_image_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        scan_mode = body.get('scan_mode', 'raw')
 
         if scan_mode == 'bulk':
             cards = analyze_bulk(raw_image_bytes)
