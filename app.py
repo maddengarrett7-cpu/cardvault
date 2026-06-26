@@ -409,11 +409,11 @@ def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
 
 
 def analyze_bulk(image_data):
-    """Detect multiple cards in a single image and return a list of card dicts."""
+    """Detect multiple cards in a single image and return a list of card dicts with bounding boxes."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
         "This photo contains multiple raw (ungraded) sports cards or graded slabs.\n"
-        "For EACH card visible, read the printed text on the card face.\n"
+        "For EACH card visible, read the printed text on the card face AND estimate its bounding box.\n"
         "Focus on: the large player name, the set logo/name, and the brand.\n"
         "Do NOT guess — if you cannot read a field clearly, use null.\n"
         "Return ONLY a valid JSON array. Each element:\n"
@@ -424,6 +424,9 @@ def analyze_bulk(image_data):
         "  grade - 'PSA 10', 'BGS 9.5' if graded slab, else 'Raw'\n"
         "  cert  - cert number if graded slab, else null\n"
         "  card  - short description e.g. 'Panini Prizm Luka Doncic Raw'\n"
+        "  bbox  - bounding box as [x, y, w, h] where each value is a fraction 0.0-1.0 of the image dimensions.\n"
+        "          x,y = top-left corner, w,h = width and height of the card in the image.\n"
+        "          Be generous with the box — include the full card with a small margin.\n"
         "List cards LEFT TO RIGHT, TOP TO BOTTOM. "
         "Return ONLY the JSON array — no markdown, no code fences."
     )
@@ -3070,7 +3073,22 @@ def mobile_scan():
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         scan_mode = body.get('scan_mode', 'raw')
 
-        if scan_mode == 'graded':
+        if scan_mode == 'bulk':
+            cards = analyze_bulk(raw_image_bytes)
+            # Run eBay lookup for each card
+            for card in cards:
+                try:
+                    query = ' '.join(filter(None, [str(card.get('year') or ''), card.get('name', ''), card.get('grade', '')]))
+                    ebay_result, _ = search_ebay_sold(query)
+                    if ebay_result and ebay_result.get('avg'):
+                        card['ebay_avg'] = ebay_result['avg']
+                except Exception:
+                    pass
+            allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
+            if not allowed:
+                return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
+            return jsonify({'success': True, 'bulk': True, 'cards': cards})
+        elif scan_mode == 'graded':
             data = analyze_label(raw_image_bytes)
             data['grade'] = data.get('grade') or 'Unknown'
         else:
