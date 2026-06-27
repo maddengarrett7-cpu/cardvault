@@ -276,7 +276,7 @@ def analyze_card(frame, quality=85, year_hint=None, sport_hint=None, is_raw=True
     return json.loads(text.strip())
 
 
-def analyze_card_back(image_data):
+def analyze_card_back(image_data, year_hint=None, sport_hint=None):
     """Read the back of a raw card for details the front scan may have missed."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
@@ -3128,13 +3128,24 @@ def mobile_scan():
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if scan_mode == 'bulk':
-            # Step 1 — identify cards (fast)
-            cards = analyze_bulk(raw_image_bytes)
-            # Step 2 — get bboxes in a separate focused call
-            if cards:
+            try:
+                cards = analyze_bulk(raw_image_bytes)
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'Bulk identify failed: {str(e)}'}), 500
+
+            if not cards:
+                return jsonify({'success': False, 'error': 'No cards detected in image'})
+
+            # Step 2 — bboxes in a separate call (best effort)
+            try:
                 bboxes = analyze_bulk_bbox(raw_image_bytes, len(cards))
                 for i, card in enumerate(cards):
                     card['bbox'] = bboxes[i] if i < len(bboxes) else None
+            except Exception:
+                # bbox is optional — cards still returned without crop coordinates
+                for card in cards:
+                    card['bbox'] = None
+
             allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
             if not allowed:
                 return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
