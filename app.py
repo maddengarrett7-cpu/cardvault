@@ -3024,6 +3024,30 @@ def mobile_auth(f):
     return decorated
 
 
+@app.route('/api/mobile/debug', methods=['GET', 'POST'])
+def mobile_debug():
+    """Unprotected debug endpoint — returns token received and DB lookup result."""
+    token = request.headers.get('X-Session-Token', '')
+    result = {'token_received': token[:16] + '...' if token else 'NONE', 'user_id': None, 'error': None}
+    if token:
+        try:
+            from database import get_db, DATABASE_URL
+            db = get_db()
+            if DATABASE_URL:
+                import psycopg2.extras
+                cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("SELECT user_id FROM sessions WHERE token = %s", (token,))
+                row = cur.fetchone(); cur.close()
+            else:
+                row = db.execute("SELECT user_id FROM sessions WHERE token = ?", (token,)).fetchone()
+            db.close()
+            result['user_id'] = row['user_id'] if row else None
+            result['found'] = bool(row)
+        except Exception as e:
+            result['error'] = str(e)
+    return jsonify(result)
+
+
 @app.route('/api/mobile/login', methods=['POST'])
 def mobile_login():
     body = request.get_json()
