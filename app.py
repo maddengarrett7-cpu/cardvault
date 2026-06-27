@@ -409,12 +409,37 @@ def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
     return json.loads(text.strip())
 
 
+def analyze_bulk_bbox(image_data, num_cards):
+    """Second pass — get bounding boxes for each card in a bulk image."""
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        f"This photo contains {num_cards} sports cards.\n"
+        "For EACH card, return its bounding box as [x, y, w, h] fractions (0.0-1.0) of the image.\n"
+        "x,y = top-left corner, w,h = full width/height. Cover the ENTIRE card including borders.\n"
+        "List cards LEFT TO RIGHT, TOP TO BOTTOM.\n"
+        "Return ONLY a JSON array of bbox arrays e.g. [[0.01,0.05,0.30,0.88],[0.35,0.05,0.30,0.88]]\n"
+        "No markdown, no extra text."
+    )
+    try:
+        response = gemini_generate(client,
+            model="gemini-2.5-flash",
+            contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+        )
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"): text = text[4:]
+        return json.loads(text.strip())
+    except Exception:
+        return []
+
+
 def analyze_bulk(image_data):
-    """Detect multiple cards in a single image and return a list of card dicts with bounding boxes."""
+    """Detect multiple cards — fast identification only, no bbox."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
         "This photo contains multiple raw (ungraded) sports cards or graded slabs.\n"
-        "For EACH card visible, read the printed text on the card face AND estimate its bounding box.\n"
+        "For EACH card visible, read the printed text on the card face.\n"
         "Focus on: the large player name, the set logo/name, and the brand.\n"
         "Do NOT guess — if you cannot read a field clearly, use null.\n"
         "Return ONLY a valid JSON array. Each element:\n"
@@ -425,11 +450,6 @@ def analyze_bulk(image_data):
         "  grade - 'PSA 10', 'BGS 9.5' if graded slab, else 'Raw'\n"
         "  cert  - cert number if graded slab, else null\n"
         "  card  - short description e.g. 'Panini Prizm Luka Doncic Raw'\n"
-        "  bbox  - bounding box as [x, y, w, h] where each value is a fraction 0.0-1.0 of image dimensions.\n"
-        "          x,y = top-left corner of the card, w,h = full width and height of the card.\n"
-        "          IMPORTANT: bbox must cover the ENTIRE card from edge to edge. Do NOT crop.\n"
-        "          Include a small margin of ~0.01 on each side beyond the card border.\n"
-        "          Example for a card taking up the left third: [0.01, 0.05, 0.32, 0.90]\n"
         "List cards LEFT TO RIGHT, TOP TO BOTTOM. "
         "Return ONLY the JSON array — no markdown, no code fences."
     )
@@ -3108,11 +3128,16 @@ def mobile_scan():
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if scan_mode == 'bulk':
+            # Step 1 — identify cards (fast)
             cards = analyze_bulk(raw_image_bytes)
+            # Step 2 — get bboxes in a separate focused call
+            if cards:
+                bboxes = analyze_bulk_bbox(raw_image_bytes, len(cards))
+                for i, card in enumerate(cards):
+                    card['bbox'] = bboxes[i] if i < len(bboxes) else None
             allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
             if not allowed:
                 return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
-            # Skip eBay lookups in bulk — too slow, return cards immediately
             return jsonify({'success': True, 'bulk': True, 'cards': cards})
         elif scan_mode == 'graded':
             data = analyze_label(raw_image_bytes)
