@@ -3109,18 +3109,10 @@ def mobile_scan():
 
         if scan_mode == 'bulk':
             cards = analyze_bulk(raw_image_bytes)
-            # Run eBay lookup for each card
-            for card in cards:
-                try:
-                    query = ' '.join(filter(None, [str(card.get('year') or ''), card.get('name', ''), card.get('grade', '')]))
-                    ebay_result, _ = search_ebay_sold(query)
-                    if ebay_result and ebay_result.get('avg'):
-                        card['ebay_avg'] = ebay_result['avg']
-                except Exception:
-                    pass
             allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
             if not allowed:
                 return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
+            # Skip eBay lookups in bulk — too slow, return cards immediately
             return jsonify({'success': True, 'bulk': True, 'cards': cards})
         elif scan_mode == 'graded':
             data = analyze_label(raw_image_bytes)
