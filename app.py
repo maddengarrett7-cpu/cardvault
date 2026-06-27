@@ -3125,12 +3125,15 @@ def mobile_scan():
             scan_mode = body.get('scan_mode', 'raw')
 
         nparr = np.frombuffer(raw_image_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR) if raw_image_bytes else None
 
         if scan_mode == 'bulk':
             try:
                 cards = analyze_bulk(raw_image_bytes)
+                if isinstance(cards, dict):  # Gemini returned object instead of array
+                    cards = [cards]
             except Exception as e:
+                app.logger.error(f'Bulk identify failed: {e}')
                 return jsonify({'success': False, 'error': f'Bulk identify failed: {str(e)}'}), 500
 
             if not cards:
