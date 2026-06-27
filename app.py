@@ -3002,10 +3002,10 @@ def mobile_auth(f):
                 if DATABASE_URL:
                     import psycopg2.extras
                     cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                    cur.execute("SELECT user_id FROM sessions WHERE token = %s", (token,))
+                    cur.execute("SELECT user_id FROM user_sessions WHERE session_token = %s", (token,))
                     row = cur.fetchone(); cur.close()
                 else:
-                    row = db.execute("SELECT user_id FROM sessions WHERE token = ?", (token,)).fetchone()
+                    row = db.execute("SELECT user_id FROM user_sessions WHERE session_token = ?", (token,)).fetchone()
                 if row:
                     user_id = row['user_id']
             except Exception:
@@ -3036,10 +3036,10 @@ def mobile_debug():
             if DATABASE_URL:
                 import psycopg2.extras
                 cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cur.execute("SELECT user_id FROM sessions WHERE token = %s", (token,))
+                cur.execute("SELECT user_id FROM user_sessions WHERE session_token = %s", (token,))
                 row = cur.fetchone(); cur.close()
             else:
-                row = db.execute("SELECT user_id FROM sessions WHERE token = ?", (token,)).fetchone()
+                row = db.execute("SELECT user_id FROM user_sessions WHERE session_token = ?", (token,)).fetchone()
             db.close()
             result['user_id'] = row['user_id'] if row else None
             result['found'] = bool(row)
