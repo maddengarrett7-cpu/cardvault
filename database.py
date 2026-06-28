@@ -44,6 +44,21 @@ if DATABASE_URL:
         """)
         conn.commit()
 
+        # Create password_resets table
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS password_resets (
+                    id SERIAL PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    token TEXT UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Create scan_history table separately
         try:
             cur.execute("""
@@ -481,15 +496,20 @@ def save_reset_token(email, token, expires_at):
     if DATABASE_URL:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS password_resets (
-                id SERIAL PRIMARY KEY,
-                email TEXT NOT NULL,
-                token TEXT UNIQUE NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
+        # Ensure table exists in its own commit first
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS password_resets (
+                    id SERIAL PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    token TEXT UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
         cur.execute("DELETE FROM password_resets WHERE email = %s", (email.lower(),))
         cur.execute(
             "INSERT INTO password_resets (email, token, expires_at) VALUES (%s, %s, %s)",

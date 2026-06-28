@@ -3081,7 +3081,10 @@ def mobile_send_otp():
         import random as _random
         otp = str(_random.randint(100000, 999999))
         expires_at = datetime.utcnow() + timedelta(minutes=15)
-        save_reset_token(email, otp, expires_at)
+        try:
+            save_reset_token(email, otp, expires_at)
+        except Exception:
+            pass
         # Send email
         try:
             msg_body = f"""
