@@ -3188,6 +3188,7 @@ def mobile_scan():
 
         save_scan(request.mobile_user_id, data)
         data['success'] = True
+        data['scans_left'] = max(0, limit - scans_used) if limit else 999
         return jsonify(data)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
