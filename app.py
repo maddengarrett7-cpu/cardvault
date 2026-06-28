@@ -435,23 +435,13 @@ def analyze_bulk_bbox(image_data, num_cards):
 
 
 def analyze_bulk(image_data):
-    """Detect multiple cards — fast identification only, no bbox."""
+    """Detect multiple cards — fast identification only."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
-        "This photo contains multiple raw (ungraded) sports cards or graded slabs.\n"
-        "For EACH card visible, read the printed text on the card face.\n"
-        "Focus on: the large player name, the set logo/name, and the brand.\n"
-        "Do NOT guess — if you cannot read a field clearly, use null.\n"
-        "Return ONLY a valid JSON array. Each element:\n"
-        "  name  - player name as printed on the card\n"
-        "  year  - 4-digit year if visible, else null\n"
-        "  brand - 'Panini', 'Topps', 'Upper Deck', etc or null\n"
-        "  set   - 'Prizm', 'Chrome', 'Select', etc or null\n"
-        "  grade - 'PSA 10', 'BGS 9.5' if graded slab, else 'Raw'\n"
-        "  cert  - cert number if graded slab, else null\n"
-        "  card  - short description e.g. 'Panini Prizm Luka Doncic Raw'\n"
-        "List cards LEFT TO RIGHT, TOP TO BOTTOM. "
-        "Return ONLY the JSON array — no markdown, no code fences."
+        "List every sports card visible in this photo. For each card read the printed text.\n"
+        "Return ONLY a JSON array, each element has:\n"
+        "name, year, brand, set, grade (Raw or PSA/BGS grade), cert (null if raw), card (short description)\n"
+        "Use null for unreadable fields. No markdown, no code fences, JSON array only."
     )
     response = gemini_generate(client,
         model="gemini-2.5-flash",
@@ -3128,28 +3118,12 @@ def mobile_scan():
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR) if raw_image_bytes else None
 
         if scan_mode == 'bulk':
-            import concurrent.futures
             try:
-                # Run identify + bbox in parallel to stay under 60s timeout
-                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                    future_cards = executor.submit(analyze_bulk, raw_image_bytes)
-                    # Start bbox future after we know card count — placeholder for now
-                    cards = future_cards.result(timeout=45)
-                    if isinstance(cards, dict):
-                        cards = [cards]
-                    if not cards:
-                        return jsonify({'success': False, 'error': 'No cards detected in image'})
-                    # Now get bboxes with remaining time
-                    try:
-                        future_bbox = executor.submit(analyze_bulk_bbox, raw_image_bytes, len(cards))
-                        bboxes = future_bbox.result(timeout=15)
-                        for i, card in enumerate(cards):
-                            card['bbox'] = bboxes[i] if i < len(bboxes) else None
-                    except Exception:
-                        for card in cards:
-                            card['bbox'] = None
-            except concurrent.futures.TimeoutError:
-                return jsonify({'success': False, 'error': 'Scan timed out — try with fewer cards or better lighting'}), 504
+                cards = analyze_bulk(raw_image_bytes)
+                if isinstance(cards, dict):
+                    cards = [cards]
+                if not cards:
+                    return jsonify({'success': False, 'error': 'No cards detected — try better lighting or fewer cards'})
             except Exception as e:
                 app.logger.error(f'Bulk scan failed: {e}')
                 return jsonify({'success': False, 'error': f'Bulk scan failed: {str(e)}'}), 500
