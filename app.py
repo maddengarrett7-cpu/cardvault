@@ -1563,6 +1563,15 @@ def scan():
             raw_image_bytes = base64.b64decode(body['image'])
             nparr = np.frombuffer(raw_image_bytes, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            # Resize large images to max 1600px on longest side to avoid Railway timeout
+            if frame is not None:
+                h, w = frame.shape[:2]
+                max_dim = 1600
+                if max(h, w) > max_dim:
+                    scale = max_dim / max(h, w)
+                    frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                raw_image_bytes = buf.tobytes()
         else:
             # Fall back to Mac camera
             with camera_lock:
@@ -1792,6 +1801,17 @@ def scan_bulk():
     try:
         body = request.get_json()
         raw_image_bytes = base64.b64decode(body['image'])
+        # Resize large images before sending to Gemini
+        import numpy as np
+        nparr = np.frombuffer(raw_image_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if frame is not None:
+            h, w = frame.shape[:2]
+            if max(h, w) > 1600:
+                scale = 1600 / max(h, w)
+                frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            raw_image_bytes = buf.tobytes()
         cards = analyze_bulk(raw_image_bytes)
         if not isinstance(cards, list):
             return jsonify({'success': False, 'error': 'Could not detect cards in image'})
