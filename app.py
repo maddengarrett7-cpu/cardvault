@@ -438,10 +438,15 @@ def analyze_bulk(image_data):
     """Detect multiple cards — fast identification only."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
-        "List every sports card visible in this photo. For each card read the printed text.\n"
-        "Return ONLY a JSON array, each element has:\n"
-        "name, year, brand, set, grade (Raw or PSA/BGS grade), cert (null if raw), card (short description)\n"
-        "Use null for unreadable fields. No markdown, no code fences, JSON array only."
+        "Look at this photo and identify ONLY clearly visible, complete sports cards where you can read the player name and year from the printed text.\n"
+        "Rules:\n"
+        "- Only include a card if you can confidently read the player's name from the card itself\n"
+        "- Do NOT include blurry cards, partial cards, card backs without player info, backgrounds, or uncertain detections\n"
+        "- If there is only one card, return an array with one element\n"
+        "- If no cards meet the criteria, return an empty array []\n"
+        "For each confirmed card return:\n"
+        "name (player name from card), year, brand, set, grade (Raw or PSA/BGS/SGC grade), cert (null if raw), card (short description)\n"
+        "Use null for fields you cannot read. No markdown, no code fences, JSON array only."
     )
     response = gemini_generate(client,
         model="gemini-2.5-flash",
@@ -452,7 +457,18 @@ def analyze_bulk(image_data):
         text = text.split("```")[1]
         if text.startswith("json"):
             text = text[4:]
-    return json.loads(text.strip())
+    cards = json.loads(text.strip())
+    # Filter out any cards without a real player name (hallucinations)
+    JUNK_NAMES = {'blurry', 'unknown', 'unreadable', 'football card', 'basketball card',
+                  'baseball card', 'card', 'sports card', 'n/a', 'none', ''}
+    filtered = [
+        c for c in cards
+        if isinstance(c, dict)
+        and c.get('name')
+        and str(c.get('name', '')).strip().lower() not in JUNK_NAMES
+        and len(str(c.get('name', '')).strip()) > 2
+    ]
+    return filtered
 
 
 def analyze_prices(image_data):
