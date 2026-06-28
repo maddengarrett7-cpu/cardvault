@@ -3128,26 +3128,31 @@ def mobile_scan():
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR) if raw_image_bytes else None
 
         if scan_mode == 'bulk':
+            import concurrent.futures
             try:
-                cards = analyze_bulk(raw_image_bytes)
-                if isinstance(cards, dict):  # Gemini returned object instead of array
-                    cards = [cards]
+                # Run identify + bbox in parallel to stay under 60s timeout
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    future_cards = executor.submit(analyze_bulk, raw_image_bytes)
+                    # Start bbox future after we know card count — placeholder for now
+                    cards = future_cards.result(timeout=45)
+                    if isinstance(cards, dict):
+                        cards = [cards]
+                    if not cards:
+                        return jsonify({'success': False, 'error': 'No cards detected in image'})
+                    # Now get bboxes with remaining time
+                    try:
+                        future_bbox = executor.submit(analyze_bulk_bbox, raw_image_bytes, len(cards))
+                        bboxes = future_bbox.result(timeout=15)
+                        for i, card in enumerate(cards):
+                            card['bbox'] = bboxes[i] if i < len(bboxes) else None
+                    except Exception:
+                        for card in cards:
+                            card['bbox'] = None
+            except concurrent.futures.TimeoutError:
+                return jsonify({'success': False, 'error': 'Scan timed out — try with fewer cards or better lighting'}), 504
             except Exception as e:
-                app.logger.error(f'Bulk identify failed: {e}')
-                return jsonify({'success': False, 'error': f'Bulk identify failed: {str(e)}'}), 500
-
-            if not cards:
-                return jsonify({'success': False, 'error': 'No cards detected in image'})
-
-            # Step 2 — bboxes in a separate call (best effort)
-            try:
-                bboxes = analyze_bulk_bbox(raw_image_bytes, len(cards))
-                for i, card in enumerate(cards):
-                    card['bbox'] = bboxes[i] if i < len(bboxes) else None
-            except Exception:
-                # bbox is optional — cards still returned without crop coordinates
-                for card in cards:
-                    card['bbox'] = None
+                app.logger.error(f'Bulk scan failed: {e}')
+                return jsonify({'success': False, 'error': f'Bulk scan failed: {str(e)}'}), 500
 
             allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
             if not allowed:
