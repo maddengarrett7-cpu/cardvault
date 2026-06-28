@@ -3117,7 +3117,63 @@ def mobile_scan():
         nparr = np.frombuffer(raw_image_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR) if raw_image_bytes else None
 
-        if scan_mode == 'bulk':
+        if scan_mode == 'front_and_back':
+            # Accept front + back images, merge results
+            front_bytes = raw_image_bytes
+            back_b64 = (request.get_json(force=True) or {}).get('back_image', '')
+            back_bytes = base64.b64decode(back_b64) if back_b64 else None
+
+            # Scan front
+            data = analyze_card(frame, quality=95)
+            is_raw = (not data.get('grade') or data.get('grade', '').lower() == 'raw')
+
+            # Run second pass on front
+            if is_raw:
+                try:
+                    raw_data = analyze_raw_card(front_bytes, year_hint=data.get('year'), sport_hint=data.get('sport'))
+                    for field in ['year', 'brand']:
+                        if raw_data.get(field): data[field] = raw_data[field]
+                    for field in ['set', 'parallel', 'serial', 'card_number', 'sport']:
+                        if raw_data.get(field) and not data.get(field): data[field] = raw_data[field]
+                except Exception: pass
+
+            # Scan back and merge
+            if back_bytes:
+                try:
+                    back_data = analyze_card_back(back_bytes, year_hint=data.get('year'), sport_hint=data.get('sport'))
+                    # Back fills in missing fields
+                    for field in ['year', 'brand', 'set', 'name']:
+                        if back_data.get(field) and not data.get(field):
+                            data[field] = back_data[field]
+                    for field in ['card_number', 'team', 'serial']:
+                        if back_data.get(field) and not data.get(field):
+                            data[field] = back_data[field]
+                    if back_data.get('rookie'):
+                        data['rookie'] = True
+                except Exception: pass
+
+            # Rebuild card description
+            parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',
+                     data.get('name') or '', data.get('parallel') or '']
+            data['card'] = ' '.join(p for p in parts if p).strip()
+
+            allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
+            if not allowed:
+                return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
+
+            try:
+                query_parts = [p for p in [str(data.get('year') or ''), data.get('name', ''), data.get('grade', '')] if p]
+                ebay_result, _ = search_ebay_sold(' '.join(query_parts))
+                if ebay_result and ebay_result.get('avg'):
+                    data['ebay_avg'] = ebay_result['avg']
+            except Exception: pass
+
+            save_scan(request.mobile_user_id, data)
+            data['success'] = True
+            data['scans_left'] = max(0, limit - scans_used) if limit else 999
+            return jsonify(data)
+
+        elif scan_mode == 'bulk':
             try:
                 cards = analyze_bulk(raw_image_bytes)
                 if isinstance(cards, dict):
