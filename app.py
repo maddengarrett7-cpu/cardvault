@@ -855,19 +855,25 @@ def admin_test_email(secret):
 def forgot_password():
     if request.method == 'GET':
         return render_template('forgot_password.html')
-    email = request.form.get('email', '').strip().lower()
-    user = get_user_by_email(email)
-    # Always show success message to avoid user enumeration
-    if user:
-        token = secrets.token_urlsafe(32)
-        expires_at = datetime.utcnow() + timedelta(hours=1)
-        save_reset_token(email, token, expires_at)
-        reset_url = f"{APP_BASE_URL}/reset-password/{token}"
-        try:
-            send_reset_email(email, reset_url)
-        except Exception as e:
-            return render_template('forgot_password.html', error='Could not send email. Please try again or contact us on Instagram.')
-    return render_template('forgot_password.html', success=True)
+    try:
+        email = request.form.get('email', '').strip().lower()
+        user = get_user_by_email(email)
+        # Always show success message to avoid user enumeration
+        if user:
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.utcnow() + timedelta(hours=1)
+            try:
+                save_reset_token(email, token, expires_at)
+            except Exception:
+                pass
+            reset_url = f"{APP_BASE_URL}/reset-password/{token}"
+            try:
+                send_reset_email(email, reset_url)
+            except Exception:
+                return render_template('forgot_password.html', error='Could not send email. Please try again or contact us on Instagram.')
+        return render_template('forgot_password.html', success=True)
+    except Exception as e:
+        return render_template('forgot_password.html', error='Something went wrong. Please try again.')
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
@@ -3058,6 +3064,88 @@ def mobile_debug():
         except Exception as e:
             result['error'] = str(e)
     return jsonify(result)
+
+
+@app.route('/api/mobile/send-otp', methods=['POST'])
+def mobile_send_otp():
+    """Send a 6-digit OTP to the user's email for password reset."""
+    try:
+        body = request.get_json() or {}
+        email = body.get('email', '').strip().lower()
+        if not email:
+            return jsonify({'success': False, 'error': 'Email required'}), 400
+        user = get_user_by_email(email)
+        if not user:
+            # Don't reveal whether account exists
+            return jsonify({'success': True})
+        import random as _random
+        otp = str(_random.randint(100000, 999999))
+        expires_at = datetime.utcnow() + timedelta(minutes=15)
+        save_reset_token(email, otp, expires_at)
+        # Send email
+        try:
+            msg_body = f"""
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0a0a0a;color:#fff;">
+              <h2 style="font-size:22px;font-weight:800;margin-bottom:8px;">Card<span style="color:#00e676;">Scan</span></h2>
+              <p style="color:#aaa;margin-bottom:24px;">Password Reset Code</p>
+              <p style="color:#ccc;margin-bottom:16px;">Enter this code in the app to reset your password:</p>
+              <div style="background:#111;border:2px solid #00e676;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+                <span style="font-size:40px;font-weight:900;letter-spacing:8px;color:#00e676;">{otp}</span>
+              </div>
+              <p style="color:#666;font-size:12px;">Expires in 15 minutes. If you didn't request this, ignore this email.</p>
+            </div>
+            """
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = 'CardScan — Your Reset Code'
+            msg['From'] = f'CardScan <{GMAIL_USER}>'
+            msg['To'] = email
+            msg.attach(MIMEText(msg_body, 'html'))
+            import smtplib
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.sendmail(GMAIL_USER, email, msg.as_string())
+        except Exception:
+            pass  # OTP is stored; email failure is silent
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/reset-password-otp', methods=['POST'])
+def mobile_reset_password_otp():
+    """Reset password using a 6-digit OTP."""
+    try:
+        body = request.get_json() or {}
+        email = body.get('email', '').strip().lower()
+        otp = body.get('otp', '').strip()
+        new_password = body.get('new_password', '')
+        if not email or not otp or not new_password:
+            return jsonify({'success': False, 'error': 'Email, OTP, and new password required'}), 400
+        if len(new_password) < 6:
+            return jsonify({'success': False, 'error': 'Password must be at least 6 characters'}), 400
+        row = get_reset_token(otp)
+        if not row:
+            return jsonify({'success': False, 'error': 'Invalid or expired code'}), 400
+        stored_email = row.get('email', '') if isinstance(row, dict) else row[1]
+        expires_at = row.get('expires_at') if isinstance(row, dict) else row[3]
+        if stored_email.lower() != email:
+            return jsonify({'success': False, 'error': 'Invalid or expired code'}), 400
+        if expires_at:
+            try:
+                if isinstance(expires_at, str):
+                    expires_at = datetime.fromisoformat(expires_at)
+                if datetime.utcnow() > expires_at.replace(tzinfo=None):
+                    delete_reset_token(otp)
+                    return jsonify({'success': False, 'error': 'Code has expired, please request a new one'}), 400
+            except Exception:
+                pass
+        update_password(email, generate_password_hash(new_password))
+        delete_reset_token(otp)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/mobile/login', methods=['POST'])
