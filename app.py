@@ -3701,6 +3701,24 @@ def server_error(e):
         return jsonify({'success': False, 'error': 'Server error — please try again'}), 500
     return render_template('500.html'), 500
 
+@app.route('/api/mobile/user', methods=['GET'])
+def mobile_user():
+    token = request.headers.get('X-Session-Token')
+    if not token:
+        return jsonify({'error': 'No token'}), 401
+    user = validate_session(token)
+    if not user:
+        return jsonify({'error': 'Invalid session'}), 401
+    email = user.get('email', '')
+    is_pro = user.get('subscription_status') == 'pro'
+    name = email.split('@')[0].capitalize() if email else 'User'
+    return jsonify({
+        'email': email,
+        'name': name,
+        'is_pro': is_pro,
+        'subscription_status': user.get('subscription_status', 'free'),
+    })
+
 if __name__ == '__main__':
     print("\n🚀 Card Scanner Web App")
     print("   Open this in your browser: http://localhost:5000\n")
