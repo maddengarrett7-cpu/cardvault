@@ -3702,13 +3702,11 @@ def server_error(e):
     return render_template('500.html'), 500
 
 @app.route('/api/mobile/user', methods=['GET'])
+@mobile_auth
 def mobile_user():
-    token = request.headers.get('X-Session-Token')
-    if not token:
-        return jsonify({'error': 'No token'}), 401
-    user = validate_session(token)
+    user = get_user_by_id(request.mobile_user_id)
     if not user:
-        return jsonify({'error': 'Invalid session'}), 401
+        return jsonify({'error': 'User not found'}), 404
     email = user.get('email', '')
     is_pro = user.get('subscription_status') == 'pro'
     name = email.split('@')[0].capitalize() if email else 'User'
