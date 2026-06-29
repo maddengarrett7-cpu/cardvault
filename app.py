@@ -3504,6 +3504,39 @@ def mobile_create_deal_payment():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/collection/<int:user_id>')
+def public_collection(user_id):
+    """Public collection page for sharing."""
+    try:
+        scans, total = get_scan_history(user_id, limit=20, offset=0)
+        user = get_user_by_id(user_id)
+        if not user: return "Not found", 404
+        total_value = sum(float(s.get('ebay_avg') or 0) for s in scans)
+        card_rows = ''.join([
+            f"<div style='background:#111;border:1px solid #1e1e1e;border-radius:12px;padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'>"
+            f"<div><div style='font-weight:800;color:#fff;font-size:14px'>{s.get('name','')}</div>"
+            f"<div style='color:#555;font-size:11px;margin-top:2px'>{s.get('card','')}</div></div>"
+            f"<div style='color:#00e676;font-weight:800;font-size:14px'>{f'${s[\"ebay_avg\"]}' if s.get('ebay_avg') else s.get('grade') or 'Raw'}</div></div>"
+            for s in scans
+        ])
+        return f"""<!DOCTYPE html><html>
+<head><meta charset=utf-8><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CardScan Collection</title>
+<style>body{{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#fff;max-width:480px;margin:0 auto;padding:24px}}</style>
+</head><body>
+<div style='font-size:24px;font-weight:900;margin-bottom:4px'>Card<span style='color:#00e676'>Scan</span></div>
+<div style='color:#555;font-size:12px;margin-bottom:24px'>Collection · {total} cards</div>
+<div style='display:flex;gap:20px;margin-bottom:24px'>
+  <div><div style='font-size:22px;font-weight:900;color:#00e676'>{total}</div><div style='font-size:10px;color:#444;text-transform:uppercase;letter-spacing:0.5px'>Cards</div></div>
+  <div><div style='font-size:22px;font-weight:900;color:#00e676'>${total_value:,.0f}</div><div style='font-size:10px;color:#444;text-transform:uppercase;letter-spacing:0.5px'>Est. Value</div></div>
+</div>
+{card_rows}
+<div style='text-align:center;margin-top:24px;color:#444;font-size:12px'>Powered by <a href="https://cardscan.live" style="color:#00e676">CardScan</a></div>
+</body></html>"""
+    except Exception as e:
+        return f"Error: {e}", 500
+
+
 @app.route('/deal-success')
 def deal_success():
     deal_id = request.args.get('deal_id')
