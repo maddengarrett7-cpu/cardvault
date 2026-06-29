@@ -120,6 +120,7 @@ if DATABASE_URL:
             ("cl_value", "FLOAT"),
             ("cl_last_sale", "FLOAT"),
             ("ebay_sales", "TEXT"),
+            ("notes", "TEXT"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS {col} {definition}")

@@ -3626,6 +3626,26 @@ def mobile_report_deal():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/mobile/collection/<int:card_id>', methods=['DELETE'])
+@mobile_auth
+def mobile_delete_card(card_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("DELETE FROM scan_history WHERE id = %s AND user_id = %s", (card_id, request.mobile_user_id))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("DELETE FROM scan_history WHERE id = ? AND user_id = ?", (card_id, request.mobile_user_id))
+            db.commit()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/mobile/clear-collection', methods=['POST'])
 @mobile_auth
 def mobile_clear_collection():
@@ -3744,7 +3764,145 @@ def mobile_user():
         'name': name,
         'is_pro': is_pro,
         'subscription_status': user.get('subscription_status', 'free'),
+        'referral_code': user.get('referral_code') or '',
     })
+
+@app.route('/api/mobile/scan-back', methods=['POST'])
+@mobile_auth
+def mobile_scan_back():
+    """Scan the back of a card to improve eBay price accuracy."""
+    try:
+        body = request.get_json(force=True) or {}
+        image_b64 = body.get('image', '')
+        if not image_b64:
+            return jsonify({'success': False, 'error': 'No image provided'}), 400
+
+        image_bytes = base64.b64decode(image_b64)
+
+        # Hints from the front scan
+        name  = body.get('name', '')
+        year  = body.get('year')
+        set_  = body.get('set', '')
+        grade = body.get('grade', '')
+        serial = body.get('serial', '')
+        sport = body.get('sport', '')
+
+        back_data = analyze_card_back(image_bytes, year_hint=year, sport_hint=sport)
+
+        # Merge back data into the card metadata, back fills missing fields
+        merged = {
+            'name':   name or back_data.get('name', ''),
+            'year':   year or back_data.get('year'),
+            'set':    set_ or back_data.get('set', ''),
+            'grade':  grade,
+            'serial': serial or back_data.get('serial', ''),
+        }
+        if back_data.get('rookie'):
+            merged['rookie'] = True
+
+        # Build a richer eBay query using back data
+        query_parts = [
+            str(merged.get('year') or ''),
+            merged.get('name', ''),
+            merged.get('set', ''),
+            merged.get('grade', ''),
+            back_data.get('card_number', ''),
+        ]
+        q = ' '.join(p for p in query_parts if p).strip()
+
+        ebay_avg = None
+        if q:
+            ebay_result, _ = search_ebay_sold(q)
+            if ebay_result:
+                ebay_avg = ebay_result.get('avg')
+
+        return jsonify({
+            'success': True,
+            'ebay_avg': ebay_avg,
+            'back_data': back_data,
+            'merged': merged,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/collection/<int:card_id>/refresh', methods=['POST'])
+@mobile_auth
+def mobile_refresh_card_value(card_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT * FROM scan_history WHERE id = %s AND user_id = %s", (card_id, request.mobile_user_id))
+            row = cur.fetchone()
+        else:
+            row = db.execute("SELECT * FROM scan_history WHERE id = ? AND user_id = ?", (card_id, request.mobile_user_id)).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Card not found'}), 404
+        card = dict(row) if hasattr(row, 'keys') else dict(zip([d[0] for d in (cur if DATABASE_URL else db).description], row))
+        query_parts = [str(card.get('year') or ''), card.get('name') or '', card.get('set_name') or '', card.get('grade') or '']
+        q = ' '.join(p for p in query_parts if p).strip()
+        new_avg = None
+        if q:
+            ebay_result, _ = search_ebay_sold(q)
+            if ebay_result:
+                new_avg = ebay_result.get('avg')
+        if new_avg and DATABASE_URL:
+            cur.execute("UPDATE scan_history SET ebay_avg = %s WHERE id = %s", (new_avg, card_id))
+            db.commit()
+            cur.close()
+        elif new_avg:
+            db.execute("UPDATE scan_history SET ebay_avg = ? WHERE id = ?", (new_avg, card_id))
+            db.commit()
+        db.close()
+        return jsonify({'success': True, 'ebay_avg': new_avg})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/collection/refresh-all', methods=['POST'])
+@mobile_auth
+def mobile_refresh_all_values():
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT id, name, year, set_name, grade FROM scan_history WHERE user_id = %s", (request.mobile_user_id,))
+            rows = cur.fetchall()
+            cols = [d[0] for d in cur.description]
+        else:
+            rows = db.execute("SELECT id, name, year, set_name, grade FROM scan_history WHERE user_id = ?", (request.mobile_user_id,)).fetchall()
+            cols = ['id', 'name', 'year', 'set_name', 'grade']
+        updated = 0
+        for row in rows:
+            card = dict(zip(cols, row))
+            query_parts = [str(card.get('year') or ''), card.get('name') or '', card.get('set_name') or '', card.get('grade') or '']
+            q = ' '.join(p for p in query_parts if p).strip()
+            if not q:
+                continue
+            try:
+                ebay_result, _ = search_ebay_sold(q)
+                if ebay_result and ebay_result.get('avg'):
+                    avg = ebay_result['avg']
+                    if DATABASE_URL:
+                        cur.execute("UPDATE scan_history SET ebay_avg = %s WHERE id = %s", (avg, card['id']))
+                    else:
+                        db.execute("UPDATE scan_history SET ebay_avg = ? WHERE id = ?", (avg, card['id']))
+                    updated += 1
+            except Exception:
+                continue
+        if DATABASE_URL:
+            db.commit()
+            cur.close()
+        else:
+            db.commit()
+        db.close()
+        return jsonify({'success': True, 'updated': updated})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     print("\n🚀 Card Scanner Web App")
