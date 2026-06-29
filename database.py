@@ -59,6 +59,27 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # Create deals table
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS deals (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    card_name TEXT,
+                    card_desc TEXT,
+                    buyer_instagram TEXT,
+                    buyer_name TEXT,
+                    sale_price FLOAT,
+                    fee_amount FLOAT,
+                    stripe_session_id TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Create scan_history table separately
         try:
             cur.execute("""

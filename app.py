@@ -3390,6 +3390,101 @@ def mobile_collection():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/mobile/create-deal-payment', methods=['POST'])
+@mobile_auth
+def mobile_create_deal_payment():
+    """Create a Stripe Checkout session for the 1% deal fee."""
+    try:
+        body = request.get_json() or {}
+        sale_price = float(body.get('sale_price', 0))
+        card_name  = body.get('card_name', 'Card')
+        card_desc  = body.get('card_desc', '')
+        buyer_instagram = body.get('buyer_instagram', '')
+        buyer_name = body.get('buyer_name', '')
+
+        if sale_price <= 0:
+            return jsonify({'success': False, 'error': 'Invalid sale price'}), 400
+
+        fee_cents = max(int(round(sale_price * 0.01 * 100)), 50)  # min $0.50 (Stripe minimum)
+
+        # Save pending deal to DB
+        db = get_db()
+        deal_id = None
+        try:
+            if DATABASE_URL:
+                cur = db.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS deals (
+                        id SERIAL PRIMARY KEY, user_id INTEGER,
+                        card_name TEXT, card_desc TEXT,
+                        buyer_instagram TEXT, buyer_name TEXT,
+                        sale_price FLOAT, fee_amount FLOAT,
+                        stripe_session_id TEXT, status TEXT DEFAULT 'pending',
+                        created_at TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+                cur.execute(
+                    "INSERT INTO deals (user_id, card_name, card_desc, buyer_instagram, buyer_name, sale_price, fee_amount) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (request.mobile_user_id, card_name, card_desc, buyer_instagram, buyer_name, sale_price, fee_cents/100)
+                )
+                deal_id = cur.fetchone()[0]
+                db.commit()
+                cur.close()
+            db.close()
+        except Exception:
+            pass
+
+        session_obj = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': f'CardScan Deal Fee — {card_name}',
+                        'description': f'1% fee on ${sale_price:.2f} sale via CardConnect to {buyer_name}',
+                    },
+                    'unit_amount': fee_cents,
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=f'{APP_BASE_URL}/deal-success?deal_id={deal_id}&session_id={{CHECKOUT_SESSION_ID}}',
+            cancel_url=f'{APP_BASE_URL}/deal-cancel',
+            metadata={
+                'deal_id': str(deal_id or ''),
+                'user_id': str(request.mobile_user_id),
+                'buyer_instagram': buyer_instagram,
+                'sale_price': str(sale_price),
+            }
+        )
+        return jsonify({'success': True, 'checkout_url': session_obj.url, 'deal_id': deal_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/deal-success')
+def deal_success():
+    deal_id = request.args.get('deal_id')
+    session_id = request.args.get('session_id')
+    if deal_id and session_id:
+        try:
+            db = get_db()
+            if DATABASE_URL:
+                cur = db.cursor()
+                cur.execute("UPDATE deals SET status='completed', stripe_session_id=%s WHERE id=%s", (session_id, deal_id))
+                db.commit()
+                cur.close()
+            db.close()
+        except Exception:
+            pass
+    return '<html><body style="background:#0a0a0a;color:#00e676;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-size:24px;font-weight:900;">✓ Deal confirmed! Return to CardScan.</body></html>'
+
+
+@app.route('/deal-cancel')
+def deal_cancel():
+    return '<html><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-size:18px;">Payment cancelled. Return to CardScan.</body></html>'
+
+
 @app.route('/api/mobile/clear-collection', methods=['POST'])
 @mobile_auth
 def mobile_clear_collection():
