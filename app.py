@@ -3344,7 +3344,20 @@ def mobile_scan():
 
         elif scan_mode == 'bulk':
             try:
-                cards = analyze_bulk(raw_image_bytes)
+                # Resize bulk image to max 1200px before sending to Gemini — reduces timeout risk
+                if frame is not None:
+                    h, w = frame.shape[:2]
+                    max_dim = 1200
+                    if max(h, w) > max_dim:
+                        scale = max_dim / max(h, w)
+                        frame_small = cv2.resize(frame, (int(w * scale), int(h * scale)))
+                    else:
+                        frame_small = frame
+                    _, buf = cv2.imencode('.jpg', frame_small, [cv2.IMWRITE_JPEG_QUALITY, 82])
+                    bulk_image_bytes = buf.tobytes()
+                else:
+                    bulk_image_bytes = raw_image_bytes
+                cards = analyze_bulk(bulk_image_bytes)
                 if isinstance(cards, dict):
                     cards = [cards]
                 if not cards:
