@@ -3512,13 +3512,15 @@ def public_collection(user_id):
         user = get_user_by_id(user_id)
         if not user: return "Not found", 404
         total_value = sum(float(s.get('ebay_avg') or 0) for s in scans)
-        card_rows = ''.join([
-            f"<div style='background:#111;border:1px solid #1e1e1e;border-radius:12px;padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'>"
-            f"<div><div style='font-weight:800;color:#fff;font-size:14px'>{s.get('name','')}</div>"
-            f"<div style='color:#555;font-size:11px;margin-top:2px'>{s.get('card','')}</div></div>"
-            f"<div style='color:#00e676;font-weight:800;font-size:14px'>{f'${s[\"ebay_avg\"]}' if s.get('ebay_avg') else s.get('grade') or 'Raw'}</div></div>"
-            for s in scans
-        ])
+        def card_row(s):
+            val = f"${s['ebay_avg']}" if s.get('ebay_avg') else (s.get('grade') or 'Raw')
+            return (
+                f"<div style='background:#111;border:1px solid #1e1e1e;border-radius:12px;padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'>"
+                f"<div><div style='font-weight:800;color:#fff;font-size:14px'>{s.get('name','')}</div>"
+                f"<div style='color:#555;font-size:11px;margin-top:2px'>{s.get('card','')}</div></div>"
+                f"<div style='color:#00e676;font-weight:800;font-size:14px'>{val}</div></div>"
+            )
+        card_rows = ''.join([card_row(s) for s in scans])
         return f"""<!DOCTYPE html><html>
 <head><meta charset=utf-8><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CardScan Collection</title>
