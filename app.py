@@ -2286,6 +2286,27 @@ def admin_dashboard():
         referral_rows_data = []
     referral_rows = ''.join([f"<tr><td>{r[0]}</td><td style='color:#00ff87'>{r[1]}</td><td style='color:#ffd700'>{r[2]}</td></tr>" for r in referral_rows_data])
 
+    # CardConnect deals stats
+    deal_total = 0
+    deal_volume = 0.0
+    deal_by_buyer = []
+    deal_recent = []
+    try:
+        db3 = get_db()
+        if hasattr(db3, 'cursor'):
+            cur3 = db3.cursor()
+            cur3.execute("SELECT COUNT(*), COALESCE(SUM(sale_price),0) FROM deals")
+            r = cur3.fetchone(); deal_total = r[0] or 0; deal_volume = float(r[1] or 0)
+            cur3.execute("SELECT buyer_name, buyer_instagram, COUNT(*) as cnt, COALESCE(SUM(sale_price),0) as vol FROM deals GROUP BY buyer_name, buyer_instagram ORDER BY cnt DESC LIMIT 10")
+            deal_by_buyer = cur3.fetchall()
+            cur3.execute("SELECT card_name, buyer_name, sale_price, created_at FROM deals ORDER BY created_at DESC LIMIT 10")
+            deal_recent = cur3.fetchall()
+            cur3.close(); db3.close()
+    except Exception:
+        pass
+    deal_buyer_rows = ''.join([f"<tr><td>{r[0]}</td><td style='color:#aaa'>@{r[1]}</td><td style='color:#00ff87;font-weight:700'>{r[2]}</td><td style='color:#ffd700'>${float(r[3]):.0f}</td></tr>" for r in deal_by_buyer])
+    deal_recent_rows = ''.join([f"<tr><td>{r[0]}</td><td style='color:#aaa'>{r[1]}</td><td style='color:#00ff87'>${float(r[2]):.0f}</td><td style='color:#555'>{str(r[3])[:10]}</td></tr>" for r in deal_recent])
+
     return f"""<!DOCTYPE html><html>
 <head><title>CardScan Admin</title>
 <style>
@@ -2447,6 +2468,27 @@ async function sendBroadcast() {{
     : '✗ ' + data.error;
 }}
 </script>
+
+  <!-- CardConnect Section -->
+  <h2>CardConnect Deals</h2>
+  <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat"><div class="stat-num">{deal_total}</div><div class="stat-label">Deals Reported</div></div>
+    <div class="stat money"><div class="stat-num">${deal_volume:,.0f}</div><div class="stat-label">Total Volume</div></div>
+    <div class="stat money"><div class="stat-num">${deal_volume * 0.01:,.0f}</div><div class="stat-label">Potential Revenue (1%)</div></div>
+  </div>
+
+  <h2>Deals by Buyer</h2>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="color:#555;font-size:12px;text-align:left"><th style="padding:8px">Buyer</th><th>Handle</th><th>Deals</th><th>Volume</th></tr>
+    {deal_buyer_rows if deal_buyer_rows else '<tr><td colspan=4 style="color:#555;padding:12px">No deals reported yet</td></tr>'}
+  </table>
+
+  <h2>Recent Deals</h2>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="color:#555;font-size:12px;text-align:left"><th style="padding:8px">Card</th><th>Buyer</th><th>Price</th><th>Date</th></tr>
+    {deal_recent_rows if deal_recent_rows else '<tr><td colspan=4 style="color:#555;padding:12px">No deals reported yet</td></tr>'}
+  </table>
+
 </body></html>"""
 
 @app.route('/scan-price', methods=['POST'])
@@ -3483,6 +3525,41 @@ def deal_success():
 @app.route('/deal-cancel')
 def deal_cancel():
     return '<html><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-size:18px;">Payment cancelled. Return to CardScan.</body></html>'
+
+
+@app.route('/api/mobile/report-deal', methods=['POST'])
+@mobile_auth
+def mobile_report_deal():
+    """Log a self-reported deal for CardConnect analytics (free)."""
+    try:
+        body = request.get_json() or {}
+        sale_price  = float(body.get('sale_price', 0))
+        card_name   = body.get('card_name', '')
+        card_desc   = body.get('card_desc', '')
+        buyer_ig    = body.get('buyer_instagram', '')
+        buyer_name  = body.get('buyer_name', '')
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS deals (
+                    id SERIAL PRIMARY KEY, user_id INTEGER,
+                    card_name TEXT, card_desc TEXT,
+                    buyer_instagram TEXT, buyer_name TEXT,
+                    sale_price FLOAT, fee_amount FLOAT,
+                    stripe_session_id TEXT, status TEXT DEFAULT 'reported',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            cur.execute(
+                "INSERT INTO deals (user_id,card_name,card_desc,buyer_instagram,buyer_name,sale_price,status) VALUES (%s,%s,%s,%s,%s,%s,'reported')",
+                (request.mobile_user_id, card_name, card_desc, buyer_ig, buyer_name, sale_price)
+            )
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/mobile/clear-collection', methods=['POST'])
