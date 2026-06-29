@@ -438,15 +438,25 @@ def analyze_bulk(image_data):
     """Detect multiple cards — fast identification only."""
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = (
-        "Look at this photo and identify ONLY clearly visible, complete sports cards where you can read the player name and year from the printed text.\n"
-        "Rules:\n"
-        "- Only include a card if you can confidently read the player's name from the card itself\n"
-        "- Do NOT include blurry cards, partial cards, card backs without player info, backgrounds, or uncertain detections\n"
-        "- If there is only one card, return an array with one element\n"
-        "- If no cards meet the criteria, return an empty array []\n"
-        "For each confirmed card return:\n"
-        "name (player name from card), year, brand, set, grade (Raw or PSA/BGS/SGC grade), cert (null if raw), card (short description)\n"
-        "Use null for fields you cannot read. No markdown, no code fences, JSON array only."
+        "This photo contains multiple sports cards laid out flat. Identify every visible card.\n\n"
+        "RULES:\n"
+        "- Include a card only if you can read the player name from printed text on the card\n"
+        "- You may identify up to 15 cards per image — scan the entire image systematically left-to-right, top-to-bottom\n"
+        "- Do NOT skip cards just because they are partially overlapping — include any card where the name is readable\n"
+        "- Do NOT include blurry/unreadable cards, plain card backs, or backgrounds\n"
+        "- If only one card is visible, return an array with one element\n"
+        "- If no cards meet the criteria, return []\n\n"
+        "FOR EACH CARD READ:\n"
+        "- name: player name exactly as printed on the card (required)\n"
+        "- year: 4-digit year from the copyright line at the bottom of the card (e.g. '© 2022 Panini' = 2022). "
+        "Read it carefully — look for tiny text at the very bottom edge. null only if completely unreadable.\n"
+        "- brand: Panini / Topps / Upper Deck / Bowman etc from logo or copyright\n"
+        "- set: product name e.g. Prizm, Chrome, Select, Mosaic, Optic, Donruss, Bowman\n"
+        "- parallel: color finish e.g. Silver, Gold, Blue, Green. null for plain base\n"
+        "- grade: 'Raw' for ungraded, or 'PSA 10' / 'BGS 9.5' etc for slabs\n"
+        "- cert: cert number from grading label, null if raw\n"
+        "- card: short description e.g. '2022 Panini Prizm Patrick Mahomes Silver'\n\n"
+        "Return ONLY a valid JSON array. No markdown, no code fences, no extra text."
     )
     response = gemini_generate(client,
         model="gemini-2.5-flash",
@@ -3384,6 +3394,12 @@ def mobile_scan():
                     for field in ['set', 'parallel', 'serial', 'card_number', 'sport']:
                         if raw_data.get(field) and not data.get(field): data[field] = raw_data[field]
                 except Exception: pass
+                # Last resort: if year still missing, crop bottom strip and read copyright line directly
+                if not data.get('year'):
+                    try:
+                        year = extract_year_from_copyright(raw_image_bytes)
+                        if year: data['year'] = year
+                    except Exception: pass
 
         allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
         if not allowed:
