@@ -624,16 +624,20 @@ def build_row(data, mapping, num_cols):
             row[col_idx] = values[field]
     return row
 
-def get_first_sheet_tab(sheet_id, svc):
-    """Get the name of the first tab in the spreadsheet."""
+def get_all_sheet_tabs(sheet_id, svc):
+    """Return list of all tab names in the spreadsheet."""
     try:
         meta = svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
-        sheets = meta.get("sheets", [])
-        if sheets:
-            return sheets[0]["properties"]["title"]
+        return [s["properties"]["title"] for s in meta.get("sheets", [])]
     except Exception:
-        pass
-    return SHEET_TAB
+        return []
+
+def get_first_sheet_tab(sheet_id, svc, preferred_tab=None):
+    """Get the tab to write to — preferred tab if set, else first tab."""
+    tabs = get_all_sheet_tabs(sheet_id, svc)
+    if preferred_tab and preferred_tab in tabs:
+        return preferred_tab
+    return tabs[0] if tabs else SHEET_TAB
 
 def get_sheet_headers(sheet_id, svc):
     """Read the first row of the sheet to detect headers."""
@@ -680,7 +684,8 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
         raise Exception(f"Could not connect to Google Sheets: {str(e)}")
 
     try:
-        tab = get_first_sheet_tab(sheet_id, svc)
+        preferred_tab = user.get("sheet_tab") if user else None
+        tab = get_first_sheet_tab(sheet_id, svc, preferred_tab=preferred_tab)
         headers = get_sheet_headers(sheet_id, svc)
     except Exception as e:
         err = str(e)
@@ -3805,6 +3810,38 @@ def mobile_register_push():
         cur.execute("UPDATE users SET push_token = %s WHERE id = %s", (token, request.mobile_user_id))
         conn.commit(); cur.close(); conn.close()
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/mobile/sheet-tabs", methods=["GET"])
+@mobile_auth
+def mobile_sheet_tabs():
+    """Return all tab names for the user's connected sheet."""
+    try:
+        user = get_user_by_id(request.mobile_user_id)
+        sheet_id = user.get("google_sheet_id") if user else None
+        if not sheet_id:
+            return jsonify({"tabs": [], "current_tab": None})
+        svc = get_user_sheets_service(user)
+        tabs = get_all_sheet_tabs(sheet_id, svc)
+        return jsonify({"tabs": tabs, "current_tab": user.get("sheet_tab") or (tabs[0] if tabs else None)})
+    except Exception as e:
+        return jsonify({"tabs": [], "current_tab": None, "error": str(e)})
+
+@app.route("/api/mobile/set-sheet-tab", methods=["POST"])
+@mobile_auth
+def mobile_set_sheet_tab():
+    """Set the user's preferred sheet tab."""
+    try:
+        body = request.get_json(force=True) or {}
+        tab = (body.get("tab") or "").strip()
+        if not tab:
+            return jsonify({"success": False, "error": "No tab name provided"}), 400
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET sheet_tab = %s WHERE id = %s", (tab, request.mobile_user_id))
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({"success": True, "tab": tab})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

@@ -111,6 +111,7 @@ if DATABASE_URL:
             ("trial_end", "TEXT"),
             ("push_token", "TEXT"),
             ("price_alerts_enabled", "BOOLEAN DEFAULT TRUE"),
+            ("sheet_tab", "TEXT"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
