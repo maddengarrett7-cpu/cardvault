@@ -371,17 +371,10 @@ def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
         "Topps sets include: Chrome, Finest, Heritage, Bowman, Stadium Club, Series 1/2. "
         "Panini sets include: Prizm, Select, Mosaic, Optic, Donruss, Contenders, Obsidian, Chronicles.\n"
         "  SET   — The product/set name, e.g. 'Prizm', 'Chrome', 'Select', 'Mosaic', 'Optic', 'Bowman'.\n"
-        "  PARALLEL — Look at the card border color, foil finish, and any color treatment:\n"
-        "    CRITICAL: 'Refractor' is ONLY used for Topps Chrome and Bowman Chrome products. NEVER use 'Refractor' for Panini Prizm cards.\n"
-        "    Prizm BASE cards have a silver foil/rainbow shimmer finish by default — this is NOT a parallel, return null for parallel on a base Prizm.\n"
-        "    Prizm parallels (non-base only): Silver, Gold, Red, Blue, Green, Purple, Orange, Pink, "
-        "Rainbow, Red White Blue, Carolina Blue, Hyper, Disco, Holo, Cracked Ice\n"
-        "    Chrome parallels: Refractor (default Chrome), Gold Refractor, Orange Refractor, Red Refractor, Pink Refractor, Blue Refractor, Purple Refractor, Atomic Refractor\n"
-        "    Select parallels: Silver, Gold, Gold Vinyl, Tie-Dye, Blue, Red, Green, White Sparkle, Courtside\n"
-        "    Mosaic parallels: Silver, Gold, Pink, Blue, Green, Red, Reactive Blue/Yellow/Orange\n"
-        "    Donruss parallels: Press Proof, Gold Press Proof, Carolina Blue, Holo Pink, Diamond\n"
-        "    If the card has a solid colored border (not just foil) → that color is the parallel.\n"
-        "    If it is a standard base card with silver/rainbow foil and no colored border → null\n"
+        "  PARALLEL — Look ONLY at the card border color. Return the color name only (e.g. 'Gold', 'Red', 'Blue', 'Green', 'Purple', 'Orange', 'Pink', 'Black', 'White').\n"
+        "    If the border has a clearly visible solid color → return that color (e.g. 'Gold', 'Red').\n"
+        "    If the card has no colored border — just silver foil, rainbow shimmer, or the standard base finish → return null.\n"
+        "    Do NOT return 'Silver', 'Refractor', 'Base', 'Rainbow' or any product name — COLORS ONLY or null.\n"
         "  NUMBERED CARDS — Look for a physically stamped or foil-printed number like '045/099' or '12/25' on the card face.\n"
         "    ONLY if you can actually see this stamp: serial = '/99' (print run only). Do NOT guess from parallel color.\n"
         "    The first number (e.g. 045) is which copy this is — ignore it.\n"
@@ -3485,16 +3478,20 @@ def mobile_scan():
                 if not current_year or (current_year and int(current_year) < draft_year):
                     data['year'] = draft_year
 
-        # 2. Parallel fix
-        card_set = (data.get('set') or '').lower()
-        card_brand = (data.get('brand') or '').lower()
-        card_parallel = (data.get('parallel') or '').lower().strip()
-        # Refractor is ONLY a Topps/Chrome thing — never Panini
-        if 'refractor' in card_parallel and 'panini' in card_brand:
-            data['parallel'] = None
-        # Prizm base has silver foil by default — not a parallel
-        if 'prizm' in card_set and card_parallel in ('silver', 'base', 'silver prizm', 'refractor'):
-            data['parallel'] = None
+        # 2. Parallel fix — strip anything that's not a pure color word
+        VALID_COLORS = {'gold','red','blue','green','purple','orange','pink','black','white','aqua','teal','yellow','brown','bronze','copper'}
+        NON_COLORS = {'silver','refractor','base','rainbow','shimmer','foil','holo','prizm','chrome','cracked','hyper','disco','atomic','prism','press proof','courtside','tie-dye','sparkle'}
+        raw_parallel = (data.get('parallel') or '').strip()
+        if raw_parallel:
+            p_lower = raw_parallel.lower()
+            # Keep it only if it contains a valid color and no non-color junk
+            has_color = any(c in p_lower for c in VALID_COLORS)
+            has_junk = any(n in p_lower for n in NON_COLORS)
+            if not has_color or has_junk:
+                data['parallel'] = None
+            else:
+                # Clean it to just the color word(s)
+                data['parallel'] = raw_parallel
 
         # Rebuild card description with corrected fields
         parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',

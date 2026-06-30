@@ -39,7 +39,7 @@ def analyze_card(frame) -> dict:
         "  year       - card year as 4-digit number (integer or null). For raw cards: check the front corners, the set name, the copyright line on the back, or infer from the set (e.g. 'Prizm Draft' → look for year in set name). For multi-year sets like '2023-24' use the first year (2023). Never guess — use null if truly unknown.\n"
         "  brand      - manufacturer: e.g. 'Topps', 'Panini', 'Pokemon', 'Wizards of the Coast' (string or null)\n"
         "  set        - set/product name: e.g. 'Prizm', 'Chrome', 'Base Set', 'Scarlet & Violet' (string or null)\n"
-        "  parallel   - parallel or variant: e.g. 'Silver', 'Holo', 'Reverse Holo', 'Gold Refractor' (string or null)\n"
+        "  parallel   - border color only if clearly non-default: 'Gold', 'Red', 'Blue', 'Green', 'Purple', 'Orange', 'Pink'. null if base/standard finish (silver foil, rainbow shimmer, no colored border). Do NOT return 'Silver', 'Refractor', 'Base', or product names.\n"
         "  grade      - grading label if in a slab: 'PSA 9', 'BGS 8.5', 'CGC 10'. If raw use 'Raw' (string)\n"
         "  cert       - cert/serial number on grading label (string or null)\n"
         "  rarity     - TCG rarity symbol/text only: e.g. 'Rare Holo', 'Common', 'Ultra Rare', 'Secret Rare' (string or null, null for sports)\n"
