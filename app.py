@@ -3475,6 +3475,27 @@ def mobile_scan():
                         if year: data['year'] = year
                     except Exception: pass
 
+        # ── Post-scan corrections (all scan modes) ──────────────────────────
+
+        # 1. Year fix — auto-fill from draft class for known rookies
+        if data.get('name'):
+            draft_year = get_player_draft_year(data['name'])
+            if draft_year:
+                current_year = data.get('year')
+                if not current_year or (current_year and int(current_year) < draft_year):
+                    data['year'] = draft_year
+
+        # 2. Parallel fix — Prizm base cards have silver foil by default, it's NOT a parallel
+        card_set = (data.get('set') or '').lower()
+        card_parallel = (data.get('parallel') or '').lower().strip()
+        if 'prizm' in card_set and card_parallel in ('silver', 'base', 'silver prizm', ''):
+            data['parallel'] = None
+
+        # Rebuild card description with corrected fields
+        parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',
+                 data.get('name') or '', data.get('parallel') or '']
+        data['card'] = ' '.join(p for p in parts if p).strip()
+
         allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
         if not allowed:
             return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day). Upgrade to Pro for unlimited scans.'})
