@@ -3485,10 +3485,15 @@ def mobile_scan():
                 if not current_year or (current_year and int(current_year) < draft_year):
                     data['year'] = draft_year
 
-        # 2. Parallel fix — Prizm base cards have silver foil by default, it's NOT a parallel
+        # 2. Parallel fix
         card_set = (data.get('set') or '').lower()
+        card_brand = (data.get('brand') or '').lower()
         card_parallel = (data.get('parallel') or '').lower().strip()
-        if 'prizm' in card_set and card_parallel in ('silver', 'base', 'silver prizm', ''):
+        # Refractor is ONLY a Topps/Chrome thing — never Panini
+        if 'refractor' in card_parallel and 'panini' in card_brand:
+            data['parallel'] = None
+        # Prizm base has silver foil by default — not a parallel
+        if 'prizm' in card_set and card_parallel in ('silver', 'base', 'silver prizm', 'refractor'):
             data['parallel'] = None
 
         # Rebuild card description with corrected fields
