@@ -304,6 +304,7 @@ if DATABASE_URL:
         cur.execute("""
             INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, cl_value, cl_last_sale, ebay_sales)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
         """, (
             user_id,
             data.get('card'), data.get('name'), year,
@@ -313,7 +314,10 @@ if DATABASE_URL:
             data.get('ebay_high'), data.get('ebay_low'),
             data.get('cl_value'), data.get('cl_last_sale'), ebay_sales,
         ))
+        row = cur.fetchone()
+        new_id = row[0] if row else None
         conn.commit(); cur.close(); conn.close()
+        return new_id
 
     def get_scan_history(user_id, limit=100, offset=0, search='', grade_filter=''):
         conn = get_db()

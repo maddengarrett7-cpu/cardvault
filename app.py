@@ -3393,6 +3393,14 @@ def mobile_scan():
             allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
             if not allowed:
                 return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
+            # Save each card to the DB so they appear in collection with IDs
+            for card in cards:
+                try:
+                    card_id = save_scan(request.mobile_user_id, card)
+                    if card_id:
+                        card['id'] = card_id
+                except Exception as e:
+                    app.logger.warning(f'Bulk save_scan failed: {e}')
             return jsonify({'success': True, 'bulk': True, 'cards': cards})
         elif scan_mode == 'graded':
             data = analyze_label(raw_image_bytes)
