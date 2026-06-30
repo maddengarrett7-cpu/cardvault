@@ -109,6 +109,8 @@ if DATABASE_URL:
             ("bonus_scans", "INTEGER DEFAULT 0"),
             ("auto_sheet", "BOOLEAN DEFAULT TRUE"),
             ("trial_end", "TEXT"),
+            ("push_token", "TEXT"),
+            ("price_alerts_enabled", "BOOLEAN DEFAULT TRUE"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")

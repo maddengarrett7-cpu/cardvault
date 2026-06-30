@@ -3791,6 +3791,23 @@ def mobile_user():
         'google_sheet_id': user.get('google_sheet_id') or '',
     })
 
+@app.route("/api/mobile/register-push", methods=["POST"])
+@mobile_auth
+def mobile_register_push():
+    """Store the user's Expo push token for price alert notifications."""
+    try:
+        body = request.get_json(force=True) or {}
+        token = (body.get("token") or "").strip()
+        if not token:
+            return jsonify({"success": False, "error": "No token"}), 400
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET push_token = %s WHERE id = %s", (token, request.mobile_user_id))
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/api/mobile/sheet-service-email", methods=["GET"])
 @mobile_auth
 def mobile_sheet_service_email():
