@@ -3779,6 +3779,8 @@ def mobile_user():
         'is_pro': is_pro,
         'subscription_status': user.get('subscription_status', 'free'),
         'referral_code': user.get('referral_code') or '',
+        'google_connected': bool(user.get('google_access_token')),
+        'google_sheet_id': user.get('google_sheet_id') or '',
     })
 
 @app.route("/api/mobile/sheet-service-email", methods=["GET"])
