@@ -3780,6 +3780,24 @@ def mobile_user():
         'referral_code': user.get('referral_code') or '',
     })
 
+@app.route("/api/mobile/set-sheet", methods=["POST"])
+@mobile_auth
+def mobile_set_sheet():
+    """Update the Google Sheet ID for the logged-in user."""
+    try:
+        body = request.get_json(force=True) or {}
+        sheet_input = (body.get("sheet_id") or "").strip()
+        if not sheet_input:
+            return jsonify({"success": False, "error": "No sheet ID provided"}), 400
+        sheet_id = extract_sheet_id(sheet_input)
+        if not sheet_id:
+            return jsonify({"success": False, "error": "Invalid sheet URL or ID"}), 400
+        save_google_sheet_id(request.mobile_user_id, sheet_id)
+        return jsonify({"success": True, "sheet_id": sheet_id})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/mobile/scan-back", methods=["POST"])
 @app.route('/api/mobile/scan-back', methods=['POST'])
 @mobile_auth
 def mobile_scan_back():
