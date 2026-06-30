@@ -663,6 +663,25 @@ def get_user_sheets_service(user):
             client_secret=GOOGLE_CLIENT_SECRET,
             scopes=GOOGLE_OAUTH_SCOPES,
         )
+        # Refresh if expired — access tokens expire after ~1 hour
+        if creds.expired and creds.refresh_token:
+            try:
+                from google.auth.transport.requests import Request
+                creds.refresh(Request())
+                # Save the new access token so next request doesn't need to refresh again
+                if user.get("id"):
+                    try:
+                        conn = get_db()
+                        cur = conn.cursor()
+                        cur.execute("UPDATE users SET google_access_token = %s WHERE id = %s",
+                                    (creds.token, user["id"]))
+                        conn.commit(); cur.close(); conn.close()
+                    except Exception:
+                        pass
+            except Exception as refresh_err:
+                app.logger.warning(f"Token refresh failed for user {user.get('id')}: {refresh_err}")
+                # Fall through to service account
+                return build("sheets", "v4", credentials=get_creds())
         return build("sheets", "v4", credentials=creds)
     return build("sheets", "v4", credentials=get_creds())
 
@@ -690,7 +709,10 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
     except Exception as e:
         err = str(e)
         if "403" in err or "permission" in err.lower():
-            raise Exception("Sheet permission denied — make sure the sheet is shared with the CardScan service account.")
+            if user and user.get("google_access_token"):
+                raise Exception("Sheet permission denied — your Google session may have expired. Go to Settings → Reconnect Google Sheets to fix this.")
+            else:
+                raise Exception("Sheet permission denied — share your sheet with card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com as Editor.")
         if "404" in err:
             raise Exception("Sheet not found — check that the Google Sheet URL is correct.")
         raise Exception(f"Could not read sheet: {err}")
@@ -734,7 +756,10 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
     except Exception as e:
         err = str(e)
         if "403" in err or "permission" in err.lower():
-            raise Exception("Sheet permission denied — make sure the sheet is shared with the CardScan service account.")
+            if user and user.get("google_access_token"):
+                raise Exception("Sheet permission denied — your Google session may have expired. Go to Settings → Reconnect Google Sheets to fix this.")
+            else:
+                raise Exception("Sheet permission denied — share your sheet with card-scanner@lithe-grid-498217-i6.iam.gserviceaccount.com as Editor.")
         if "404" in err:
             raise Exception("Sheet not found — check that the Google Sheet URL is correct.")
         raise Exception(f"Could not write to sheet: {err}")
