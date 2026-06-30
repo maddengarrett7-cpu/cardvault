@@ -372,15 +372,16 @@ def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
         "Panini sets include: Prizm, Select, Mosaic, Optic, Donruss, Contenders, Obsidian, Chronicles.\n"
         "  SET   — The product/set name, e.g. 'Prizm', 'Chrome', 'Select', 'Mosaic', 'Optic', 'Bowman'.\n"
         "  PARALLEL — Look at the card border color, foil finish, and any color treatment:\n"
-        "    Prizm parallels: Silver (default foil), Gold, Red, Blue, Green, Purple, Orange, Pink, "
+        "    CRITICAL: 'Refractor' is ONLY used for Topps Chrome and Bowman Chrome products. NEVER use 'Refractor' for Panini Prizm cards.\n"
+        "    Prizm BASE cards have a silver foil/rainbow shimmer finish by default — this is NOT a parallel, return null for parallel on a base Prizm.\n"
+        "    Prizm parallels (non-base only): Silver, Gold, Red, Blue, Green, Purple, Orange, Pink, "
         "Rainbow, Red White Blue, Carolina Blue, Hyper, Disco, Holo, Cracked Ice\n"
-        "    Chrome parallels: Refractor (default), Gold Refractor, Pink Refractor, Blue Refractor, "
-        "Purple Refractor, Orange Refractor, Atomic Refractor, Prism Refractor\n"
+        "    Chrome parallels: Refractor (default Chrome), Gold Refractor, Orange Refractor, Red Refractor, Pink Refractor, Blue Refractor, Purple Refractor, Atomic Refractor\n"
         "    Select parallels: Silver, Gold, Gold Vinyl, Tie-Dye, Blue, Red, Green, White Sparkle, Courtside\n"
         "    Mosaic parallels: Silver, Gold, Pink, Blue, Green, Red, Reactive Blue/Yellow/Orange\n"
         "    Donruss parallels: Press Proof, Gold Press Proof, Carolina Blue, Holo Pink, Diamond\n"
-        "    If you see a foil/shimmer border → Silver. Gold border → Gold. Etc.\n"
-        "    If it appears to be a standard base card with no special finish → null\n"
+        "    If the card has a solid colored border (not just foil) → that color is the parallel.\n"
+        "    If it is a standard base card with silver/rainbow foil and no colored border → null\n"
         "  NUMBERED CARDS — Look for a physically stamped or foil-printed number like '045/099' or '12/25' on the card face.\n"
         "    ONLY if you can actually see this stamp: serial = '/99' (print run only). Do NOT guess from parallel color.\n"
         "    The first number (e.g. 045) is which copy this is — ignore it.\n"
@@ -1693,13 +1694,18 @@ def scan():
 
         # Sanity check: if player is a known rookie, their card year can't be
         # before their draft year. Catches Gemini hallucinating college years.
-        if data.get("year") and data.get("name"):
+        if data.get("name"):
             draft_year = get_player_draft_year(data["name"])
-            if draft_year and int(data["year"]) < draft_year:
-                app.logger.warning(
-                    f"Year sanity fail: {data['name']} got year {data['year']} but draft year is {draft_year}. Nulling year."
-                )
-                data["year"] = None  # Force null — user can edit manually
+            if draft_year:
+                if data.get("year") and int(data["year"]) < draft_year:
+                    app.logger.warning(
+                        f"Year sanity fail: {data['name']} got year {data['year']} but draft year is {draft_year}. Setting to draft year."
+                    )
+                    data["year"] = draft_year  # Use draft year instead of nulling
+                elif not data.get("year"):
+                    # Year missing for a known rookie — fill it in from draft class
+                    app.logger.info(f"Year missing for rookie {data['name']}, filling with draft year {draft_year}")
+                    data["year"] = draft_year
 
         # Only count the scan after Gemini succeeds
         allowed, scans_used, limit = check_and_increment_scans(session['user_id'])
