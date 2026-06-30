@@ -3780,10 +3780,28 @@ def mobile_user():
         'referral_code': user.get('referral_code') or '',
     })
 
+@app.route("/api/mobile/sheet-service-email", methods=["GET"])
+@mobile_auth
+def mobile_sheet_service_email():
+    """Return the service account email so users know who to share their sheet with."""
+    try:
+        b64 = os.environ.get("GOOGLE_CREDS_B64", "")
+        if b64:
+            import json
+            creds_dict = json.loads(base64.b64decode(b64 + "==").decode("utf-8"))
+            email = creds_dict.get("client_email", "")
+        else:
+            import json
+            creds_dict = json.load(open(GOOGLE_CREDS_FILE))
+            email = creds_dict.get("client_email", "")
+        return jsonify({"email": email})
+    except Exception as e:
+        return jsonify({"email": ""}), 500
+
 @app.route("/api/mobile/set-sheet", methods=["POST"])
 @mobile_auth
 def mobile_set_sheet():
-    """Update the Google Sheet ID for the logged-in user."""
+    """Validate sheet access and save the sheet ID for the logged-in user."""
     try:
         body = request.get_json(force=True) or {}
         sheet_input = (body.get("sheet_id") or "").strip()
@@ -3792,8 +3810,17 @@ def mobile_set_sheet():
         sheet_id = extract_sheet_id(sheet_input)
         if not sheet_id:
             return jsonify({"success": False, "error": "Invalid sheet URL or ID"}), 400
+        # Verify the service account can actually access this sheet
+        try:
+            from googleapiclient.discovery import build
+            creds = get_creds()
+            svc = build("sheets", "v4", credentials=creds)
+            meta = svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
+            sheet_title = meta.get("properties", {}).get("title", "Your Sheet")
+        except Exception:
+            return jsonify({"success": False, "error": "Could not access this sheet. Make sure you shared it with the CardScan service account email."}), 400
         save_google_sheet_id(request.mobile_user_id, sheet_id)
-        return jsonify({"success": True, "sheet_id": sheet_id})
+        return jsonify({"success": True, "sheet_id": sheet_id, "sheet_title": sheet_title})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
