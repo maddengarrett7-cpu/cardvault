@@ -3381,6 +3381,22 @@ def mobile_scan():
                         data['rookie'] = True
                 except Exception: pass
 
+            # Fix year for known rookies
+            if data.get("name"):
+                draft_year = get_player_draft_year(data["name"])
+                if draft_year:
+                    if data.get("year") and int(data["year"]) < draft_year:
+                        data["year"] = draft_year
+                    elif not data.get("year"):
+                        data["year"] = draft_year
+
+            # Fix parallel — Prizm base cards show silver foil but it's NOT a parallel
+            card_set = (data.get("set") or "").lower()
+            card_parallel = (data.get("parallel") or "").lower()
+            if "prizm" in card_set and card_parallel in ("silver", "base", ""):
+                # Only null out if no colored border — silver is default Prizm finish
+                data["parallel"] = None
+
             # Rebuild card description
             parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',
                      data.get('name') or '', data.get('parallel') or '']
