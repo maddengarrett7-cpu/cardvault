@@ -56,8 +56,9 @@ def _get_next_gemini_key():
     key = _GEMINI_KEY_POOL[_key_index % len(_GEMINI_KEY_POOL)]
     _key_index += 1
     return key or GEMINI_API_KEY
-GOOGLE_CREDS_FILE = os.path.join(os.path.dirname(__file__), "google_creds.json")
-SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID", "")
+GOOGLE_CREDS_FILE    = os.path.join(os.path.dirname(__file__), "google_creds.json")
+SPREADSHEET_ID       = os.environ.get("SPREADSHEET_ID", "")
+SHEET_SERVICE_EMAIL  = os.environ.get("SHEET_SERVICE_EMAIL", "")
 EBAY_APP_ID       = os.environ.get("EBAY_APP_ID", "")
 SHEET_TAB         = "Sheet1"  # fallback, auto-detected at runtime
 STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
@@ -3785,17 +3786,19 @@ def mobile_user():
 def mobile_sheet_service_email():
     """Return the service account email so users know who to share their sheet with."""
     try:
-        b64 = os.environ.get("GOOGLE_CREDS_B64", "")
-        if b64:
-            import json
-            creds_dict = json.loads(base64.b64decode(b64 + "==").decode("utf-8"))
-            email = creds_dict.get("client_email", "")
-        else:
-            import json
-            creds_dict = json.load(open(GOOGLE_CREDS_FILE))
-            email = creds_dict.get("client_email", "")
+        # Try env var first (fastest)
+        email = SHEET_SERVICE_EMAIL
+        if not email:
+            b64 = os.environ.get("GOOGLE_CREDS_B64", "")
+            if b64:
+                creds_dict = json.loads(base64.b64decode(b64 + "==").decode("utf-8"))
+                email = creds_dict.get("client_email", "")
+            elif os.path.exists(GOOGLE_CREDS_FILE):
+                creds_dict = json.load(open(GOOGLE_CREDS_FILE))
+                email = creds_dict.get("client_email", "")
         return jsonify({"email": email})
     except Exception as e:
+        app.logger.error(f"sheet-service-email error: {e}")
         return jsonify({"email": ""}), 500
 
 @app.route("/api/mobile/set-sheet", methods=["POST"])
