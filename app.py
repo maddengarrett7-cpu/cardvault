@@ -25,7 +25,7 @@ from google.oauth2.service_account import Credentials
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from rookies import get_rookie_hint
+from rookies import get_rookie_hint, get_player_draft_year
 from database import init_db, get_user_by_email, get_user_by_id, create_user, \
     update_stripe_customer, update_subscription, check_and_increment_scans, \
     save_google_tokens, save_google_sheet_id, clear_google_tokens, \
@@ -361,7 +361,10 @@ def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
         "WHERE TO FIND EACH FIELD:\n"
         "  YEAR  — Look at the very bottom of the card for a copyright line like '© 2021 Panini America' "
         "or '2022 Topps'. It is usually tiny. Return ONLY the 4-digit number. "
-        "If you cannot clearly read the copyright text, return null — do NOT guess from the card design, player age, or set style.\n"
+        "CRITICAL: Do NOT use any knowledge about when a player played in college, was drafted, or their career history. "
+        "Do NOT guess from the card design, player age, set style, or anything other than the physical copyright text printed on the card. "
+        "If the copyright says 2025 but the player looks young, still return 2025. "
+        "If you cannot clearly read the copyright text, return null.\n"
         "  BRAND — Read the manufacturer name from the logo or copyright line. "
         "Topps and Panini are different companies. "
         "Topps sets include: Chrome, Finest, Heritage, Bowman, Stadium Club, Series 1/2. "
@@ -1656,6 +1659,16 @@ def scan():
                         data["year"] = year
                 except Exception as yr_err:
                     app.logger.warning(f"Year crop pass failed: {yr_err}")
+
+        # Sanity check: if player is a known rookie, their card year can't be
+        # before their draft year. Catches Gemini hallucinating college years.
+        if data.get("year") and data.get("name"):
+            draft_year = get_player_draft_year(data["name"])
+            if draft_year and int(data["year"]) < draft_year:
+                app.logger.warning(
+                    f"Year sanity fail: {data['name']} got year {data['year']} but draft year is {draft_year}. Nulling year."
+                )
+                data["year"] = None  # Force null — user can edit manually
 
         # Only count the scan after Gemini succeeds
         allowed, scans_used, limit = check_and_increment_scans(session['user_id'])

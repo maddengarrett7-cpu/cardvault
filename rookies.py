@@ -206,3 +206,16 @@ def get_rookie_hint(year, sport=None):
             hints.append(f"{sp} {year} Rookie Class: {', '.join(names)}")
 
     return "\n".join(hints) if hints else None
+
+
+def get_player_draft_year(player_name):
+    """Return the draft/rookie year for a known player, or None if not found."""
+    if not player_name:
+        return None
+    name_lower = player_name.strip().lower()
+    for sport, years in ROOKIE_CLASSES.items():
+        for year, players in years.items():
+            for p in players:
+                if p.lower() == name_lower or name_lower in p.lower() or p.lower() in name_lower:
+                    return year
+    return None

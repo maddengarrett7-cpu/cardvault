@@ -36,7 +36,7 @@ def analyze_card(frame) -> dict:
         "Return ONLY valid JSON with these exact keys (use null for anything you cannot determine):\n\n"
         "  card_type  - 'sports' or 'tcg' (string)\n"
         "  name       - player name (sports) or Pokemon/card name (tcg) (string)\n"
-        "  year       - card year as 4-digit number (integer or null)\n"
+        "  year       - card year as 4-digit number (integer or null). For raw cards: check the front corners, the set name, the copyright line on the back, or infer from the set (e.g. 'Prizm Draft' → look for year in set name). For multi-year sets like '2023-24' use the first year (2023). Never guess — use null if truly unknown.\n"
         "  brand      - manufacturer: e.g. 'Topps', 'Panini', 'Pokemon', 'Wizards of the Coast' (string or null)\n"
         "  set        - set/product name: e.g. 'Prizm', 'Chrome', 'Base Set', 'Scarlet & Violet' (string or null)\n"
         "  parallel   - parallel or variant: e.g. 'Silver', 'Holo', 'Reverse Holo', 'Gold Refractor' (string or null)\n"
