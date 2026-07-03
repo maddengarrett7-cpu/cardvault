@@ -1730,10 +1730,14 @@ def scan():
                 pass
 
         # Normalize all text fields to Title Case (Gemini often returns ALL CAPS)
-        for field in ["name", "brand", "set", "parallel", "card"]:
+        # Also strip exclamation points and extra whitespace from all text fields
+        for field in ["name", "brand", "set", "parallel", "card", "sport", "team"]:
             val = data.get(field)
-            if val and isinstance(val, str) and val.isupper():
-                data[field] = val.title()
+            if val and isinstance(val, str):
+                val = val.replace("!", "").strip()
+                if val.isupper():
+                    val = val.title()
+                data[field] = val
 
         # Merge serial into parallel exactly once, cleanly
         _merge_serial(data)
@@ -3390,6 +3394,12 @@ def mobile_scan():
                 # Only null out if no colored border — silver is default Prizm finish
                 data["parallel"] = None
 
+            # Strip exclamation points from all text fields
+            for field in ['name', 'brand', 'set', 'parallel', 'card', 'sport', 'team']:
+                val = data.get(field)
+                if val and isinstance(val, str):
+                    data[field] = val.replace('!', '').strip()
+
             # Rebuild card description
             parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',
                      data.get('name') or '', data.get('parallel') or '']
@@ -3492,6 +3502,12 @@ def mobile_scan():
             else:
                 # Clean it to just the color word(s)
                 data['parallel'] = raw_parallel
+
+        # Strip exclamation points and stray punctuation from all text fields
+        for field in ['name', 'brand', 'set', 'parallel', 'card', 'sport', 'team']:
+            val = data.get(field)
+            if val and isinstance(val, str):
+                data[field] = val.replace('!', '').strip()
 
         # Rebuild card description with corrected fields
         parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',
