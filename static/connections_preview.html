@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390, initial-scale=1">
+<title>Connections Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; color: #fff; max-width: 390px; margin: 0 auto; min-height: 100vh; }
+  .status-bar { height: 44px; }
+  .header { padding: 10px 20px 14px; }
+  .header-title { font-size: 26px; font-weight: 900; color: #fff; letter-spacing: -0.5px; }
+  .header-title span { color: #00e676; }
+  .header-sub { font-size: 12px; color: #444; margin-top: 3px; font-weight: 500; }
+  .segment { display: flex; margin: 2px 14px 4px; background: #161616; border-radius: 10px; border: 1px solid #1e1e1e; padding: 3px; gap: 3px; }
+  .seg-btn { flex: 1; text-align: center; padding: 9px 0; border-radius: 7px; font-size: 13px; font-weight: 800; color: #444; cursor: pointer; }
+  .seg-btn.active { background: #00e676; color: #000; }
+  .section-label { font-size: 10px; font-weight: 800; color: #333; letter-spacing: 1.2px; text-transform: uppercase; padding: 18px 16px 8px; }
+  .buyer-card { margin: 0 14px 8px; background: #111; border: 1px solid #1a1a1a; border-radius: 16px; padding: 14px; }
+  .buyer-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .avatar { width: 46px; height: 46px; border-radius: 23px; border: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; color: #00e676; flex-shrink: 0; letter-spacing: -1px; }
+  .av0 { background: #0d1f0d; } .av1 { background: #0a1a2a; } .av2 { background: #1a0d1a; } .av3 { background: #1a1a0d; }
+  .buyer-info { flex: 1; }
+  .buyer-name { font-size: 15px; font-weight: 900; color: #fff; letter-spacing: -0.3px; }
+  .buyer-handle { font-size: 11px; color: #555; margin-top: 1px; font-weight: 600; }
+  .verified { width: 24px; height: 24px; border-radius: 12px; background: #0a1f0d; border: 1px solid rgba(0,230,118,0.4); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #00e676; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+  .tag { background: #161616; border: 1px solid #1e1e1e; border-radius: 5px; padding: 3px 8px; font-size: 10px; font-weight: 700; color: #555; }
+  .ig-btn { display: flex; align-items: center; justify-content: center; gap: 8px; background: #c13584; border-radius: 10px; padding: 11px; font-size: 13px; font-weight: 800; color: #fff; cursor: pointer; }
+  .suggest { margin: 16px 14px 12px; border: 1px dashed #1e1e1e; border-radius: 14px; padding: 14px; text-align: center; }
+  .suggest-text { font-size: 12px; color: #333; font-weight: 600; }
+  .suggest-link { color: #00e676; font-weight: 800; }
+  .tab-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 390px; background: #0d0d0d; border-top: 1px solid #1a1a1a; display: flex; height: 88px; padding-bottom: 10px; align-items: flex-end; justify-content: space-around; }
+  .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-bottom: 4px; width: 60px; }
+  .tab-label { font-size: 10px; font-weight: 600; color: #444; }
+  .tab.active .tab-label { color: #00e676; }
+  .tab-scan { width: 56px; height: 56px; border-radius: 28px; background: #00e676; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; box-shadow: 0 0 20px rgba(0,230,118,0.4); }
+  .scroll-area { padding-bottom: 110px; }
+  svg { display: inline-block; }
+</style>
+</head>
+<body>
+<div class="status-bar"></div>
+<div class="header">
+  <div class="header-title">Card<span>Connect</span></div>
+  <div class="header-sub">Curated buyers and communities</div>
+</div>
+<div class="segment">
+  <div class="seg-btn active">Top Buyers</div>
+  <div class="seg-btn">Discords</div>
+</div>
+<div class="scroll-area">
+  <div class="section-label">Verified Buyers</div>
+
+  <div class="buyer-card">
+    <div class="buyer-top">
+      <div class="avatar av0">SC</div>
+      <div class="buyer-info"><div class="buyer-name">Sunset Sports Cards</div><div class="buyer-handle">@sunsetsports_cards</div></div>
+      <div class="verified">✓</div>
+    </div>
+    <div class="tags"><span class="tag">All Sports</span><span class="tag">$10–$25,000 Range</span><span class="tag">90% Payouts</span></div>
+    <div class="ig-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.5" fill="#fff" stroke="none"/></svg> Message on Instagram</div>
+  </div>
+
+  <div class="buyer-card">
+    <div class="buyer-top">
+      <div class="avatar av1">TC</div>
+      <div class="buyer-info"><div class="buyer-name">Trev Sports Cards</div><div class="buyer-handle">@trevsportscards01</div></div>
+      <div class="verified">✓</div>
+    </div>
+    <div class="tags"><span class="tag">All Sports</span><span class="tag">$10–$20,000 Range</span><span class="tag">90–100% Payouts</span><span class="tag">Strong on Case Hits</span></div>
+    <div class="ig-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.5" fill="#fff" stroke="none"/></svg> Message on Instagram</div>
+  </div>
+
+  <div class="buyer-card">
+    <div class="buyer-top">
+      <div class="avatar av2">HX</div>
+      <div class="buyer-info"><div class="buyer-name">HTX Cards</div><div class="buyer-handle">@htxcards</div></div>
+      <div class="verified">✓</div>
+    </div>
+    <div class="tags"><span class="tag">All Sports</span><span class="tag">$10–$50,000 Range</span><span class="tag">Strong Payouts</span></div>
+    <div class="ig-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.5" fill="#fff" stroke="none"/></svg> Message on Instagram</div>
+  </div>
+
+  <div class="buyer-card">
+    <div class="buyer-top">
+      <div class="avatar av3">NC</div>
+      <div class="buyer-info"><div class="buyer-name">Nate's Cards</div><div class="buyer-handle">@natescards</div></div>
+      <div class="verified">✓</div>
+    </div>
+    <div class="tags"><span class="tag">All Sports</span><span class="tag">$20–$150 Range</span><span class="tag">Strongest in Range</span></div>
+    <div class="ig-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.5" fill="#fff" stroke="none"/></svg> Message on Instagram</div>
+  </div>
+
+  <div class="suggest"><div class="suggest-text">Want to be listed as a buyer? <span class="suggest-link">Apply →</span></div></div>
+</div>
+
+<div class="tab-bar">
+  <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><div class="tab-label">Collection</div></div>
+  <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><div class="tab-label">Sheet</div></div>
+  <div class="tab"><div class="tab-scan"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div>
+  <div class="tab active"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00e676" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><div class="tab-label" style="color:#00e676">Connect</div></div>
+  <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><div class="tab-label">Account</div></div>
+</div>
+</body>
+</html>

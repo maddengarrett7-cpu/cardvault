@@ -133,6 +133,92 @@ if DATABASE_URL:
 
 
 
+        # Marketplace listings table
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS marketplace_listings (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    name TEXT, year INTEGER, brand TEXT, set_name TEXT,
+                    parallel TEXT, grade TEXT, cert TEXT, serial TEXT,
+                    sport TEXT, price FLOAT, open_to_offers BOOLEAN DEFAULT TRUE,
+                    description TEXT, image_urls TEXT,
+                    boosted BOOLEAN DEFAULT FALSE,
+                    boost_expires_at TIMESTAMP,
+                    sold BOOLEAN DEFAULT FALSE,
+                    views INTEGER DEFAULT 0,
+                    likes INTEGER DEFAULT 0,
+                    seller_instagram TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '30 days'
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Marketplace likes
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS marketplace_likes (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    listing_id INTEGER REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(user_id, listing_id)
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Marketplace messages
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS marketplace_messages (
+                    id SERIAL PRIMARY KEY,
+                    listing_id INTEGER REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+                    sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    receiver_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    message TEXT NOT NULL,
+                    offer_amount FLOAT,
+                    read BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Seller ratings
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS seller_ratings (
+                    id SERIAL PRIMARY KEY,
+                    seller_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    rater_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    listing_id INTEGER REFERENCES marketplace_listings(id),
+                    rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+                    review TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(rater_id, listing_id)
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Add paid_price column to scan_history for "What did I pay?"
+        for col, definition in [
+            ("paid_price", "FLOAT"),
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS {col} {definition}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
         cur.close()
         conn.close()
 

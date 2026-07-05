@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CardScan Mobile — Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px 60px;
+    color: #fff;
+  }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.5px; }
+  h1 span { color: #00e676; }
+  .subtitle { color: #555; font-size: 14px; margin-bottom: 36px; }
+
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 32px;
+    background: #111;
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid #1e1e1e;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 420px;
+  }
+  .tab {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #555;
+    transition: all 0.2s;
+    border: none;
+    background: transparent;
+    white-space: nowrap;
+  }
+  .tab.active { background: #00e676; color: #000; }
+
+  .phone-wrap { position: relative; width: 375px; }
+  .phone-frame {
+    width: 375px;
+    height: 812px;
+    background: #000;
+    border-radius: 50px;
+    border: 8px solid #1a1a1a;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.8), 0 0 0 1px #333, inset 0 0 0 1px #222;
+  }
+  .notch {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 126px; height: 34px;
+    background: #000;
+    border-radius: 0 0 22px 22px;
+    z-index: 100;
+  }
+  .screen {
+    display: none;
+    width: 100%; height: 100%;
+    background: #0a0a0a;
+    overflow: hidden;
+    position: relative;
+    flex-direction: column;
+  }
+  .screen.active { display: flex; }
+
+  /* Status bar */
+  .status-bar {
+    height: 50px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 24px 8px;
+    flex-shrink: 0;
+  }
+  .status-bar .time { font-size: 15px; font-weight: 700; }
+  .status-icons { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+  .signal-bars { display: flex; gap: 2px; align-items: flex-end; }
+  .signal-bars span { background: #fff; border-radius: 1px; width: 3px; }
+  .signal-bars span:nth-child(1) { height: 4px; }
+  .signal-bars span:nth-child(2) { height: 6px; }
+  .signal-bars span:nth-child(3) { height: 9px; }
+  .signal-bars span:nth-child(4) { height: 12px; }
+
+  /* Bottom nav */
+  .nav-bar {
+    height: 83px;
+    background: #0d0d0d;
+    border-top: 1px solid #1a1a1a;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-around;
+    padding-top: 10px;
+    flex-shrink: 0;
+  }
+  .nav-item {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 3px;
+    cursor: pointer; opacity: 0.4;
+    transition: opacity 0.2s; min-width: 56px;
+  }
+  .nav-item.active { opacity: 1; }
+  .nav-item .icon { font-size: 22px; }
+  .nav-item .label { font-size: 10px; font-weight: 600; color: #fff; }
+  .nav-item.active .label { color: #00e676; }
+  .nav-item.scan-btn { opacity: 1; margin-top: -20px; }
+  .scan-circle {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: #00e676;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    box-shadow: 0 0 20px rgba(0,230,118,0.5);
+  }
+  .scroll-area {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-area::-webkit-scrollbar { display: none; }
+
+  /* ════════════════════════════════
+     SCAN SCREEN
+  ════════════════════════════════ */
+  .scan-header {
+    padding: 10px 20px 8px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+  }
+  .scan-header .logo { font-size: 20px; font-weight: 900; }
+  .scan-header .logo span { color: #00e676; }
+  .mode-toggle {
+    display: flex; background: #1a1a1a;
+    border-radius: 8px; padding: 3px; gap: 2px;
+  }
+  .mode-btn { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; color: #555; }
+  .mode-btn.active { background: #00e676; color: #000; }
+
+  .camera-view {
+    position: relative; width: 100%; height: 340px;
+    background: #0d1a0d; overflow: hidden; flex-shrink: 0;
+  }
+  .camera-bg {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 40% 60%, rgba(0,230,118,0.06) 0%, transparent 60%),
+      linear-gradient(135deg, #0a1a0a 0%, #0d0d0d 100%);
+  }
+  .card-in-camera {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -52%);
+    width: 160px; height: 230px;
+    border-radius: 10px;
+    background: linear-gradient(145deg, #1a1a1a, #111);
+    border: 1px solid #2a2a2a;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  }
+  .card-top-band {
+    height: 44px; background: #1c2c1c;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card-top-band span { font-size: 9px; font-weight: 800; letter-spacing: 2px; color: rgba(0,230,118,0.6); }
+  .card-player-area {
+    height: 126px; background: #141414;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .player-silhouette { font-size: 52px; opacity: 0.15; }
+  .card-bottom { padding: 6px 8px; }
+  .card-bottom-line { height: 6px; border-radius: 3px; background: #222; margin-bottom: 5px; }
+  .card-bottom-line:nth-child(2) { width: 70%; }
+  .card-bottom-line:nth-child(3) { width: 50%; }
+
+  .scan-frame {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -52%);
+    width: 200px; height: 280px;
+  }
+  .corner { position: absolute; width: 22px; height: 22px; border-color: #00e676; border-style: solid; border-width: 0; }
+  .corner.tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; border-radius: 4px 0 0 0; }
+  .corner.tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; border-radius: 0 4px 0 0; }
+  .corner.bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 4px; }
+  .corner.br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 4px 0; }
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, #00e676, transparent);
+    box-shadow: 0 0 10px #00e676;
+    animation: scanmove 2s ease-in-out infinite;
+  }
+  @keyframes scanmove {
+    0% { top: 10px; opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { top: calc(100% - 10px); opacity: 0; }
+  }
+  .camera-controls {
+    position: absolute; bottom: 12px; left: 0; right: 0;
+    display: flex; justify-content: space-around; align-items: center; padding: 0 30px;
+  }
+  .cam-btn {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center; font-size: 17px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .shutter {
+    width: 62px; height: 62px; border-radius: 50%; background: #00e676;
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+    box-shadow: 0 0 24px rgba(0,230,118,0.5); border: 4px solid rgba(0,230,118,0.3);
+  }
+
+  /* Scan result */
+  .result-card {
+    margin: 10px 14px 6px;
+    background: #111; border-radius: 16px;
+    border: 1px solid #1e1e1e; overflow: hidden; flex-shrink: 0;
+  }
+  .result-header {
+    padding: 10px 14px 8px; border-bottom: 1px solid #1a1a1a;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .ai-badge {
+    background: #0d1f0d; border: 1px solid #00e676;
+    border-radius: 20px; padding: 3px 10px;
+    font-size: 10px; font-weight: 800; color: #00e676;
+  }
+  .result-body { padding: 10px 14px; }
+  .card-name { font-size: 16px; font-weight: 900; margin-bottom: 1px; }
+  .card-set { font-size: 11px; color: #666; margin-bottom: 10px; }
+  .fields-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .field-label { font-size: 9px; font-weight: 700; color: #444; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px; }
+  .field-value { font-size: 13px; font-weight: 600; color: #fff; }
+  .field-value.green { color: #00e676; }
+
+  /* ── SHEET LOG CONFIRMATION ── */
+  .sheet-confirm {
+    margin: 0 14px 10px;
+    background: #0a1f0d;
+    border: 1px solid #00e676;
+    border-radius: 14px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .sheet-confirm .check {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #00e676;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; color: #000; font-weight: 900;
+  }
+  .sheet-confirm .text .top { font-size: 13px; font-weight: 800; color: #00e676; }
+  .sheet-confirm .text .bot { font-size: 11px; color: #555; margin-top: 1px; }
+  .sheet-confirm .open-btn {
+    margin-left: auto;
+    background: #0d2a0d;
+    border: 1px solid #00e676;
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 11px; font-weight: 700; color: #00e676;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ════════════════════════════════
+     SHEET SCREEN
+  ════════════════════════════════ */
+  .sheet-header {
+    padding: 10px 18px 8px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+  }
+  .sheet-header .title { font-size: 22px; font-weight: 900; }
+  .sheet-meta {
+    padding: 0 18px 10px;
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .sheets-logo {
+    width: 20px; height: 20px;
+    background: linear-gradient(135deg, #0f9d58, #0d8a4e);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 900; color: #fff;
+  }
+  .sheet-name { font-size: 12px; color: #00e676; font-weight: 600; }
+  .sheet-dot { font-size: 10px; color: #333; }
+  .sheet-sync { font-size: 11px; color: #444; }
+  .live-badge {
+    background: #0d1f0d; border: 1px solid #00e676;
+    border-radius: 20px; padding: 2px 8px;
+    font-size: 10px; font-weight: 800; color: #00e676;
+    margin-left: auto;
+  }
+
+  /* Summary chips */
+  .summary-row {
+    display: flex; gap: 8px; padding: 0 14px 12px; flex-shrink: 0;
+  }
+  .summary-chip {
+    flex: 1; background: #111; border: 1px solid #1e1e1e;
+    border-radius: 12px; padding: 9px 10px;
+  }
+  .summary-chip .val { font-size: 17px; font-weight: 900; color: #00e676; }
+  .summary-chip .lbl { font-size: 9px; color: #555; font-weight: 600; margin-top: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
+
+  /* Spreadsheet view */
+  .spreadsheet {
+    margin: 0 14px 12px;
+    background: #111; border-radius: 14px;
+    border: 1px solid #1e1e1e; overflow: hidden; flex-shrink: 0;
+  }
+  .sheet-tab-bar {
+    display: flex; background: #141414;
+    border-bottom: 1px solid #1e1e1e; padding: 0 12px;
+  }
+  .sheet-tab {
+    padding: 7px 12px; font-size: 11px; font-weight: 700;
+    color: #555; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .sheet-tab.active { color: #00e676; border-bottom-color: #00e676; }
+
+  .sheet-col-headers {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    background: #161616; border-bottom: 1px solid #1e1e1e;
+  }
+  .col-h {
+    padding: 6px 8px; font-size: 9px; font-weight: 800;
+    color: #00e676; letter-spacing: 0.5px; text-transform: uppercase;
+    border-right: 1px solid #1a1a1a;
+  }
+  .col-h:last-child { border-right: none; }
+
+  .sheet-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    border-bottom: 1px solid #141414;
+    transition: background 0.2s;
+  }
+  .sheet-row:last-child { border-bottom: none; }
+  .sheet-row.new-row { background: #0a1f0d; animation: rowpulse 2s ease-out; }
+  @keyframes rowpulse {
+    0% { background: #003d1a; }
+    100% { background: #0a1f0d; }
+  }
+  .sheet-cell {
+    padding: 8px 8px; font-size: 11px; color: #aaa;
+    border-right: 1px solid #141414; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sheet-cell:last-child { border-right: none; }
+  .sheet-cell.bold { font-weight: 700; color: #fff; }
+  .sheet-cell.green { color: #00e676; font-weight: 700; }
+  .new-row .sheet-cell { color: #fff; }
+  .new-row .sheet-cell.green { color: #00e676; }
+
+  .new-row-indicator {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 12px 8px; flex-shrink: 0;
+  }
+  .pulse-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #00e676;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+  .new-row-indicator span { font-size: 11px; color: #00e676; font-weight: 700; }
+
+  /* Full-width add-to-sheet banner */
+  .add-sheet-banner {
+    margin: 0 14px 0;
+    background: #00e676; border-radius: 12px;
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0; cursor: pointer;
+  }
+  .add-sheet-banner .icon { font-size: 20px; }
+  .add-sheet-banner .text .top { font-size: 14px; font-weight: 900; color: #000; }
+  .add-sheet-banner .text .bot { font-size: 11px; color: rgba(0,0,0,0.5); margin-top: 1px; }
+  .add-sheet-banner .arrow { margin-left: auto; font-size: 18px; color: rgba(0,0,0,0.4); }
+
+  /* Connect sheet CTA */
+  .connect-sheet-cta {
+    margin: 14px 14px 0;
+    background: #0d1f0d; border: 2px dashed #00e676;
+    border-radius: 14px; padding: 20px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .connect-sheet-cta .sheets-big { font-size: 32px; }
+  .connect-sheet-cta .title { font-size: 15px; font-weight: 800; color: #fff; text-align: center; }
+  .connect-sheet-cta .sub { font-size: 12px; color: #555; text-align: center; }
+  .connect-btn {
+    background: #00e676; border-radius: 10px;
+    padding: 10px 24px; font-size: 13px; font-weight: 900; color: #000; margin-top: 4px;
+  }
+
+  /* ════════════════════════════════
+     COLLECTION SCREEN
+  ════════════════════════════════ */
+  .screen-header {
+    padding: 10px 20px 8px;
+    display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+  }
+  .screen-title { font-size: 24px; font-weight: 900; }
+  .header-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: #1a1a1a; display: flex; align-items: center; justify-content: center; font-size: 15px;
+  }
+  .search-bar {
+    margin: 0 14px 10px; height: 36px;
+    background: #161616; border-radius: 10px; border: 1px solid #1e1e1e;
+    display: flex; align-items: center; padding: 0 12px; gap: 8px; flex-shrink: 0;
+  }
+  .search-bar input { background: none; border: none; outline: none; color: #fff; font-size: 13px; flex: 1; }
+  .search-bar input::placeholder { color: #444; }
+  .card-list { padding: 0 14px; }
+  .collection-card {
+    background: #111; border: 1px solid #1e1e1e;
+    border-radius: 14px; padding: 11px 13px; margin-bottom: 9px;
+    display: flex; gap: 11px; align-items: center;
+  }
+  .card-thumb {
+    width: 42px; height: 58px; border-radius: 6px;
+    background: linear-gradient(145deg, #1c2c1c, #141414);
+    border: 1px solid #2a2a2a;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+  }
+  .card-info { flex: 1; }
+  .card-info .name { font-size: 13px; font-weight: 800; margin-bottom: 2px; }
+  .card-info .meta { font-size: 11px; color: #555; }
+  .card-right { text-align: right; }
+  .card-right .price { font-size: 14px; font-weight: 800; color: #00e676; }
+  .card-right .grade {
+    font-size: 9px; font-weight: 700; padding: 2px 6px;
+    border-radius: 5px; margin-top: 3px; display: inline-block;
+  }
+  .grade-psa { background: #1a2a3a; color: #5bc8ff; }
+  .grade-raw { background: #1a1a1a; color: #666; }
+  .grade-bgs { background: #2a1a2a; color: #cc88ff; }
+
+  /* ════════════════════════════════
+     SETTINGS SCREEN
+  ════════════════════════════════ */
+  .user-header {
+    padding: 10px 20px 14px;
+    display: flex; gap: 12px; align-items: center; flex-shrink: 0;
+  }
+  .avatar {
+    width: 50px; height: 50px; border-radius: 50%;
+    background: linear-gradient(135deg, #00e676, #00b050);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 900; color: #000; flex-shrink: 0;
+  }
+  .user-info .name { font-size: 16px; font-weight: 800; }
+  .user-info .email { font-size: 11px; color: #555; }
+  .pro-pill {
+    background: #0d1f0d; border: 1px solid #00e676;
+    border-radius: 6px; padding: 1px 6px;
+    font-size: 9px; font-weight: 800; color: #00e676; margin-left: 6px;
+  }
+  .settings-section { padding: 0 14px 14px; }
+  .settings-section-title {
+    font-size: 10px; font-weight: 700; color: #444;
+    text-transform: uppercase; letter-spacing: 0.8px; padding: 12px 2px 7px;
+  }
+  .settings-group {
+    background: #111; border: 1px solid #1e1e1e; border-radius: 14px; overflow: hidden;
+  }
+  .setting-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 13px; border-bottom: 1px solid #1a1a1a;
+  }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-row .left { display: flex; align-items: center; gap: 10px; }
+  .setting-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+  }
+  .si-green { background: #0d2a0d; }
+  .si-blue { background: #0d1a2a; }
+  .si-purple { background: #1a0d2a; }
+  .si-orange { background: #2a1a0d; }
+  .si-red { background: #2a0d0d; }
+  .setting-text .name { font-size: 13px; font-weight: 600; }
+  .setting-text .sub { font-size: 11px; color: #555; margin-top: 1px; }
+  .setting-row .right { font-size: 13px; color: #444; }
+  .toggle {
+    width: 42px; height: 24px; background: #00e676;
+    border-radius: 12px; position: relative;
+  }
+  .toggle::after {
+    content: ''; position: absolute;
+    top: 3px; right: 3px; width: 18px; height: 18px;
+    background: #fff; border-radius: 50%;
+  }
+  .toggle.off { background: #2a2a2a; }
+  .toggle.off::after { right: auto; left: 3px; }
+
+  /* Connected sheet row — special */
+  .sheet-connected-row {
+    margin: 0 14px 0;
+    background: #0a1f0d; border: 1px solid #00e676;
+    border-radius: 14px; padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  .sheet-connected-row .sl { font-size: 24px; }
+  .sheet-connected-row .info .top { font-size: 13px; font-weight: 800; color: #fff; }
+  .sheet-connected-row .info .bot { font-size: 11px; color: #00e676; margin-top: 1px; }
+  .sheet-connected-row .manage {
+    margin-left: auto; background: #0d2a0d; border: 1px solid #00e676;
+    border-radius: 8px; padding: 5px 10px;
+    font-size: 11px; font-weight: 700; color: #00e676; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<h1>Card<span>Scan</span> iOS App</h1>
+<p class="subtitle">Interactive preview — click tabs to switch screens</p>
+
+<div class="tabs">
+  <button class="tab active" onclick="showScreen('scan')">📷 Scan</button>
+  <button class="tab" onclick="showScreen('sheet')">📊 Sheet</button>
+  <button class="tab" onclick="showScreen('collection')">📋 Collection</button>
+  <button class="tab" onclick="showScreen('settings')">⚙️ Settings</button>
+</div>
+
+<div class="phone-wrap">
+  <div class="phone-frame">
+    <div class="notch"></div>
+
+    <!-- ══════════════════════════════
+         SCAN SCREEN
+    ══════════════════════════════ -->
+    <div class="screen active" id="screen-scan">
+      <div class="status-bar">
+        <span class="time">9:41</span>
+        <div class="status-icons">
+          <div class="signal-bars"><span></span><span></span><span></span><span></span></div>
+          <span>🔋</span>
+        </div>
+      </div>
+
+      <div class="scan-header">
+        <div class="logo">Card<span>Scan</span></div>
+        <div class="mode-toggle">
+          <div class="mode-btn active">Raw</div>
+          <div class="mode-btn">Graded</div>
+          <div class="mode-btn">Bulk</div>
+        </div>
+      </div>
+
+      <div class="camera-view">
+        <div class="camera-bg"></div>
+        <div class="card-in-camera">
+          <div class="card-top-band"><span>PRIZM</span></div>
+          <div class="card-player-area"><div class="player-silhouette">🏀</div></div>
+          <div class="card-bottom">
+            <div class="card-bottom-line"></div>
+            <div class="card-bottom-line"></div>
+            <div class="card-bottom-line"></div>
+          </div>
+        </div>
+        <div class="scan-frame">
+          <div class="corner tl"></div><div class="corner tr"></div>
+          <div class="corner bl"></div><div class="corner br"></div>
+          <div class="scan-line"></div>
+        </div>
+        <div class="camera-controls">
+          <div class="cam-btn">⚡</div>
+          <div class="shutter">📷</div>
+          <div class="cam-btn">🖼️</div>
+        </div>
+      </div>
+
+      <!-- AI Result -->
+      <div class="result-card">
+        <div class="result-header">
+          <div class="ai-badge">✓ AI IDENTIFIED</div>
+          <span style="font-size:11px;color:#444">0.8s</span>
+        </div>
+        <div class="result-body">
+          <div class="card-name">Stephen Curry</div>
+          <div class="card-set">2021-22 Panini Prizm Silver · #/99</div>
+          <div class="fields-grid">
+            <div class="field">
+              <div class="field-label">Year</div>
+              <div class="field-value">2021</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Set</div>
+              <div class="field-value">Prizm</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Parallel</div>
+              <div class="field-value">Silver</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Grade</div>
+              <div class="field-value">Raw</div>
+            </div>
+            <div class="field">
+              <div class="field-label">Serial</div>
+              <div class="field-value green">/99</div>
+            </div>
+            <div class="field">
+              <div class="field-label">eBay Avg</div>
+              <div class="field-value green">~$140</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ★ Sheet confirmation — main focus -->
+      <div class="sheet-confirm">
+        <div class="check">✓</div>
+        <div class="text">
+          <div class="top">Logged to Google Sheets</div>
+          <div class="bot">Row added · My Card Collection</div>
+        </div>
+        <div class="open-btn">Open Sheet ↗</div>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════════════════
+         SHEET SCREEN
+    ══════════════════════════════ -->
+    <div class="screen" id="screen-sheet">
+      <div class="status-bar">
+        <span class="time">9:41</span>
+        <div class="status-icons">
+          <div class="signal-bars"><span></span><span></span><span></span><span></span></div>
+          <span>🔋</span>
+        </div>
+      </div>
+
+      <div class="sheet-header">
+        <div class="title">My Sheet</div>
+        <div class="header-icon">＋</div>
+      </div>
+
+      <div class="sheet-meta">
+        <div class="sheets-logo">S</div>
+        <span class="sheet-name">My Card Collection</span>
+        <span class="sheet-dot">·</span>
+        <span class="sheet-sync">Synced just now</span>
+        <div class="live-badge">● LIVE</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="summary-row">
+        <div class="summary-chip">
+          <div class="val">47</div>
+          <div class="lbl">Cards</div>
+        </div>
+        <div class="summary-chip">
+          <div class="val">$3,240</div>
+          <div class="lbl">Total Value</div>
+        </div>
+        <div class="summary-chip">
+          <div class="val">12</div>
+          <div class="lbl">Graded</div>
+        </div>
+        <div class="summary-chip">
+          <div class="val">Today</div>
+          <div class="lbl">+3 Added</div>
+        </div>
+      </div>
+
+      <!-- New row indicator -->
+      <div class="new-row-indicator">
+        <div class="pulse-dot"></div>
+        <span>Latest scan just logged ↓</span>
+      </div>
+
+      <!-- Spreadsheet view -->
+      <div class="spreadsheet">
+        <div class="sheet-tab-bar">
+          <div class="sheet-tab active">Cards</div>
+          <div class="sheet-tab">Sheet2</div>
+        </div>
+        <div class="sheet-col-headers">
+          <div class="col-h">Card</div>
+          <div class="col-h">Year</div>
+          <div class="col-h">Set</div>
+          <div class="col-h">Grade</div>
+          <div class="col-h">Value</div>
+        </div>
+        <!-- New row — highlighted -->
+        <div class="sheet-row new-row">
+          <div class="sheet-cell bold">Curry Silver /99</div>
+          <div class="sheet-cell">2021</div>
+          <div class="sheet-cell">Prizm</div>
+          <div class="sheet-cell">Raw</div>
+          <div class="sheet-cell green">$140</div>
+        </div>
+        <div class="sheet-row">
+          <div class="sheet-cell">Mahomes RC</div>
+          <div class="sheet-cell">2017</div>
+          <div class="sheet-cell">Prizm</div>
+          <div class="sheet-cell" style="color:#5bc8ff">PSA 10</div>
+          <div class="sheet-cell green">$380</div>
+        </div>
+        <div class="sheet-row">
+          <div class="sheet-cell">Luka Gold /10</div>
+          <div class="sheet-cell">2019</div>
+          <div class="sheet-cell">Prizm</div>
+          <div class="sheet-cell">Raw</div>
+          <div class="sheet-cell green">$420</div>
+        </div>
+        <div class="sheet-row">
+          <div class="sheet-cell">Ohtani RC</div>
+          <div class="sheet-cell">2018</div>
+          <div class="sheet-cell">Chrome</div>
+          <div class="sheet-cell" style="color:#cc88ff">BGS 9.5</div>
+          <div class="sheet-cell green">$210</div>
+        </div>
+        <div class="sheet-row">
+          <div class="sheet-cell">Ja Refractor</div>
+          <div class="sheet-cell">2022</div>
+          <div class="sheet-cell">Chrome</div>
+          <div class="sheet-cell" style="color:#5bc8ff">PSA 9</div>
+          <div class="sheet-cell green">$80</div>
+        </div>
+        <div class="sheet-row">
+          <div class="sheet-cell">Zion Silver</div>
+          <div class="sheet-cell">2020</div>
+          <div class="sheet-cell">Mosaic</div>
+          <div class="sheet-cell">Raw</div>
+          <div class="sheet-cell green">$55</div>
+        </div>
+      </div>
+
+      <!-- Open in Sheets button -->
+      <div style="margin: 10px 14px 0;">
+        <div style="background:#0d1f0d;border:1px solid #00e676;border-radius:12px;padding:11px 14px;display:flex;align-items:center;gap:10px;">
+          <div class="sheets-logo" style="width:26px;height:26px;font-size:13px;">S</div>
+          <div>
+            <div style="font-size:13px;font-weight:800;color:#fff;">Open in Google Sheets</div>
+            <div style="font-size:11px;color:#555;margin-top:1px;">View and edit full spreadsheet</div>
+          </div>
+          <div style="margin-left:auto;color:#00e676;font-size:18px;">↗</div>
+        </div>
+      </div>
+
+      <div class="nav-bar">
+        <div class="nav-item" onclick="showScreen('scan')">
+          <div class="icon">🔍</div><div class="label">Scan</div>
+        </div>
+        <div class="nav-item active">
+          <div class="icon">📊</div><div class="label">Sheet</div>
+        </div>
+        <div class="nav-item scan-btn" onclick="showScreen('scan')">
+          <div class="scan-circle">📷</div>
+        </div>
+        <div class="nav-item" onclick="showScreen('collection')">
+          <div class="icon">📋</div><div class="label">Collection</div>
+        </div>
+        <div class="nav-item" onclick="showScreen('settings')">
+          <div class="icon">👤</div><div class="label">Account</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════
+         COLLECTION SCREEN
+    ══════════════════════════════ -->
+    <div class="screen" id="screen-collection">
+      <div class="status-bar">
+        <span class="time">9:41</span>
+        <div class="status-icons">
+          <div class="signal-bars"><span></span><span></span><span></span><span></span></div>
+          <span>🔋</span>
+        </div>
+      </div>
+      <div class="screen-header">
+        <div class="screen-title">Collection</div>
+        <div class="header-icon">⚙️</div>
+      </div>
+      <div class="search-bar">
+        <span style="color:#444;font-size:14px">🔍</span>
+        <input type="text" placeholder="Search cards…" readonly/>
+      </div>
+      <div class="scroll-area">
+        <div class="card-list">
+          <div class="collection-card">
+            <div class="card-thumb">🏀</div>
+            <div class="card-info">
+              <div class="name">Stephen Curry</div>
+              <div class="meta">2021 Prizm Silver · /99</div>
+            </div>
+            <div class="card-right">
+              <div class="price">$140</div>
+              <div class="grade grade-raw">Raw</div>
+            </div>
+          </div>
+          <div class="collection-card">
+            <div class="card-thumb">🏈</div>
+            <div class="card-info">
+              <div class="name">Patrick Mahomes</div>
+              <div class="meta">2017 Prizm RC · Base</div>
+            </div>
+            <div class="card-right">
+              <div class="price">$380</div>
+              <div class="grade grade-psa">PSA 10</div>
+            </div>
+          </div>
+          <div class="collection-card">
+            <div class="card-thumb">🏀</div>
+            <div class="card-info">
+              <div class="name">Luka Doncic</div>
+              <div class="meta">2019 Prizm Gold · /10</div>
+            </div>
+            <div class="card-right">
+              <div class="price">$420</div>
+              <div class="grade grade-raw">Raw</div>
+            </div>
+          </div>
+          <div class="collection-card">
+            <div class="card-thumb">⚾</div>
+            <div class="card-info">
+              <div class="name">Shohei Ohtani</div>
+              <div class="meta">2018 Topps Chrome RC</div>
+            </div>
+            <div class="card-right">
+              <div class="price">$210</div>
+              <div class="grade grade-bgs">BGS 9.5</div>
+            </div>
+          </div>
+          <div class="collection-card">
+            <div class="card-thumb">🏀</div>
+            <div class="card-info">
+              <div class="name">Ja Morant</div>
+              <div class="meta">2022 Chrome Refractor</div>
+            </div>
+            <div class="card-right">
+              <div class="price">$80</div>
+              <div class="grade grade-psa">PSA 9</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <div class="nav-item" onclick="showScreen('scan')">
+          <div class="icon">🔍</div><div class="label">Scan</div>
+        </div>
+        <div class="nav-item" onclick="showScreen('sheet')">
+          <div class="icon">📊</div><div class="label">Sheet</div>
+        </div>
+        <div class="nav-item scan-btn" onclick="showScreen('scan')">
+          <div class="scan-circle">📷</div>
+        </div>
+        <div class="nav-item active">
+          <div class="icon">📋</div><div class="label">Collection</div>
+        </div>
+        <div class="nav-item" onclick="showScreen('settings')">
+          <div class="icon">👤</div><div class="label">Account</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════
+         SETTINGS SCREEN
+    ══════════════════════════════ -->
+    <div class="screen" id="screen-settings">
+      <div class="status-bar">
+        <span class="time">9:41</span>
+        <div class="status-icons">
+          <div class="signal-bars"><span></span><span></span><span></span><span></span></div>
+          <span>🔋</span>
+        </div>
+      </div>
+      <div class="user-header">
+        <div class="avatar">M</div>
+        <div class="user-info">
+          <div class="name">Madden <span class="pro-pill">PRO</span></div>
+          <div class="email">maddengarrett7@gmail.com</div>
+        </div>
+      </div>
+
+      <!-- Google Sheets — pinned at top of settings -->
+      <div class="sheet-connected-row">
+        <div class="sl">📊</div>
+        <div class="info">
+          <div class="top">Google Sheets Connected</div>
+          <div class="bot">● My Card Collection · 47 rows</div>
+        </div>
+        <div class="manage">Manage ›</div>
+      </div>
+
+      <div class="scroll-area">
+        <div class="settings-section">
+          <div class="settings-section-title">Sheet Settings</div>
+          <div class="settings-group">
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-green">⚡</div>
+                <div class="setting-text">
+                  <div class="name">Auto-log after scan</div>
+                  <div class="sub">Instantly add row to sheet</div>
+                </div>
+              </div>
+              <div class="toggle"></div>
+            </div>
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-blue">💰</div>
+                <div class="setting-text">
+                  <div class="name">Include eBay value</div>
+                  <div class="sub">Write est. value to sheet</div>
+                </div>
+              </div>
+              <div class="toggle"></div>
+            </div>
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-purple">🔁</div>
+                <div class="setting-text">
+                  <div class="name">Change Sheet</div>
+                  <div class="sub">My Card Collection</div>
+                </div>
+              </div>
+              <div class="right" style="color:#444">›</div>
+            </div>
+          </div>
+
+          <div class="settings-section-title">Scanning</div>
+          <div class="settings-group">
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-orange">🤖</div>
+                <div class="setting-text">
+                  <div class="name">AI Model</div>
+                  <div class="sub">Gemini 2.5 Flash</div>
+                </div>
+              </div>
+              <div class="right" style="color:#444">›</div>
+            </div>
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-green">💰</div>
+                <div class="setting-text">
+                  <div class="name">Card Ladder</div>
+                  <div class="sub">Not connected</div>
+                </div>
+              </div>
+              <div class="right" style="color:#444">›</div>
+            </div>
+          </div>
+
+          <div class="settings-section-title">Account</div>
+          <div class="settings-group">
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-blue">🔑</div>
+                <div class="setting-text"><div class="name">Change Password</div></div>
+              </div>
+              <div class="right" style="color:#444">›</div>
+            </div>
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-purple">👥</div>
+                <div class="setting-text">
+                  <div class="name">Referral Code</div>
+                  <div class="sub">MADDEN7 · Share for bonus scans</div>
+                </div>
+              </div>
+              <div class="right" style="color:#444">›</div>
+            </div>
+            <div class="setting-row">
+              <div class="left">
+                <div class="setting-icon si-red">🚪</div>
+                <div class="setting-text"><div class="name">Sign Out</div></div>
+              </div>
+              <div class="right" style="color:#444">›</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-bar">
+        <div class="nav-item" onclick="showScreen('scan')">
+          <div class="icon">🔍</div><div class="label">Scan</div>
+        </div>
+        <div class="nav-item" onclick="showScreen('sheet')">
+          <div class="icon">📊</div><div class="label">Sheet</div>
+        </div>
+        <div class="nav-item scan-btn" onclick="showScreen('scan')">
+          <div class="scan-circle">📷</div>
+        </div>
+        <div class="nav-item" onclick="showScreen('collection')">
+          <div class="icon">📋</div><div class="label">Collection</div>
+        </div>
+        <div class="nav-item active">
+          <div class="icon">👤</div><div class="label">Account</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  const labels = { scan:'📷 Scan', sheet:'📊 Sheet', collection:'📋 Collection', settings:'⚙️ Settings' };
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.textContent.trim() === labels[name]) t.classList.add('active');
+  });
+}
+</script>
+</body>
+</html>

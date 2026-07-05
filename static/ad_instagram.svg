@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0a"/>
+      <stop offset="100%" style="stop-color:#0d1a0e"/>
+    </linearGradient>
+    <linearGradient id="greenGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00e676;stop-opacity:0.12"/>
+      <stop offset="100%" style="stop-color:#00e676;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="bigglow">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <!-- Subtle grid -->
+  <g opacity="0.035" stroke="#00e676" stroke-width="1">
+    <line x1="0" y1="270" x2="1080" y2="270"/>
+    <line x1="0" y1="540" x2="1080" y2="540"/>
+    <line x1="0" y1="810" x2="1080" y2="810"/>
+    <line x1="270" y1="0" x2="270" y2="1080"/>
+    <line x1="540" y1="0" x2="540" y2="1080"/>
+    <line x1="810" y1="0" x2="810" y2="1080"/>
+  </g>
+
+  <!-- Ambient green glow -->
+  <ellipse cx="540" cy="460" rx="480" ry="280" fill="#00e676" opacity="0.04"/>
+
+  <!-- ── LOGO TOP LEFT ── -->
+  <text x="64" y="96" fill="#fff" font-family="system-ui" font-size="32" font-weight="900">Card<tspan fill="#00e676">Scan</tspan></text>
+  <text x="64" y="122" fill="#444" font-family="system-ui" font-size="15">cardscan.live</text>
+
+  <!-- ── HEADLINE ── -->
+  <text x="540" y="200" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="72" font-weight="900" letter-spacing="-2">Scan a card.</text>
+  <text x="540" y="284" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="72" font-weight="900" letter-spacing="-2" filter="url(#bigglow)">It's in your sheet.</text>
+
+  <!-- ── GOOGLE SHEET MOCKUP ── -->
+  <g filter="url(#shadow)">
+    <!-- Sheet container -->
+    <rect x="60" y="320" width="960" height="420" rx="16" fill="#141414" stroke="#2a2a2a" stroke-width="1.5"/>
+    <!-- Green top bar -->
+    <rect x="60" y="320" width="960" height="48" rx="16" fill="#1a1a1a" stroke="#2a2a2a" stroke-width="1.5"/>
+    <rect x="60" y="348" width="960" height="20" fill="#1a1a1a"/>
+
+    <!-- Sheet tab -->
+    <rect x="76" y="332" width="80" height="24" rx="6" fill="#00e676"/>
+    <text x="116" y="349" text-anchor="middle" fill="#000" font-family="system-ui" font-size="12" font-weight="800">Cards</text>
+    <rect x="166" y="332" width="80" height="24" rx="6" fill="#222"/>
+    <text x="206" y="349" text-anchor="middle" fill="#666" font-family="system-ui" font-size="12">Sheet2</text>
+
+    <!-- Column headers -->
+    <rect x="60" y="368" width="960" height="36" fill="#1e1e1e"/>
+    <line x1="60" y1="404" x2="1020" y2="404" stroke="#2a2a2a" stroke-width="1"/>
+
+    <!-- Header text -->
+    <text x="90" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">CARD</text>
+    <text x="330" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">PLAYER</text>
+    <text x="470" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">YEAR</text>
+    <text x="540" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">SET</text>
+    <text x="660" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">PARALLEL</text>
+    <text x="780" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">GRADE</text>
+    <text x="880" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">CERT</text>
+    <text x="960" y="391" fill="#00e676" font-family="system-ui" font-size="12" font-weight="700">PAID</text>
+
+    <!-- Col dividers -->
+    <g stroke="#222" stroke-width="1">
+      <line x1="320" y1="368" x2="320" y2="740"/>
+      <line x1="460" y1="368" x2="460" y2="740"/>
+      <line x1="530" y1="368" x2="530" y2="740"/>
+      <line x1="650" y1="368" x2="650" y2="740"/>
+      <line x1="770" y1="368" x2="770" y2="740"/>
+      <line x1="870" y1="368" x2="870" y2="740"/>
+      <line x1="950" y1="368" x2="950" y2="740"/>
+    </g>
+
+    <!-- Row 1 — existing data (muted) -->
+    <rect x="60" y="404" width="960" height="40" fill="#141414"/>
+    <text x="90" y="430" fill="#555" font-family="system-ui" font-size="12">2022 Topps Chrome Ja Morant</text>
+    <text x="330" y="430" fill="#555" font-family="system-ui" font-size="12">Ja Morant</text>
+    <text x="470" y="430" fill="#555" font-family="system-ui" font-size="12">2022</text>
+    <text x="540" y="430" fill="#555" font-family="system-ui" font-size="12">Chrome</text>
+    <text x="660" y="430" fill="#555" font-family="system-ui" font-size="12">Refractor</text>
+    <text x="780" y="430" fill="#555" font-family="system-ui" font-size="12">PSA 9</text>
+    <text x="880" y="430" fill="#555" font-family="system-ui" font-size="12">47291830</text>
+    <text x="960" y="430" fill="#555" font-family="system-ui" font-size="12">$80</text>
+
+    <!-- Row 2 — existing data (muted) -->
+    <rect x="60" y="444" width="960" height="40" fill="#161616"/>
+    <line x1="60" y1="444" x2="1020" y2="444" stroke="#222" stroke-width="1"/>
+    <text x="90" y="470" fill="#555" font-family="system-ui" font-size="12">2020 Panini Mosaic Zion Silver</text>
+    <text x="330" y="470" fill="#555" font-family="system-ui" font-size="12">Zion Williamson</text>
+    <text x="470" y="470" fill="#555" font-family="system-ui" font-size="12">2020</text>
+    <text x="540" y="470" fill="#555" font-family="system-ui" font-size="12">Mosaic</text>
+    <text x="660" y="470" fill="#555" font-family="system-ui" font-size="12">Silver</text>
+    <text x="780" y="470" fill="#555" font-family="system-ui" font-size="12">BGS 8.5</text>
+    <text x="880" y="470" fill="#555" font-family="system-ui" font-size="12">38821045</text>
+    <text x="960" y="470" fill="#555" font-family="system-ui" font-size="12">$55</text>
+
+    <!-- Row 3 — existing data (muted) -->
+    <rect x="60" y="484" width="960" height="40" fill="#141414"/>
+    <line x1="60" y1="484" x2="1020" y2="484" stroke="#222" stroke-width="1"/>
+    <text x="90" y="510" fill="#555" font-family="system-ui" font-size="12">2019 Panini Prizm Luka Doncic Gold</text>
+    <text x="330" y="510" fill="#555" font-family="system-ui" font-size="12">Luka Doncic</text>
+    <text x="470" y="510" fill="#555" font-family="system-ui" font-size="12">2019</text>
+    <text x="540" y="510" fill="#555" font-family="system-ui" font-size="12">Prizm</text>
+    <text x="660" y="510" fill="#555" font-family="system-ui" font-size="12">Gold /10</text>
+    <text x="780" y="510" fill="#555" font-family="system-ui" font-size="12">PSA 10</text>
+    <text x="880" y="510" fill="#555" font-family="system-ui" font-size="12">92018374</text>
+    <text x="960" y="510" fill="#555" font-family="system-ui" font-size="12">$420</text>
+
+    <!-- ── NEW ROW BEING ADDED (highlighted) ── -->
+    <rect x="60" y="524" width="960" height="44" fill="#0a1f0d"/>
+    <rect x="60" y="524" width="960" height="44" fill="url(#greenGlow)"/>
+    <rect x="60" y="524" width="3" height="44" fill="#00e676"/>
+    <line x1="60" y1="524" x2="1020" y2="524" stroke="#00e676" stroke-width="1" opacity="0.4"/>
+    <line x1="60" y1="568" x2="1020" y2="568" stroke="#00e676" stroke-width="1" opacity="0.4"/>
+
+    <text x="90" y="551" fill="#fff" font-family="system-ui" font-size="12" font-weight="700">2021 Panini Prizm Steph Curry Silver</text>
+    <text x="330" y="551" fill="#fff" font-family="system-ui" font-size="12" font-weight="700">Steph Curry</text>
+    <text x="470" y="551" fill="#fff" font-family="system-ui" font-size="12" font-weight="700">2021</text>
+    <text x="540" y="551" fill="#fff" font-family="system-ui" font-size="12" font-weight="700">Prizm</text>
+    <text x="660" y="551" fill="#fff" font-family="system-ui" font-size="12" font-weight="700">Silver</text>
+    <text x="780" y="551" fill="#fff" font-family="system-ui" font-size="12" font-weight="700">Raw</text>
+    <text x="880" y="551" fill="#aaa" font-family="system-ui" font-size="12">Raw</text>
+    <text x="960" y="551" fill="#fff" font-family="system-ui" font-size="12" font-weight="700">$120</text>
+
+    <!-- "Just added" badge -->
+    <rect x="860" y="528" width="90" height="20" rx="10" fill="#00e676"/>
+    <text x="905" y="542" text-anchor="middle" fill="#000" font-family="system-ui" font-size="10" font-weight="800">✓ Just added</text>
+
+    <!-- Remaining rows faded -->
+    <rect x="60" y="568" width="960" height="40" fill="#141414" opacity="0.5"/>
+    <line x1="60" y1="568" x2="1020" y2="568" stroke="#222" stroke-width="1"/>
+    <rect x="90" y="580" width="200" height="12" rx="3" fill="#1e1e1e"/>
+    <rect x="330" y="580" width="100" height="12" rx="3" fill="#1e1e1e"/>
+    <rect x="470" y="580" width="35" height="12" rx="3" fill="#1e1e1e"/>
+    <rect x="540" y="580" width="70" height="12" rx="3" fill="#1e1e1e"/>
+
+    <rect x="60" y="608" width="960" height="40" fill="#161616" opacity="0.4"/>
+    <line x1="60" y1="608" x2="1020" y2="608" stroke="#222" stroke-width="1"/>
+    <rect x="90" y="620" width="180" height="12" rx="3" fill="#1e1e1e"/>
+    <rect x="330" y="620" width="90" height="12" rx="3" fill="#1e1e1e"/>
+    <rect x="470" y="620" width="35" height="12" rx="3" fill="#1e1e1e"/>
+
+    <rect x="60" y="648" width="960" height="40" fill="#141414" opacity="0.3"/>
+    <line x1="60" y1="648" x2="1020" y2="648" stroke="#222" stroke-width="1"/>
+    <rect x="90" y="660" width="160" height="12" rx="3" fill="#1e1e1e"/>
+    <rect x="330" y="660" width="110" height="12" rx="3" fill="#1e1e1e"/>
+
+    <rect x="60" y="688" width="960" height="40" fill="#161616" opacity="0.2"/>
+    <line x1="60" y1="688" x2="1020" y2="688" stroke="#222" stroke-width="1"/>
+    <rect x="90" y="700" width="140" height="12" rx="3" fill="#1e1e1e"/>
+
+    <!-- Fade out overlay at bottom of sheet -->
+    <defs>
+      <linearGradient id="fadeRows" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#141414" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#141414" stop-opacity="1"/>
+      </linearGradient>
+    </defs>
+    <rect x="60" y="640" width="960" height="100" fill="url(#fadeRows)" rx="0"/>
+  </g>
+
+  <!-- ── SCAN ARROW / FLOW ── -->
+  <!-- Phone icon -->
+  <g transform="translate(64, 780)">
+    <rect width="72" height="110" rx="12" fill="#1e1e1e" stroke="#2a2a2a" stroke-width="1.5"/>
+    <rect x="8" y="10" width="56" height="78" rx="6" fill="#0d1f0d"/>
+    <!-- scan lines on phone -->
+    <line x1="14" y1="32" x2="58" y2="32" stroke="#00e676" stroke-width="1.5" opacity="0.6"/>
+    <line x1="14" y1="42" x2="58" y2="42" stroke="#00e676" stroke-width="2" opacity="0.9" filter="url(#glow)"/>
+    <line x1="14" y1="52" x2="58" y2="52" stroke="#00e676" stroke-width="1.5" opacity="0.6"/>
+    <circle cx="36" cy="100" r="5" fill="#2a2a2a"/>
+  </g>
+
+  <!-- Arrow 1 -->
+  <text x="158" y="848" fill="#00e676" font-family="system-ui" font-size="28" font-weight="700" filter="url(#glow)">→</text>
+
+  <!-- AI badge -->
+  <g transform="translate(200, 800)">
+    <rect width="110" height="68" rx="12" fill="#1e1e1e" stroke="#00e676" stroke-width="1.5"/>
+    <text x="55" y="28" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="11" font-weight="700" letter-spacing="1">AI READS</text>
+    <text x="55" y="50" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="13" font-weight="800">Card Details</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <text x="330" y="848" fill="#00e676" font-family="system-ui" font-size="28" font-weight="700" filter="url(#glow)">→</text>
+
+  <!-- Sheet badge -->
+  <g transform="translate(372, 800)">
+    <rect width="110" height="68" rx="12" fill="#1e1e1e" stroke="#00e676" stroke-width="1.5"/>
+    <text x="55" y="28" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="11" font-weight="700" letter-spacing="1">AUTO-LOGS</text>
+    <text x="55" y="50" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="13" font-weight="800">To Your Sheet</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <text x="502" y="848" fill="#00e676" font-family="system-ui" font-size="28" font-weight="700" filter="url(#glow)">→</text>
+
+  <!-- Done badge -->
+  <g transform="translate(544, 800)">
+    <rect width="110" height="68" rx="12" fill="#0a1f0d" stroke="#00e676" stroke-width="2"/>
+    <text x="55" y="28" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="20" font-weight="900" filter="url(#glow)">✓</text>
+    <text x="55" y="52" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="13" font-weight="800">Done</text>
+  </g>
+
+  <!-- ── SUBTEXT ── -->
+  <text x="540" y="920" text-anchor="middle" fill="#666" font-family="system-ui" font-size="22">Scan once. Your whole collection, organized.</text>
+
+  <!-- ── BOTTOM BAR ── -->
+  <rect x="60" y="970" width="960" height="70" rx="16" fill="#141414" stroke="#2a2a2a" stroke-width="1"/>
+  <text x="120" y="1013" fill="#fff" font-family="system-ui" font-size="24" font-weight="900">Card<tspan fill="#00e676">Scan</tspan></text>
+
+  <!-- Pills -->
+  <rect x="280" y="984" width="140" height="32" rx="16" fill="#0d1f0d" stroke="#00e676" stroke-width="1"/>
+  <text x="350" y="1005" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="13" font-weight="700">📋 Google Sheets</text>
+
+  <rect x="432" y="984" width="130" height="32" rx="16" fill="#0d1f0d" stroke="#00e676" stroke-width="1"/>
+  <text x="497" y="1005" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="13" font-weight="700">⚡ Bulk Scan</text>
+
+  <rect x="574" y="984" width="140" height="32" rx="16" fill="#0d1f0d" stroke="#00e676" stroke-width="1"/>
+  <text x="644" y="1005" text-anchor="middle" fill="#00e676" font-family="system-ui" font-size="13" font-weight="700">🤖 AI Powered</text>
+
+  <text x="970" y="1013" text-anchor="end" fill="#444" font-family="system-ui" font-size="16" font-weight="700">cardscan.live</text>
+</svg>

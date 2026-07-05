@@ -4115,6 +4115,307 @@ def mobile_refresh_all_values():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# MARKETPLACE ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/mobile/marketplace/listings', methods=['GET'])
+@mobile_auth
+def marketplace_get_listings():
+    try:
+        sport  = request.args.get('sport', '')
+        sort   = request.args.get('sort', 'newest')
+        grade  = request.args.get('grade', '')
+        max_price = request.args.get('max_price', '')
+        search = request.args.get('search', '')
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+
+        if DATABASE_URL:
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            where = ["l.status = 'active'", "l.sold = FALSE", "(l.expires_at IS NULL OR l.expires_at > NOW())"]
+            params = []
+            if sport:
+                where.append("l.sport ILIKE %s"); params.append(f'%{sport}%')
+            if grade:
+                where.append("l.grade ILIKE %s"); params.append(f'%{grade}%')
+            if max_price:
+                where.append("l.price <= %s"); params.append(float(max_price))
+            if search:
+                where.append("(l.name ILIKE %s OR l.set_name ILIKE %s)"); params.extend([f'%{search}%', f'%{search}%'])
+            where_str = 'WHERE ' + ' AND '.join(where) if where else ''
+
+            order = {
+                'newest':     'l.boosted DESC, l.created_at DESC',
+                'price_asc':  'l.boosted DESC, l.price ASC',
+                'price_desc': 'l.boosted DESC, l.price DESC',
+                'most_liked': 'l.boosted DESC, l.likes DESC',
+                'ending':     'l.boosted DESC, l.expires_at ASC',
+            }.get(sort, 'l.boosted DESC, l.created_at DESC')
+
+            cur.execute(f"""
+                SELECT l.*, u.email as seller_email,
+                       EXISTS(SELECT 1 FROM marketplace_likes ml WHERE ml.listing_id = l.id AND ml.user_id = %s) as liked_by_me
+                FROM marketplace_listings l
+                JOIN users u ON u.id = l.user_id
+                {where_str}
+                ORDER BY {order}
+                LIMIT 50
+            """, [request.mobile_user_id] + params)
+            listings = [dict(r) for r in cur.fetchall()]
+            cur.close()
+            db.close()
+        else:
+            listings = []
+
+        return jsonify({'success': True, 'listings': listings})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/listings', methods=['POST'])
+@mobile_auth
+def marketplace_create_listing():
+    try:
+        body = request.get_json() or {}
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        user = get_user_by_id(request.mobile_user_id)
+
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("""
+                INSERT INTO marketplace_listings
+                (user_id, name, year, brand, set_name, parallel, grade, cert, serial,
+                 sport, price, open_to_offers, description, seller_instagram)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id
+            """, (
+                request.mobile_user_id,
+                body.get('name'), body.get('year'), body.get('brand'),
+                body.get('set_name'), body.get('parallel'), body.get('grade'),
+                body.get('cert'), body.get('serial'), body.get('sport'),
+                body.get('price'), body.get('open_to_offers', True),
+                body.get('description'), body.get('seller_instagram'),
+            ))
+            listing_id = cur.fetchone()[0]
+            db.commit(); cur.close(); db.close()
+        else:
+            listing_id = None
+
+        return jsonify({'success': True, 'listing_id': listing_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/listings/<int:listing_id>', methods=['DELETE'])
+@mobile_auth
+def marketplace_delete_listing(listing_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("DELETE FROM marketplace_listings WHERE id = %s AND user_id = %s", (listing_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/listings/<int:listing_id>/sold', methods=['POST'])
+@mobile_auth
+def marketplace_mark_sold(listing_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("UPDATE marketplace_listings SET sold = TRUE WHERE id = %s AND user_id = %s", (listing_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/listings/<int:listing_id>/like', methods=['POST'])
+@mobile_auth
+def marketplace_like(listing_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        liked = False
+        if DATABASE_URL:
+            cur = db.cursor()
+            try:
+                cur.execute("INSERT INTO marketplace_likes (user_id, listing_id) VALUES (%s, %s)", (request.mobile_user_id, listing_id))
+                cur.execute("UPDATE marketplace_listings SET likes = likes + 1 WHERE id = %s", (listing_id,))
+                liked = True
+            except Exception:
+                db.rollback()
+                cur.execute("DELETE FROM marketplace_likes WHERE user_id = %s AND listing_id = %s", (request.mobile_user_id, listing_id))
+                cur.execute("UPDATE marketplace_listings SET likes = GREATEST(likes - 1, 0) WHERE id = %s", (listing_id,))
+                liked = False
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True, 'liked': liked})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/listings/<int:listing_id>/view', methods=['POST'])
+@mobile_auth
+def marketplace_view(listing_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("UPDATE marketplace_listings SET views = views + 1 WHERE id = %s", (listing_id,))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/messages', methods=['POST'])
+@mobile_auth
+def marketplace_send_message():
+    try:
+        body = request.get_json() or {}
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            # Get listing owner
+            cur.execute("SELECT user_id FROM marketplace_listings WHERE id = %s", (body.get('listing_id'),))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Listing not found'}), 404
+            receiver_id = row[0]
+            cur.execute("""
+                INSERT INTO marketplace_messages (listing_id, sender_id, receiver_id, message, offer_amount)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (body.get('listing_id'), request.mobile_user_id, receiver_id,
+                  body.get('message'), body.get('offer_amount')))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/messages/<int:listing_id>', methods=['GET'])
+@mobile_auth
+def marketplace_get_messages(listing_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        messages = []
+        if DATABASE_URL:
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT m.*, u.email as sender_email
+                FROM marketplace_messages m
+                JOIN users u ON u.id = m.sender_id
+                WHERE m.listing_id = %s AND (m.sender_id = %s OR m.receiver_id = %s)
+                ORDER BY m.created_at ASC
+            """, (listing_id, request.mobile_user_id, request.mobile_user_id))
+            messages = [dict(r) for r in cur.fetchall()]
+            cur.close()
+        db.close()
+        return jsonify({'success': True, 'messages': messages})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/boost/<int:listing_id>', methods=['POST'])
+@mobile_auth
+def marketplace_boost(listing_id):
+    """Create a $2.99 Stripe charge to boost a listing for 30 days."""
+    try:
+        # Create Stripe payment intent
+        intent = stripe.PaymentIntent.create(
+            amount=299,  # $2.99 in cents
+            currency='usd',
+            metadata={'listing_id': listing_id, 'user_id': request.mobile_user_id, 'type': 'boost'},
+        )
+        return jsonify({'success': True, 'client_secret': intent.client_secret})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/boost/<int:listing_id>/confirm', methods=['POST'])
+@mobile_auth
+def marketplace_boost_confirm(listing_id):
+    """Called after payment succeeds — activate the boost."""
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("""
+                UPDATE marketplace_listings
+                SET boosted = TRUE, boost_expires_at = NOW() + INTERVAL '30 days'
+                WHERE id = %s AND user_id = %s
+            """, (listing_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/ratings', methods=['POST'])
+@mobile_auth
+def marketplace_rate_seller():
+    try:
+        body = request.get_json() or {}
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("""
+                INSERT INTO seller_ratings (seller_id, rater_id, listing_id, rating, review)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (rater_id, listing_id) DO UPDATE SET rating = EXCLUDED.rating, review = EXCLUDED.review
+            """, (body.get('seller_id'), request.mobile_user_id, body.get('listing_id'),
+                  body.get('rating'), body.get('review')))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── What did I pay? — update paid price ──────────────────────────────────────
+@app.route('/api/mobile/collection/<int:card_id>/paid-price', methods=['POST'])
+@mobile_auth
+def update_paid_price(card_id):
+    try:
+        body = request.get_json() or {}
+        paid_price = body.get('paid_price')
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("UPDATE scan_history SET paid_price = %s WHERE id = %s AND user_id = %s",
+                       (paid_price, card_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        else:
+            db.execute("UPDATE scan_history SET paid_price = ? WHERE id = ? AND user_id = ?",
+                      (paid_price, card_id, request.mobile_user_id))
+            db.commit()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     print("\n🚀 Card Scanner Web App")
     print("   Open this in your browser: http://localhost:5000\n")

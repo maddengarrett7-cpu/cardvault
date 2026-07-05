@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390, initial-scale=1">
+<title>Deal Flow Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; color: #fff; max-width: 390px; margin: 0 auto; min-height: 100vh; }
+  .status-bar { height: 44px; }
+
+  /* Step dots */
+  .steps { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 0 8px; }
+  .step-dot { width: 8px; height: 8px; border-radius: 4px; background: #222; transition: all 0.2s; }
+  .step-dot.active { width: 24px; background: #00e676; }
+  .step-dot.done { background: #00e676; opacity: 0.4; }
+
+  .screen { display: none; flex-direction: column; padding: 24px 20px; min-height: calc(100vh - 100px); }
+  .screen.active { display: flex; }
+
+  /* Step 1 — Did deal go through */
+  .buyer-row { display: flex; align-items: center; gap: 12px; background: #111; border: 1px solid #1a1a1a; border-radius: 14px; padding: 14px; margin-bottom: 24px; }
+  .buyer-logo { width: 44px; height: 44px; border-radius: 22px; background: #1a1a2a; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; color: #7c5cbf; }
+  .buyer-name { font-size: 15px; font-weight: 800; color: #fff; }
+  .buyer-handle { font-size: 11px; color: #555; margin-top: 2px; }
+  .ig-sent { background: #c13584; border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 700; color: #fff; }
+
+  .big-question { font-size: 26px; font-weight: 900; color: #fff; letter-spacing: -0.5px; margin-bottom: 8px; }
+  .sub { font-size: 14px; color: #555; margin-bottom: 32px; line-height: 20px; }
+
+  .choice-btn { width: 100%; padding: 18px; border-radius: 16px; border: 1px solid #1e1e1e; background: #111; margin-bottom: 10px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 14px; }
+  .choice-btn.yes { border-color: rgba(0,230,118,0.4); background: #0a1f0d; }
+  .choice-icon { width: 40px; height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .choice-title { font-size: 15px; font-weight: 800; color: #fff; }
+  .choice-sub { font-size: 12px; color: #555; margin-top: 2px; }
+  .choice-btn.yes .choice-title { color: #00e676; }
+
+  /* Step 2 — Enter price */
+  .card-preview { background: #111; border: 1px solid #1e1e1e; border-radius: 14px; padding: 14px; margin-bottom: 28px; }
+  .card-preview-name { font-size: 16px; font-weight: 900; color: #fff; }
+  .card-preview-set { font-size: 11px; color: #555; margin-top: 3px; }
+  .label { font-size: 11px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+  .price-input-wrap { background: #111; border: 2px solid #00e676; border-radius: 14px; padding: 18px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .dollar { font-size: 28px; font-weight: 900; color: #00e676; }
+  .price-input { font-size: 36px; font-weight: 900; color: #fff; background: none; border: none; outline: none; width: 100%; }
+  .price-hint { font-size: 12px; color: #333; margin-bottom: 28px; }
+  .fee-preview { background: #111; border: 1px solid #1e1e1e; border-radius: 12px; padding: 14px; margin-bottom: 24px; }
+  .fee-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .fee-label { font-size: 13px; color: #555; }
+  .fee-value { font-size: 13px; font-weight: 700; color: #fff; }
+  .fee-divider { height: 1px; background: #1e1e1e; margin: 10px 0; }
+  .fee-total-label { font-size: 13px; font-weight: 800; color: #fff; }
+  .fee-total-value { font-size: 15px; font-weight: 900; color: #00e676; }
+
+  /* Step 3 — Success */
+  .success-icon { width: 80px; height: 80px; border-radius: 40px; background: #0a1f0d; border: 2px solid #00e676; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 24px; }
+  .success-title { font-size: 26px; font-weight: 900; color: #fff; text-align: center; margin-bottom: 8px; }
+  .success-sub { font-size: 14px; color: #555; text-align: center; margin-bottom: 32px; line-height: 20px; }
+  .success-card { background: #111; border: 1px solid #1e1e1e; border-radius: 14px; padding: 16px; margin-bottom: 8px; }
+  .success-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .success-label { font-size: 12px; color: #444; }
+  .success-val { font-size: 12px; font-weight: 700; color: #fff; }
+  .badge-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #1a1a1a; }
+  .verified-badge { background: #0a1f0d; border: 1px solid rgba(0,230,118,0.4); border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; color: #00e676; }
+
+  /* Buttons */
+  .btn-green { width: 100%; padding: 16px; background: #00e676; border-radius: 14px; border: none; font-size: 16px; font-weight: 900; color: #000; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: auto; }
+  .btn-ghost { width: 100%; padding: 14px; background: none; border: none; font-size: 14px; color: #444; cursor: pointer; margin-top: 10px; }
+
+  .spacer { flex: 1; }
+</style>
+</head>
+<body>
+<div class="status-bar"></div>
+
+<!-- Step dots -->
+<div class="steps">
+  <div class="step-dot done" id="d1"></div>
+  <div class="step-dot active" id="d2"></div>
+  <div class="step-dot" id="d3"></div>
+</div>
+
+<!-- SCREEN 1: Did deal go through? -->
+<div class="screen active" id="s1">
+  <div style="margin-bottom: 20px;">
+    <div class="buyer-row">
+      <div class="buyer-logo">MC</div>
+      <div style="flex:1">
+        <div class="buyer-name">Milo Cards</div>
+        <div class="buyer-handle">@milo.cards</div>
+      </div>
+      <div class="ig-sent">DM Sent</div>
+    </div>
+  </div>
+
+  <div class="big-question">Did you make a deal?</div>
+  <div class="sub">Let us know if you sold your card through CardConnect — it helps us keep great buyers verified.</div>
+
+  <div onclick="goTo(2)" class="choice-btn yes">
+    <div class="choice-icon" style="background:#0a1f0d;">✅</div>
+    <div>
+      <div class="choice-title">Yes, we made a deal</div>
+      <div class="choice-sub">Report the sale price — pay a small 1% fee</div>
+    </div>
+  </div>
+
+  <div onclick="goTo('skip')" class="choice-btn">
+    <div class="choice-icon" style="background:#161616;">💬</div>
+    <div>
+      <div class="choice-title">Still talking</div>
+      <div class="choice-sub">Remind me later</div>
+    </div>
+  </div>
+
+  <div onclick="goTo('skip')" class="choice-btn">
+    <div class="choice-icon" style="background:#161616;">✕</div>
+    <div>
+      <div class="choice-title">No deal made</div>
+      <div class="choice-sub">Dismiss</div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 2: Enter price -->
+<div class="screen" id="s2">
+  <div class="big-question">Sale price</div>
+  <div class="sub" style="margin-bottom:20px">What did you sell it for?</div>
+
+  <div class="card-preview">
+    <div class="card-preview-name">Cooper Kupp</div>
+    <div class="card-preview-set">2021 Prizm Silver Refractor · Raw</div>
+  </div>
+
+  <div class="label">Amount Received</div>
+  <div class="price-input-wrap">
+    <div class="dollar">$</div>
+    <input class="price-input" type="number" value="85" oninput="updateFee(this.value)" />
+  </div>
+  <div class="price-hint">Enter the amount the buyer paid you</div>
+
+  <div class="fee-preview">
+    <div class="fee-row">
+      <div class="fee-label">Sale price</div>
+      <div class="fee-value" id="fSale">$85.00</div>
+    </div>
+    <div class="fee-row">
+      <div class="fee-label">CardScan fee (1%)</div>
+      <div class="fee-value" id="fFee">$0.85</div>
+    </div>
+    <div class="fee-divider"></div>
+    <div class="fee-row">
+      <div class="fee-total-label">You receive</div>
+      <div class="fee-total-value" id="fNet">$84.15</div>
+    </div>
+  </div>
+
+  <div class="btn-green" onclick="goTo(3)">
+    Pay $<span id="btnFee">0.85</span> &amp; Confirm Deal
+  </div>
+  <div class="btn-ghost" onclick="goTo(1)">← Back</div>
+</div>
+
+<!-- SCREEN 3: Success -->
+<div class="screen" id="s3" style="align-items:center; justify-content:center;">
+  <div class="success-icon">✓</div>
+  <div class="success-title">Deal confirmed!</div>
+  <div class="success-sub">Your sale has been logged and your buyer's reputation updated. Thanks for keeping CardConnect trusted.</div>
+
+  <div class="success-card" style="width:100%">
+    <div class="success-row">
+      <div class="success-label">Card</div>
+      <div class="success-val">Cooper Kupp · Prizm Silver</div>
+    </div>
+    <div class="success-row">
+      <div class="success-label">Buyer</div>
+      <div class="success-val">@milo.cards</div>
+    </div>
+    <div class="success-row">
+      <div class="success-label">Sale price</div>
+      <div class="success-val">$85.00</div>
+    </div>
+    <div class="success-row">
+      <div class="success-label">Fee paid</div>
+      <div class="success-val">$0.85</div>
+    </div>
+    <div class="badge-row">
+      <div class="verified-badge">✓ Verified Sale</div>
+      <div style="font-size:12px; color:#555;">Added to your collection history</div>
+    </div>
+  </div>
+
+  <div style="height: 24px;"></div>
+  <div class="btn-green" onclick="goTo(1)" style="margin-top:0">Done</div>
+</div>
+
+<script>
+function goTo(n) {
+  if (n === 'skip') { alert('Dismissed — no action taken'); return; }
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('s' + n).classList.add('active');
+  document.querySelectorAll('.step-dot').forEach((d, i) => {
+    d.classList.remove('active', 'done');
+    if (i < n - 1) d.classList.add('done');
+    else if (i === n - 1) d.classList.add('active');
+  });
+}
+
+function updateFee(val) {
+  const v = parseFloat(val) || 0;
+  const fee = (v * 0.01).toFixed(2);
+  const net = (v - fee).toFixed(2);
+  document.getElementById('fSale').textContent = '$' + v.toFixed(2);
+  document.getElementById('fFee').textContent = '$' + fee;
+  document.getElementById('fNet').textContent = '$' + net;
+  document.getElementById('btnFee').textContent = fee;
+}
+</script>
+</body>
+</html>

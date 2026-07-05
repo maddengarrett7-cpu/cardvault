@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #000; display: flex; justify-content: center; align-items: flex-start; }
+  img { display: block; width: 1080px; height: 1350px; }
+</style>
+</head>
+<body>
+<img id="svg" src="intro_cardscan.svg" width="1080" height="1350"/>
+<canvas id="c" width="1080" height="1350" style="display:none"></canvas>
+<script>
+const img = document.getElementById('svg');
+const canvas = document.getElementById('c');
+img.onload = () => {
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, 1080, 1350);
+  const a = document.createElement('a');
+  a.download = 'intro_cardscan.png';
+  a.href = canvas.toDataURL('image/png');
+  document.body.appendChild(a);
+  a.click();
+  document.getElementById('status').textContent = '✓ Download started!';
+};
+</script>
+<p id="status" style="color:#00e676;font-family:system-ui;font-size:20px;padding:20px;">Opening SVG…</p>
+</body>
+</html>
