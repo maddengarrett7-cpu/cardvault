@@ -4186,14 +4186,12 @@ def update_profile():
         db = get_db()
         if DATABASE_URL:
             cur = db.cursor()
-            # Check username not taken
             if username:
                 cur.execute("SELECT id FROM users WHERE username = %s AND id != %s", (username, request.mobile_user_id))
                 if cur.fetchone():
                     cur.close(); db.close()
                     return jsonify({'success': False, 'error': 'Username already taken'}), 409
-            fields = []
-            vals = []
+            fields, vals = [], []
             if username: fields.append("username = %s"); vals.append(username)
             if bio is not None: fields.append("bio = %s"); vals.append(bio)
             if profile_pic_url: fields.append("profile_pic_url = %s"); vals.append(profile_pic_url)
@@ -4202,6 +4200,21 @@ def update_profile():
                 cur.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = %s", vals)
                 db.commit()
             cur.close()
+        else:
+            # SQLite fallback
+            if username:
+                dup = db.execute("SELECT id FROM users WHERE username = ? AND id != ?", (username, request.mobile_user_id)).fetchone()
+                if dup:
+                    db.close()
+                    return jsonify({'success': False, 'error': 'Username already taken'}), 409
+            fields, vals = [], []
+            if username: fields.append("username = ?"); vals.append(username)
+            if bio is not None: fields.append("bio = ?"); vals.append(bio)
+            if profile_pic_url: fields.append("profile_pic_url = ?"); vals.append(profile_pic_url)
+            if fields:
+                vals.append(request.mobile_user_id)
+                db.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", vals)
+                db.commit()
         db.close()
         return jsonify({'success': True})
     except Exception as e:
