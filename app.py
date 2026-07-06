@@ -76,12 +76,6 @@ GOOGLE_OAUTH_SCOPES  = [
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://cardscan.live")
 GMAIL_USER         = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-
-# RevenueCat -- REVENUECAT_SECRET_KEY is the server-side "Secret API Key" (sk_...) used to
-# verify subscriber status; REVENUECAT_WEBHOOK_SECRET is the Authorization header value you
-# set when configuring the webhook in the RevenueCat dashboard, so we can trust its calls.
-REVENUECAT_SECRET_KEY     = os.environ.get("REVENUECAT_SECRET_KEY", "")
-REVENUECAT_WEBHOOK_SECRET = os.environ.get("REVENUECAT_WEBHOOK_SECRET", "")
 # ───────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
@@ -93,7 +87,7 @@ import smtplib
 import secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 def send_reset_email(to_email, reset_url):
     msg = MIMEMultipart('alternative')
@@ -1189,82 +1183,6 @@ def webhook():
         update_subscription(event['data']['object']['customer'], 'free')
 
     return 'OK', 200
-
-@app.route('/api/mobile/subscription/sync', methods=['POST'])
-@mobile_auth
-def sync_subscription():
-    """Re-check this user's subscriber status directly with RevenueCat's server
-    (never trust a client-claimed status) and update our own subscription_status.
-    Called right after a purchase/restore so the app reflects Pro instantly
-    instead of waiting on the webhook."""
-    try:
-        if not REVENUECAT_SECRET_KEY:
-            return jsonify({'success': False, 'error': 'RevenueCat not configured'}), 503
-
-        user_id = request.mobile_user_id
-        resp = requests.get(
-            f'https://api.revenuecat.com/v1/subscribers/{user_id}',
-            headers={'Authorization': f'Bearer {REVENUECAT_SECRET_KEY}'},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return jsonify({'success': False, 'error': f'RevenueCat lookup failed ({resp.status_code})'}), 502
-
-        entitlements = resp.json().get('subscriber', {}).get('entitlements', {})
-        pro_entitlement = entitlements.get('pro')
-        is_active = False
-        if pro_entitlement:
-            expires = pro_entitlement.get('expires_date')
-            is_active = expires is None or datetime.fromisoformat(expires.replace('Z', '+00:00')) > datetime.now(timezone.utc)
-
-        new_status = 'pro' if is_active else 'free'
-        from database import get_db, DATABASE_URL
-        db = get_db()
-        if DATABASE_URL:
-            cur = db.cursor()
-            cur.execute("UPDATE users SET subscription_status = %s WHERE id = %s", (new_status, user_id))
-            db.commit(); cur.close()
-        db.close()
-
-        return jsonify({'success': True, 'subscription_status': new_status})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/webhooks/revenuecat', methods=['POST'])
-def revenuecat_webhook():
-    """RevenueCat calls this on every subscription lifecycle event. Configure the
-    same value in RevenueCat's dashboard (Project Settings -> Integrations ->
-    Webhooks -> Authorization header) as REVENUECAT_WEBHOOK_SECRET here."""
-    try:
-        auth_header = request.headers.get('Authorization', '')
-        if not REVENUECAT_WEBHOOK_SECRET or auth_header != f'Bearer {REVENUECAT_WEBHOOK_SECRET}':
-            return jsonify({'error': 'Unauthorized'}), 401
-
-        body = request.get_json(force=True) or {}
-        event = body.get('event', {})
-        event_type = event.get('type')
-        app_user_id = event.get('app_user_id')
-        if not app_user_id or not app_user_id.isdigit():
-            return jsonify({'success': True}), 200  # ignore anonymous/test events
-
-        ACTIVATING = {'INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE'}
-        DEACTIVATING = {'EXPIRATION'}
-        new_status = 'pro' if event_type in ACTIVATING else ('free' if event_type in DEACTIVATING else None)
-
-        if new_status:
-            from database import get_db, DATABASE_URL
-            db = get_db()
-            if DATABASE_URL:
-                cur = db.cursor()
-                cur.execute("UPDATE users SET subscription_status = %s WHERE id = %s", (new_status, int(app_user_id)))
-                db.commit(); cur.close()
-            db.close()
-
-        return jsonify({'success': True}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 
 OWNER_EMAIL = "maddengarrett7@gmail.com"
 
