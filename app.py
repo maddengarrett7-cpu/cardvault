@@ -4116,6 +4116,345 @@ def mobile_refresh_all_values():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PROFILE ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/mobile/profile', methods=['GET'])
+@mobile_auth
+def get_profile():
+    try:
+        user = get_user_by_id(request.mobile_user_id)
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+
+        # Get stats
+        total_scans = 0
+        collection_count = 0
+        total_value = 0.0
+        listings_count = 0
+
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT COUNT(*), COALESCE(SUM(ebay_avg), 0) FROM scan_history WHERE user_id = %s", (request.mobile_user_id,))
+            row = cur.fetchone()
+            collection_count = row[0] or 0
+            total_value = float(row[1] or 0)
+            cur.execute("SELECT COUNT(*) FROM marketplace_listings WHERE user_id = %s AND status = 'active'", (request.mobile_user_id,))
+            listings_count = cur.fetchone()[0] or 0
+            cur.close()
+        db.close()
+
+        return jsonify({
+            'success': True,
+            'profile': {
+                'id': user.get('id'),
+                'email': user.get('email'),
+                'username': user.get('username'),
+                'profile_pic_url': user.get('profile_pic_url'),
+                'bio': user.get('bio'),
+                'created_at': str(user.get('created_at', '')),
+                'total_scans': user.get('total_scans', 0),
+                'career_scans': user.get('career_scans', user.get('total_scans', 0)),
+                'collection_count': collection_count,
+                'total_value': round(total_value, 2),
+                'listings_count': listings_count,
+                'subscription_status': user.get('subscription_status', 'free'),
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/profile/update', methods=['POST'])
+@mobile_auth
+def update_profile():
+    try:
+        body = request.get_json() or {}
+        username = body.get('username', '').strip().lower().replace(' ', '_')
+        bio = body.get('bio', '').strip()
+        profile_pic_url = body.get('profile_pic_url', '').strip()
+
+        # Validate username
+        import re
+        if username and not re.match(r'^[a-z0-9_\.]{3,30}$', username):
+            return jsonify({'success': False, 'error': 'Username must be 3-30 characters, letters/numbers/underscores only'}), 400
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            # Check username not taken
+            if username:
+                cur.execute("SELECT id FROM users WHERE username = %s AND id != %s", (username, request.mobile_user_id))
+                if cur.fetchone():
+                    cur.close(); db.close()
+                    return jsonify({'success': False, 'error': 'Username already taken'}), 409
+            fields = []
+            vals = []
+            if username: fields.append("username = %s"); vals.append(username)
+            if bio is not None: fields.append("bio = %s"); vals.append(bio)
+            if profile_pic_url: fields.append("profile_pic_url = %s"); vals.append(profile_pic_url)
+            if fields:
+                vals.append(request.mobile_user_id)
+                cur.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = %s", vals)
+                db.commit()
+            cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/profile/upload-pic', methods=['POST'])
+@mobile_auth
+def upload_profile_pic():
+    """Accept base64 image, store as static file, return URL."""
+    try:
+        body = request.get_json() or {}
+        image_b64 = body.get('image', '')
+        if not image_b64:
+            return jsonify({'success': False, 'error': 'No image provided'}), 400
+
+        import base64, uuid
+        img_data = base64.b64decode(image_b64)
+        filename = f"profile_{request.mobile_user_id}_{uuid.uuid4().hex[:8]}.jpg"
+        path = os.path.join('static', 'profiles', filename)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(img_data)
+
+        url = f"{APP_BASE_URL}/static/profiles/{filename}"
+        # Save to user record
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("UPDATE users SET profile_pic_url = %s WHERE id = %s", (url, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True, 'url': url})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/profile/check-username', methods=['GET'])
+@mobile_auth
+def check_username():
+    username = request.args.get('username', '').strip().lower()
+    if not username:
+        return jsonify({'available': False})
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    available = True
+    if DATABASE_URL:
+        cur = db.cursor()
+        cur.execute("SELECT id FROM users WHERE username = %s AND id != %s", (username, request.mobile_user_id))
+        available = cur.fetchone() is None
+        cur.close()
+    db.close()
+    return jsonify({'available': available})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CHAT ENDPOINTS (DMs + Group Chats)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/mobile/chat/rooms', methods=['GET'])
+@mobile_auth
+def get_chat_rooms():
+    """Get all chat rooms the user is a member of."""
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        rooms = []
+        if DATABASE_URL:
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT r.*, m.unread_count,
+                    (SELECT COUNT(*) FROM chat_room_members WHERE room_id = r.id) as member_count,
+                    (SELECT json_agg(json_build_object(
+                        'id', u.id, 'username', u.username,
+                        'profile_pic_url', u.profile_pic_url, 'email', u.email
+                    )) FROM chat_room_members cm
+                     JOIN users u ON u.id = cm.user_id
+                     WHERE cm.room_id = r.id AND cm.user_id != %s
+                     LIMIT 3) as other_members
+                FROM chat_rooms r
+                JOIN chat_room_members m ON m.room_id = r.id AND m.user_id = %s
+                ORDER BY r.last_message_at DESC
+            """, (request.mobile_user_id, request.mobile_user_id))
+            rooms = [dict(r) for r in cur.fetchall()]
+            cur.close()
+        db.close()
+        return jsonify({'success': True, 'rooms': rooms})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms', methods=['POST'])
+@mobile_auth
+def create_chat_room():
+    """Create a DM or group chat room."""
+    try:
+        body = request.get_json() or {}
+        member_ids = body.get('member_ids', [])
+        name = body.get('name', '')
+        is_group = body.get('is_group', False)
+        listing_id = body.get('listing_id')
+        avatar_url = body.get('avatar_url', '')
+
+        if not member_ids:
+            return jsonify({'success': False, 'error': 'member_ids required'}), 400
+
+        all_members = list(set([request.mobile_user_id] + member_ids))
+        is_group = is_group or len(all_members) > 2
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        room_id = None
+
+        if DATABASE_URL:
+            cur = db.cursor()
+            # For DMs, check if room already exists
+            if not is_group and len(all_members) == 2:
+                other_id = [m for m in all_members if m != request.mobile_user_id][0]
+                cur.execute("""
+                    SELECT r.id FROM chat_rooms r
+                    JOIN chat_room_members m1 ON m1.room_id = r.id AND m1.user_id = %s
+                    JOIN chat_room_members m2 ON m2.room_id = r.id AND m2.user_id = %s
+                    WHERE r.is_group = FALSE
+                    LIMIT 1
+                """, (request.mobile_user_id, other_id))
+                existing = cur.fetchone()
+                if existing:
+                    cur.close(); db.close()
+                    return jsonify({'success': True, 'room_id': existing[0], 'existing': True})
+
+            cur.execute("""
+                INSERT INTO chat_rooms (name, is_group, created_by, listing_id, avatar_url)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (name or None, is_group, request.mobile_user_id, listing_id, avatar_url or None))
+            room_id = cur.fetchone()[0]
+
+            for uid in all_members:
+                cur.execute("INSERT INTO chat_room_members (room_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (room_id, uid))
+
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True, 'room_id': room_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms/<int:room_id>/messages', methods=['GET'])
+@mobile_auth
+def get_chat_messages(room_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        messages = []
+        if DATABASE_URL:
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # Verify membership
+            cur.execute("SELECT 1 FROM chat_room_members WHERE room_id = %s AND user_id = %s", (room_id, request.mobile_user_id))
+            if not cur.fetchone():
+                cur.close(); db.close()
+                return jsonify({'success': False, 'error': 'Not a member'}), 403
+            cur.execute("""
+                SELECT m.*, u.username, u.profile_pic_url, u.email
+                FROM chat_messages m
+                JOIN users u ON u.id = m.sender_id
+                WHERE m.room_id = %s
+                ORDER BY m.created_at ASC
+                LIMIT 100
+            """, (room_id,))
+            messages = [dict(r) for r in cur.fetchall()]
+            # Reset unread
+            cur.execute("UPDATE chat_room_members SET unread_count = 0 WHERE room_id = %s AND user_id = %s", (room_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True, 'messages': messages})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms/<int:room_id>/messages', methods=['POST'])
+@mobile_auth
+def send_chat_message(room_id):
+    try:
+        body = request.get_json() or {}
+        message = body.get('message', '').strip()
+        offer_amount = body.get('offer_amount')
+        if not message:
+            return jsonify({'success': False, 'error': 'Message required'}), 400
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT 1 FROM chat_room_members WHERE room_id = %s AND user_id = %s", (room_id, request.mobile_user_id))
+            if not cur.fetchone():
+                cur.close(); db.close()
+                return jsonify({'success': False, 'error': 'Not a member'}), 403
+
+            cur.execute("""
+                INSERT INTO chat_messages (room_id, sender_id, message, offer_amount)
+                VALUES (%s, %s, %s, %s)
+            """, (room_id, request.mobile_user_id, message, offer_amount))
+
+            # Update room last message + increment unread for other members
+            cur.execute("UPDATE chat_rooms SET last_message = %s, last_message_at = NOW() WHERE id = %s", (message[:100], room_id))
+            cur.execute("""
+                UPDATE chat_room_members SET unread_count = unread_count + 1
+                WHERE room_id = %s AND user_id != %s
+            """, (room_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms/<int:room_id>/members', methods=['POST'])
+@mobile_auth
+def add_chat_member(room_id):
+    """Add a member to a group chat."""
+    try:
+        body = request.get_json() or {}
+        user_id = body.get('user_id')
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("INSERT INTO chat_room_members (room_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (room_id, user_id))
+            cur.execute("UPDATE chat_rooms SET is_group = TRUE WHERE id = %s", (room_id,))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms/<int:room_id>', methods=['DELETE'])
+@mobile_auth
+def leave_chat_room(room_id):
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("DELETE FROM chat_room_members WHERE room_id = %s AND user_id = %s", (room_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # MARKETPLACE ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 

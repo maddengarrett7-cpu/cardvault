@@ -173,7 +173,59 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
-        # Marketplace messages
+        # Chat rooms (DMs + group chats)
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chat_rooms (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT,
+                    is_group BOOLEAN DEFAULT FALSE,
+                    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    listing_id INTEGER REFERENCES marketplace_listings(id) ON DELETE SET NULL,
+                    avatar_url TEXT,
+                    last_message TEXT,
+                    last_message_at TIMESTAMP DEFAULT NOW(),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Chat room members
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chat_room_members (
+                    id SERIAL PRIMARY KEY,
+                    room_id INTEGER REFERENCES chat_rooms(id) ON DELETE CASCADE,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    unread_count INTEGER DEFAULT 0,
+                    joined_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(room_id, user_id)
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Chat messages
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id SERIAL PRIMARY KEY,
+                    room_id INTEGER REFERENCES chat_rooms(id) ON DELETE CASCADE,
+                    sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    message TEXT NOT NULL,
+                    offer_amount FLOAT,
+                    image_url TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Keep old marketplace_messages for backwards compat
         try:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS marketplace_messages (
@@ -209,15 +261,25 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
-        # Add paid_price column to scan_history for "What did I pay?"
+        # Profile columns on users table
         for col, definition in [
-            ("paid_price", "FLOAT"),
+            ("username", "TEXT"),
+            ("profile_pic_url", "TEXT"),
+            ("bio", "TEXT"),
+            ("career_scans", "INTEGER DEFAULT 0"),
         ]:
             try:
-                cur.execute(f"ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS {col} {definition}")
+                cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
                 conn.commit()
             except Exception:
                 conn.rollback()
+
+        # paid_price on scan_history
+        try:
+            cur.execute("ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS paid_price FLOAT")
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         cur.close()
         conn.close()
