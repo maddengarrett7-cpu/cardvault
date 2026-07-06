@@ -4276,6 +4276,40 @@ def check_username():
 # CHAT ENDPOINTS (DMs + Group Chats)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.route('/api/mobile/connect/buyer-user', methods=['POST'])
+@mobile_auth
+def get_or_create_buyer_user():
+    """Get (or lazily create) a placeholder account for a curated Connect buyer,
+    so users can message them through the real in-app chat system. Buyers in the
+    curated list aren't SlabVault users -- this gives each one a stable user_id
+    to attach a chat room to, keyed by their Instagram handle."""
+    try:
+        body = request.get_json() or {}
+        instagram = (body.get('instagram') or '').strip().lstrip('@').lower()
+        name = (body.get('name') or instagram).strip()
+        if not instagram:
+            return jsonify({'success': False, 'error': 'instagram required'}), 400
+
+        buyer_email = f"buyer+{instagram}@buyers.slabvault.internal"
+        user = get_user_by_email(buyer_email)
+        if not user:
+            password_hash = generate_password_hash(secrets.token_hex(32))
+            user = create_user(buyer_email, password_hash)
+            if not user:
+                return jsonify({'success': False, 'error': 'Could not create buyer account'}), 500
+            from database import get_db, DATABASE_URL
+            db = get_db()
+            if DATABASE_URL:
+                cur = db.cursor()
+                cur.execute("UPDATE users SET username = %s WHERE id = %s", (instagram, user['id']))
+                db.commit(); cur.close()
+            db.close()
+
+        return jsonify({'success': True, 'user_id': user['id'], 'username': instagram})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/mobile/chat/rooms', methods=['GET'])
 @mobile_auth
 def get_chat_rooms():
