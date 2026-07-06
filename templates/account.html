@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CardScan — Account</title>
+  <title>SlabVault — Account</title>
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#00e676">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
@@ -151,7 +151,7 @@
   <div class="container">
 
     {% if request.args.get('success') %}
-    <div class="success-msg">🎉 You're now on CardScan Pro! Enjoy unlimited scans.</div>
+    <div class="success-msg">🎉 You're now on SlabVault Pro! Enjoy unlimited scans.</div>
     {% endif %}
 
     <div class="panel">
@@ -200,7 +200,7 @@
       </div>
       <div class="row">
         <span class="row-label">Plan</span>
-        <span class="row-value">CardScan Pro</span>
+        <span class="row-value">SlabVault Pro</span>
       </div>
       <form action="/create-portal-session" method="POST" style="margin-top:16px;">
         <button type="submit" class="manage-btn">Manage / Cancel Subscription ↗</button>
@@ -281,7 +281,7 @@
     <!-- Onboarding tip for new users without a sheet connected -->
     {% if not user.google_sheet_id %}
     <div style="background:rgba(0,230,118,0.06); border:1px solid rgba(0,230,118,0.2); border-radius:14px; padding:20px 24px; margin-bottom:20px;">
-      <div style="font-size:13px; font-weight:700; color:var(--green); margin-bottom:8px;">💡 Get the most out of CardScan</div>
+      <div style="font-size:13px; font-weight:700; color:var(--green); margin-bottom:8px;">💡 Get the most out of SlabVault</div>
       <p style="font-size:13px; color:#ccc; line-height:1.6; margin-bottom:12px;">Connect a Google Sheet so every card you scan is automatically logged. Takes 30 seconds — just tap the sheet icon inside the scanner.</p>
       <a href="/" style="font-size:13px; font-weight:700; color:var(--green); text-decoration:none;">→ Go to scanner and connect your sheet</a>
     </div>
