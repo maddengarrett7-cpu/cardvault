@@ -13,6 +13,7 @@ import threading
 import base64
 import requests
 import stripe
+import psycopg2.extras
 from datetime import datetime
 from functools import wraps
 from collections import defaultdict
