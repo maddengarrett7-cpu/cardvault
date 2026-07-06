@@ -158,6 +158,18 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # Bulk lot + edit support on marketplace_listings
+        for col, definition in [
+            ("is_bulk_lot", "BOOLEAN DEFAULT FALSE"),
+            ("lot_card_count", "INTEGER"),
+            ("lot_contents", "TEXT"),
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS {col} {definition}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
         # Marketplace likes
         try:
             cur.execute("""

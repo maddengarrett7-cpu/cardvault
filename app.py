@@ -4526,6 +4526,30 @@ def marketplace_get_listings():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/mobile/marketplace/upload-image', methods=['POST'])
+@mobile_auth
+def marketplace_upload_image():
+    """Accept a base64 image, store as static file, return a public URL."""
+    try:
+        body = request.get_json() or {}
+        image_b64 = body.get('image', '')
+        if not image_b64:
+            return jsonify({'success': False, 'error': 'No image provided'}), 400
+
+        import base64, uuid
+        img_data = base64.b64decode(image_b64)
+        filename = f"listing_{request.mobile_user_id}_{uuid.uuid4().hex[:8]}.jpg"
+        path = os.path.join('static', 'marketplace', filename)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(img_data)
+
+        url = f"{APP_BASE_URL}/static/marketplace/{filename}"
+        return jsonify({'success': True, 'url': url})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/mobile/marketplace/listings', methods=['POST'])
 @mobile_auth
 def marketplace_create_listing():
@@ -4540,8 +4564,9 @@ def marketplace_create_listing():
             cur.execute("""
                 INSERT INTO marketplace_listings
                 (user_id, name, year, brand, set_name, parallel, grade, cert, serial,
-                 sport, price, open_to_offers, description, seller_instagram)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                 sport, price, open_to_offers, description, seller_instagram, image_urls,
+                 is_bulk_lot, lot_card_count, lot_contents)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
             """, (
                 request.mobile_user_id,
@@ -4550,6 +4575,8 @@ def marketplace_create_listing():
                 body.get('cert'), body.get('serial'), body.get('sport'),
                 body.get('price'), body.get('open_to_offers', True),
                 body.get('description'), body.get('seller_instagram'),
+                body.get('image_urls'), body.get('is_bulk_lot', False),
+                body.get('lot_card_count'), body.get('lot_contents'),
             ))
             listing_id = cur.fetchone()[0]
             db.commit(); cur.close(); db.close()
@@ -4557,6 +4584,68 @@ def marketplace_create_listing():
             listing_id = None
 
         return jsonify({'success': True, 'listing_id': listing_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/listings/<int:listing_id>', methods=['PATCH'])
+@mobile_auth
+def marketplace_update_listing(listing_id):
+    try:
+        body = request.get_json() or {}
+        from database import get_db, DATABASE_URL
+        db = get_db()
+
+        if DATABASE_URL:
+            editable = [
+                'name', 'year', 'brand', 'set_name', 'parallel', 'grade', 'cert', 'serial',
+                'sport', 'price', 'open_to_offers', 'description', 'seller_instagram',
+                'image_urls', 'is_bulk_lot', 'lot_card_count', 'lot_contents',
+            ]
+            fields = [f for f in editable if f in body]
+            if not fields:
+                return jsonify({'success': False, 'error': 'No fields to update'}), 400
+
+            set_clause = ', '.join(f"{f} = %s" for f in fields)
+            values = [body.get(f) for f in fields] + [listing_id, request.mobile_user_id]
+
+            cur = db.cursor()
+            cur.execute(
+                f"UPDATE marketplace_listings SET {set_clause} WHERE id = %s AND user_id = %s",
+                values,
+            )
+            updated = cur.rowcount
+            db.commit(); cur.close(); db.close()
+            if not updated:
+                return jsonify({'success': False, 'error': 'Listing not found'}), 404
+        else:
+            return jsonify({'success': False, 'error': 'Marketplace unavailable'}), 503
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/marketplace/my-listings', methods=['GET'])
+@mobile_auth
+def marketplace_my_listings():
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+
+        if DATABASE_URL:
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT * FROM marketplace_listings
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+            """, (request.mobile_user_id,))
+            listings = [dict(r) for r in cur.fetchall()]
+            cur.close(); db.close()
+        else:
+            listings = []
+
+        return jsonify({'success': True, 'listings': listings})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
