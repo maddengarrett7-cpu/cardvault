@@ -1218,6 +1218,32 @@ def admin_set_pro(secret):
         return f"Error: {str(e)}", 500
     return f"✅ {OWNER_EMAIL} is now Pro!"
 
+@app.route('/admin/set-free/<secret>')
+def admin_set_free(secret):
+    """One-time route to temporarily drop the owner account to free (e.g. to
+    screenshot the paywall for App Store subscription review) -- flip back
+    with /admin/set-pro/<secret> afterward."""
+    if not check_admin(secret):
+        return "Forbidden", 403
+    user = get_user_by_email(OWNER_EMAIL)
+    if not user:
+        return "User not found — please sign up first", 404
+    from database import get_db
+    db = get_db()
+    try:
+        if hasattr(db, 'cursor'):
+            cur = db.cursor()
+            cur.execute("UPDATE users SET subscription_status = 'free' WHERE email = %s", (OWNER_EMAIL,))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("UPDATE users SET subscription_status = 'free' WHERE email = ?", (OWNER_EMAIL,))
+            db.commit()
+        db.close()
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+    return f"✅ {OWNER_EMAIL} is now Free (remember to flip back to Pro after your screenshot)."
+
 @app.route('/mission')
 def mission():
     return render_template('mission.html')
