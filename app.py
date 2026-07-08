@@ -17,7 +17,7 @@ import psycopg2.extras
 from datetime import datetime
 from functools import wraps
 from collections import defaultdict
-from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for, stream_with_context
+from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for, stream_with_context, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 import cv2
 from google import genai
@@ -87,6 +87,19 @@ REVENUECAT_WEBHOOK_SECRET = os.environ.get("REVENUECAT_WEBHOOK_SECRET", "")
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "slabscan-dev-secret")
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB max upload
+
+# ── User-uploaded files (marketplace photos, profile pics) ──────────────────
+# Railway's filesystem is ephemeral -- anything written to local disk is wiped
+# on every redeploy. If a Railway Volume is attached to this service, Railway
+# sets RAILWAY_VOLUME_MOUNT_PATH automatically and we store uploads there so
+# they survive deploys. Falls back to a local folder for local dev, where
+# that's not an issue since nothing redeploys out from under you.
+UPLOAD_ROOT = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or os.path.join(app.root_path, "uploads")
+
+
+@app.route('/uploads/<path:subpath>')
+def serve_upload(subpath):
+    return send_from_directory(UPLOAD_ROOT, subpath)
 
 # ── Email ────────────────────────────────────────────────────────────────────
 import smtplib
@@ -4344,12 +4357,12 @@ def upload_profile_pic():
         import base64, uuid
         img_data = base64.b64decode(image_b64)
         filename = f"profile_{request.mobile_user_id}_{uuid.uuid4().hex[:8]}.jpg"
-        path = os.path.join('static', 'profiles', filename)
+        path = os.path.join(UPLOAD_ROOT, 'profiles', filename)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'wb') as f:
             f.write(img_data)
 
-        url = f"{APP_BASE_URL}/static/profiles/{filename}"
+        url = f"{APP_BASE_URL}/uploads/profiles/{filename}"
         # Save to user record
         from database import get_db, DATABASE_URL
         db = get_db()
@@ -4787,12 +4800,12 @@ def marketplace_upload_image():
         import base64, uuid
         img_data = base64.b64decode(image_b64)
         filename = f"listing_{request.mobile_user_id}_{uuid.uuid4().hex[:8]}.jpg"
-        path = os.path.join('static', 'marketplace', filename)
+        path = os.path.join(UPLOAD_ROOT, 'marketplace', filename)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'wb') as f:
             f.write(img_data)
 
-        url = f"{APP_BASE_URL}/static/marketplace/{filename}"
+        url = f"{APP_BASE_URL}/uploads/marketplace/{filename}"
         return jsonify({'success': True, 'url': url})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
