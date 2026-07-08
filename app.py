@@ -3342,11 +3342,24 @@ def mobile_signup():
     body = request.get_json()
     email = body.get('email', '').strip().lower()
     password = body.get('password', '').strip()
+    ref_code = (body.get('ref_code') or '').strip().upper()
     if not email or not password or len(password) < 6:
         return jsonify({'success': False, 'error': 'Valid email and password (min 6 chars) required'}), 400
     user = create_user(email, generate_password_hash(password))
     if not user:
         return jsonify({'success': False, 'error': 'An account with that email already exists'}), 409
+
+    # Give every new mobile account its own referral code (same scheme the
+    # web /signup form uses), and apply a redeemed code's bonus if one was sent.
+    user_ref_code = email.split('@')[0].upper()[:6] + str(user['id'])
+    _db_set_referral_code(user['id'], user_ref_code)
+    referral_applied = False
+    if ref_code:
+        referrer = _db_get_user_by_referral_code(ref_code)
+        if referrer and referrer['id'] != user['id']:
+            _db_apply_referral(user['id'], referrer['id'], ref_code)
+            referral_applied = True
+
     import secrets as _secrets
     token = _secrets.token_hex(32)
     create_session(user['id'], token)
@@ -3354,6 +3367,7 @@ def mobile_signup():
         'success': True,
         'session_token': token,
         'user': {'id': user['id'], 'email': user['email'], 'subscription_status': 'free'},
+        'referral_applied': referral_applied,
     })
 
 
@@ -3600,6 +3614,7 @@ def mobile_collection():
                 'grade': s.get('grade'),
                 'cert': s.get('cert'),
                 'ebay_avg': s.get('ebay_avg'),
+                'paid_price': s.get('paid_price'),
                 'scanned_at': str(s.get('scanned_at', ''))[:10],
             })
         return jsonify({'success': True, 'cards': cards, 'total': total})
@@ -3905,12 +3920,23 @@ def mobile_user():
     email = user.get('email', '')
     is_pro = user.get('subscription_status') == 'pro'
     name = email.split('@')[0].capitalize() if email else 'User'
+
+    # Backfill a referral code for accounts created before mobile signup
+    # started generating one (or via the pre-fix code path).
+    referral_code = user.get('referral_code') or ''
+    if not referral_code and email:
+        referral_code = email.split('@')[0].upper()[:6] + str(user['id'])
+        try:
+            _db_set_referral_code(user['id'], referral_code)
+        except Exception:
+            referral_code = ''  # don't surface a code we failed to persist
+
     return jsonify({
         'email': email,
         'name': name,
         'is_pro': is_pro,
         'subscription_status': user.get('subscription_status', 'free'),
-        'referral_code': user.get('referral_code') or '',
+        'referral_code': referral_code,
         'google_connected': bool(user.get('google_access_token')),
         'google_sheet_id': user.get('google_sheet_id') or '',
     })
@@ -4201,6 +4227,44 @@ def get_profile():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _claim_buyer_placeholder_pg(cur, placeholder_id, real_user_id):
+    """Move a placeholder Connect-buyer account's chat rooms/messages onto the
+    real user_id claiming that username. Leaves the placeholder user row in
+    place (unusable login, no username) rather than deleting it, so we don't
+    have to worry about other tables that might still reference it."""
+    cur.execute("SELECT room_id FROM chat_room_members WHERE user_id = %s", (placeholder_id,))
+    placeholder_rooms = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT room_id FROM chat_room_members WHERE user_id = %s", (real_user_id,))
+    real_user_rooms = {r[0] for r in cur.fetchall()}
+    for room_id in placeholder_rooms:
+        if room_id in real_user_rooms:
+            # Real user is already in this room somehow -- just drop the stale placeholder row.
+            cur.execute("DELETE FROM chat_room_members WHERE room_id = %s AND user_id = %s", (room_id, placeholder_id))
+        else:
+            cur.execute("UPDATE chat_room_members SET user_id = %s WHERE room_id = %s AND user_id = %s",
+                        (real_user_id, room_id, placeholder_id))
+    cur.execute("UPDATE chat_messages SET sender_id = %s WHERE sender_id = %s", (real_user_id, placeholder_id))
+    cur.execute("UPDATE chat_rooms SET created_by = %s WHERE created_by = %s", (real_user_id, placeholder_id))
+    cur.execute("UPDATE users SET username = NULL WHERE id = %s", (placeholder_id,))
+
+
+def _claim_buyer_placeholder_sqlite(db, placeholder_id, real_user_id):
+    """SQLite-fallback equivalent of _claim_buyer_placeholder_pg, for local dev."""
+    placeholder_rooms = [r[0] for r in db.execute(
+        "SELECT room_id FROM chat_room_members WHERE user_id = ?", (placeholder_id,)).fetchall()]
+    real_user_rooms = {r[0] for r in db.execute(
+        "SELECT room_id FROM chat_room_members WHERE user_id = ?", (real_user_id,)).fetchall()}
+    for room_id in placeholder_rooms:
+        if room_id in real_user_rooms:
+            db.execute("DELETE FROM chat_room_members WHERE room_id = ? AND user_id = ?", (room_id, placeholder_id))
+        else:
+            db.execute("UPDATE chat_room_members SET user_id = ? WHERE room_id = ? AND user_id = ?",
+                       (real_user_id, room_id, placeholder_id))
+    db.execute("UPDATE chat_messages SET sender_id = ? WHERE sender_id = ?", (real_user_id, placeholder_id))
+    db.execute("UPDATE chat_rooms SET created_by = ? WHERE created_by = ?", (real_user_id, placeholder_id))
+    db.execute("UPDATE users SET username = NULL WHERE id = ?", (placeholder_id,))
+
+
 @app.route('/api/mobile/profile/update', methods=['POST'])
 @mobile_auth
 def update_profile():
@@ -4220,10 +4284,19 @@ def update_profile():
         if DATABASE_URL:
             cur = db.cursor()
             if username:
-                cur.execute("SELECT id FROM users WHERE username = %s AND id != %s", (username, request.mobile_user_id))
-                if cur.fetchone():
-                    cur.close(); db.close()
-                    return jsonify({'success': False, 'error': 'Username already taken'}), 409
+                cur.execute("SELECT id, email FROM users WHERE username = %s AND id != %s", (username, request.mobile_user_id))
+                existing = cur.fetchone()
+                if existing:
+                    existing_id, existing_email = existing[0], existing[1]
+                    if existing_email and existing_email.startswith('buyer+') and existing_email.endswith('@buyers.slabvault.internal'):
+                        # This username belongs to a lazily-created Connect-buyer placeholder
+                        # account, not a real user -- the real person is claiming their profile.
+                        # Move the placeholder's chat history onto the real account instead of
+                        # blocking the signup on "username taken".
+                        _claim_buyer_placeholder_pg(cur, existing_id, request.mobile_user_id)
+                    else:
+                        cur.close(); db.close()
+                        return jsonify({'success': False, 'error': 'Username already taken'}), 409
             fields, vals = [], []
             if username: fields.append("username = %s"); vals.append(username)
             if bio is not None: fields.append("bio = %s"); vals.append(bio)
@@ -4236,10 +4309,14 @@ def update_profile():
         else:
             # SQLite fallback
             if username:
-                dup = db.execute("SELECT id FROM users WHERE username = ? AND id != ?", (username, request.mobile_user_id)).fetchone()
+                dup = db.execute("SELECT id, email FROM users WHERE username = ? AND id != ?", (username, request.mobile_user_id)).fetchone()
                 if dup:
-                    db.close()
-                    return jsonify({'success': False, 'error': 'Username already taken'}), 409
+                    existing_id, existing_email = dup[0], dup[1]
+                    if existing_email and existing_email.startswith('buyer+') and existing_email.endswith('@buyers.slabvault.internal'):
+                        _claim_buyer_placeholder_sqlite(db, existing_id, request.mobile_user_id)
+                    else:
+                        db.close()
+                        return jsonify({'success': False, 'error': 'Username already taken'}), 409
             fields, vals = [], []
             if username: fields.append("username = ?"); vals.append(username)
             if bio is not None: fields.append("bio = ?"); vals.append(bio)
@@ -4297,8 +4374,15 @@ def check_username():
     available = True
     if DATABASE_URL:
         cur = db.cursor()
-        cur.execute("SELECT id FROM users WHERE username = %s AND id != %s", (username, request.mobile_user_id))
-        available = cur.fetchone() is None
+        cur.execute("SELECT id, email FROM users WHERE username = %s AND id != %s", (username, request.mobile_user_id))
+        row = cur.fetchone()
+        if row is None:
+            available = True
+        else:
+            existing_email = row[1]
+            # A Connect-buyer placeholder holding this username doesn't count as "taken" --
+            # claiming it (via profile/update) merges its chat history onto the real account.
+            available = bool(existing_email and existing_email.startswith('buyer+') and existing_email.endswith('@buyers.slabvault.internal'))
         cur.close()
     db.close()
     return jsonify({'available': available})
@@ -4567,7 +4651,28 @@ def send_chat_message(room_id):
                 UPDATE chat_room_members SET unread_count = unread_count + 1
                 WHERE room_id = %s AND user_id != %s
             """, (room_id, request.mobile_user_id))
-            db.commit(); cur.close()
+            db.commit()
+
+            # Push notify the other member(s) in the room
+            try:
+                cur.execute("SELECT COALESCE(username, email) FROM users WHERE id = %s", (request.mobile_user_id,))
+                sender_row = cur.fetchone()
+                sender_name = sender_row[0] if sender_row else 'Someone'
+                cur.execute("""
+                    SELECT push_token FROM users u
+                    JOIN chat_room_members m ON m.user_id = u.id
+                    WHERE m.room_id = %s AND u.id != %s AND u.push_token IS NOT NULL AND u.push_token != ''
+                """, (room_id, request.mobile_user_id))
+                recipient_tokens = [r[0] for r in cur.fetchall()]
+                cur.close()
+                if recipient_tokens:
+                    from price_alerts import send_expo_push
+                    title = f"{sender_name}"
+                    body_text = (f"💰 Offer: ${offer_amount}" if offer_amount else message)[:120]
+                    for token in recipient_tokens:
+                        send_expo_push(token, title, body_text, {"room_id": room_id})
+            except Exception as e:
+                app.logger.warning(f"Chat push notify failed: {e}")
         db.close()
         return jsonify({'success': True})
     except Exception as e:
@@ -4876,17 +4981,32 @@ def marketplace_send_message():
         if DATABASE_URL:
             cur = db.cursor()
             # Get listing owner
-            cur.execute("SELECT user_id FROM marketplace_listings WHERE id = %s", (body.get('listing_id'),))
+            cur.execute("SELECT user_id, name FROM marketplace_listings WHERE id = %s", (body.get('listing_id'),))
             row = cur.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Listing not found'}), 404
-            receiver_id = row[0]
+            receiver_id, listing_name = row
             cur.execute("""
                 INSERT INTO marketplace_messages (listing_id, sender_id, receiver_id, message, offer_amount)
                 VALUES (%s, %s, %s, %s, %s)
             """, (body.get('listing_id'), request.mobile_user_id, receiver_id,
                   body.get('message'), body.get('offer_amount')))
-            db.commit(); cur.close()
+            db.commit()
+
+            # Push notify the listing owner
+            try:
+                cur.execute("SELECT push_token FROM users WHERE id = %s", (receiver_id,))
+                prow = cur.fetchone()
+                cur.close()
+                if prow and prow[0]:
+                    from price_alerts import send_expo_push
+                    offer_amount = body.get('offer_amount')
+                    title = "New offer 💰" if offer_amount else "New message"
+                    body_text = (f"${offer_amount} offer on {listing_name or 'your listing'}" if offer_amount
+                                 else (body.get('message') or f"New message about {listing_name or 'your listing'}"))[:120]
+                    send_expo_push(prow[0], title, body_text, {"listing_id": body.get('listing_id')})
+            except Exception as e:
+                app.logger.warning(f"Marketplace push notify failed: {e}")
         db.close()
         return jsonify({'success': True})
     except Exception as e:
@@ -4998,6 +5118,15 @@ def update_paid_price(card_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Background jobs ──────────────────────────────────────────────────────────
+# Runs at import time so it starts under gunicorn too, not just `python app.py`.
+try:
+    from price_alerts import start_price_alert_scheduler
+    start_price_alert_scheduler(interval_hours=6)
+except Exception as e:
+    app.logger.warning(f"Could not start price alert scheduler: {e}")
 
 
 if __name__ == '__main__':
