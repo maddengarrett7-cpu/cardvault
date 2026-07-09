@@ -4460,7 +4460,7 @@ def sync_subscription():
             return jsonify({'success': False, 'error': f'RevenueCat lookup failed ({resp.status_code})'}), 502
 
         entitlements = resp.json().get('subscriber', {}).get('entitlements', {})
-        pro_entitlement = entitlements.get('pro')
+        pro_entitlement = entitlements.get('SlabVault Pro')
         is_active = False
         if pro_entitlement:
             expires = pro_entitlement.get('expires_date')
