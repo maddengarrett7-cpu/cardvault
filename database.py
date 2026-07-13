@@ -328,27 +328,48 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
-        # One-time seed from the buyers that used to be hardcoded in the app
+        # De-dupe any rows from before the unique constraint existed (e.g. a
+        # cold-start race between gunicorn workers double-seeding), keeping
+        # the lowest id per instagram handle.
         try:
-            cur.execute("SELECT COUNT(*) FROM buyers")
-            if cur.fetchone()[0] == 0:
-                seed_buyers = [
-                    ('Milo Cards', '@milo.cards', 'milo.cards', 'All Ranges,Paying Strong', None, 0, 999999, '/static/buyers/milo.cards.png', 1),
-                    ('Sunset Sports Cards', '@sunsetsports_cards', 'sunsetsports_cards', 'All Sports,$10–$25,000 Range,90% Payouts', None, 10, 25000, '/static/buyers/sunsetsports_cards.png', 2),
-                    ('Trev Sports Cards', '@trevsportscards01', 'trevsportscards01', 'All Sports,$10–$20,000 Range,90–100% Payouts,Strong on Case Hits', None, 10, 20000, '/static/buyers/trevsportscards01.png', 3),
-                    ('HTX Cards', '@htxcards7', 'htxcards7', 'All Sports,$10–$50,000 Range,Strong Payouts', None, 10, 50000, '/static/buyers/htxcards.png', 4),
-                    ('OMO Sports Cards', '@omo.sportscards', 'omo.sportscards', 'Hockey,Buying Hockey', 'hockey', 0, 999999, '/static/buyers/omo.sportscards.png', 5),
-                    ("Nate's Cards", '@natescards_', 'natescards_', 'All Sports,$20–$150 Range,Strongest in Range', None, 20, 150, '/static/buyers/natescards.png', 6),
-                    ('Aidan | Sport Cards Collector', '@sportcardscollector', 'sportcardscollector', 'All Sports,Paying Strong', None, 0, 999999, '/static/buyers/sportcardscollector.png', 7),
-                    ('ATL Cardz', '@atl_sportcardz', 'atl_sportcardz', 'All Sports,$10–$10,000 Range,Paying Strong', None, 10, 10000, '/static/buyers/atl_sportcardz.jpg', 8),
-                    ('Mason | Small Town Sportscards', '@smalltown.sportscards', 'smalltown.sportscards', 'All Sports,$10–$50,000 Range,Slabs & Sealed', None, 10, 50000, '/static/buyers/smalltown.sportscards.jpg', 9),
-                ]
-                for name, handle, instagram, tags, sports, min_v, max_v, logo, order in seed_buyers:
-                    cur.execute("""
-                        INSERT INTO buyers (name, handle, instagram, tags, sports, min_value, max_value, logo_url, sort_order)
-                        VALUES (%s, %s, %s, %s, COALESCE(%s, 'football,basketball,baseball,hockey,soccer'), %s, %s, %s, %s)
-                    """, (name, handle, instagram, tags, sports, min_v, max_v, logo, order))
-                conn.commit()
+            cur.execute("""
+                DELETE FROM buyers a USING buyers b
+                WHERE a.instagram = b.instagram AND a.id > b.id
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Enforce uniqueness going forward so concurrent workers can't
+        # double-seed again — ON CONFLICT below relies on this.
+        try:
+            cur.execute("ALTER TABLE buyers ADD CONSTRAINT buyers_instagram_unique UNIQUE (instagram)")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # One-time seed from the buyers that used to be hardcoded in the app.
+        # ON CONFLICT makes this safe to run from every gunicorn worker on
+        # every boot, unlike a COUNT(*)==0 check which races.
+        try:
+            seed_buyers = [
+                ('Milo Cards', '@milo.cards', 'milo.cards', 'All Ranges,Paying Strong', None, 0, 999999, '/static/buyers/milo.cards.png', 1),
+                ('Sunset Sports Cards', '@sunsetsports_cards', 'sunsetsports_cards', 'All Sports,$10–$25,000 Range,90% Payouts', None, 10, 25000, '/static/buyers/sunsetsports_cards.png', 2),
+                ('Trev Sports Cards', '@trevsportscards01', 'trevsportscards01', 'All Sports,$10–$20,000 Range,90–100% Payouts,Strong on Case Hits', None, 10, 20000, '/static/buyers/trevsportscards01.png', 3),
+                ('HTX Cards', '@htxcards7', 'htxcards7', 'All Sports,$10–$50,000 Range,Strong Payouts', None, 10, 50000, '/static/buyers/htxcards.png', 4),
+                ('OMO Sports Cards', '@omo.sportscards', 'omo.sportscards', 'Hockey,Buying Hockey', 'hockey', 0, 999999, '/static/buyers/omo.sportscards.png', 5),
+                ("Nate's Cards", '@natescards_', 'natescards_', 'All Sports,$20–$150 Range,Strongest in Range', None, 20, 150, '/static/buyers/natescards.png', 6),
+                ('Aidan | Sport Cards Collector', '@sportcardscollector', 'sportcardscollector', 'All Sports,Paying Strong', None, 0, 999999, '/static/buyers/sportcardscollector.png', 7),
+                ('ATL Cardz', '@atl_sportcardz', 'atl_sportcardz', 'All Sports,$10–$10,000 Range,Paying Strong', None, 10, 10000, '/static/buyers/atl_sportcardz.jpg', 8),
+                ('Mason | Small Town Sportscards', '@smalltown.sportscards', 'smalltown.sportscards', 'All Sports,$10–$50,000 Range,Slabs & Sealed', None, 10, 50000, '/static/buyers/smalltown.sportscards.jpg', 9),
+            ]
+            for name, handle, instagram, tags, sports, min_v, max_v, logo, order in seed_buyers:
+                cur.execute("""
+                    INSERT INTO buyers (name, handle, instagram, tags, sports, min_value, max_value, logo_url, sort_order)
+                    VALUES (%s, %s, %s, %s, COALESCE(%s, 'football,basketball,baseball,hockey,soccer'), %s, %s, %s, %s)
+                    ON CONFLICT (instagram) DO NOTHING
+                """, (name, handle, instagram, tags, sports, min_v, max_v, logo, order))
+            conn.commit()
         except Exception:
             conn.rollback()
 
