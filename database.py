@@ -273,6 +273,38 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # Blocked users (Apple 1.2 — safety: users must be able to block each other)
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS blocked_users (
+                    id SERIAL PRIMARY KEY,
+                    blocker_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    blocked_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(blocker_id, blocked_id)
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # User reports (Apple 1.2 — safety: users must be able to report abuse)
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_reports (
+                    id SERIAL PRIMARY KEY,
+                    reporter_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    reported_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    room_id INTEGER REFERENCES chat_rooms(id) ON DELETE SET NULL,
+                    reason TEXT,
+                    status TEXT DEFAULT 'open',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Profile columns on users table
         for col, definition in [
             ("username", "TEXT"),

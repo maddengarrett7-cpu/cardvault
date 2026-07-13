@@ -4537,8 +4537,13 @@ def get_chat_rooms():
                      LIMIT 3) as other_members
                 FROM chat_rooms r
                 JOIN chat_room_members m ON m.room_id = r.id AND m.user_id = %s
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM chat_room_members cm2
+                    JOIN blocked_users b ON b.blocker_id = %s AND b.blocked_id = cm2.user_id
+                    WHERE cm2.room_id = r.id
+                )
                 ORDER BY r.last_message_at DESC
-            """, (request.mobile_user_id, request.mobile_user_id))
+            """, (request.mobile_user_id, request.mobile_user_id, request.mobile_user_id))
             rooms = [dict(r) for r in cur.fetchall()]
             cur.close()
         db.close()
@@ -4574,6 +4579,16 @@ def create_chat_room():
             # For DMs, check if room already exists
             if not is_group and len(all_members) == 2:
                 other_id = [m for m in all_members if m != request.mobile_user_id][0]
+
+                cur.execute("""
+                    SELECT 1 FROM blocked_users
+                    WHERE (blocker_id = %s AND blocked_id = %s)
+                       OR (blocker_id = %s AND blocked_id = %s)
+                """, (request.mobile_user_id, other_id, other_id, request.mobile_user_id))
+                if cur.fetchone():
+                    cur.close(); db.close()
+                    return jsonify({'success': False, 'error': 'blocked'}), 403
+
                 cur.execute("""
                     SELECT r.id FROM chat_rooms r
                     JOIN chat_room_members m1 ON m1.room_id = r.id AND m1.user_id = %s
@@ -4653,6 +4668,19 @@ def send_chat_message(room_id):
                 cur.close(); db.close()
                 return jsonify({'success': False, 'error': 'Not a member'}), 403
 
+            # Blocked either direction? Don't let the message through.
+            cur.execute("""
+                SELECT 1 FROM chat_room_members cm
+                JOIN blocked_users b ON
+                    (b.blocker_id = %s AND b.blocked_id = cm.user_id) OR
+                    (b.blocked_id = %s AND b.blocker_id = cm.user_id)
+                WHERE cm.room_id = %s AND cm.user_id != %s
+                LIMIT 1
+            """, (request.mobile_user_id, request.mobile_user_id, room_id, request.mobile_user_id))
+            if cur.fetchone():
+                cur.close(); db.close()
+                return jsonify({'success': False, 'error': 'blocked'}), 403
+
             cur.execute("""
                 INSERT INTO chat_messages (room_id, sender_id, message, offer_amount)
                 VALUES (%s, %s, %s, %s)
@@ -4721,6 +4749,82 @@ def leave_chat_room(room_id):
         if DATABASE_URL:
             cur = db.cursor()
             cur.execute("DELETE FROM chat_room_members WHERE room_id = %s AND user_id = %s", (room_id, request.mobile_user_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms/<int:room_id>/block', methods=['POST'])
+@mobile_auth
+def block_chat_room_member(room_id):
+    """Block every other member of this room for the current user. Hides the
+    room from the blocker's inbox and stops the blocked user's messages from
+    landing (both directions checked in send_chat_message)."""
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT 1 FROM chat_room_members WHERE room_id = %s AND user_id = %s", (room_id, request.mobile_user_id))
+            if not cur.fetchone():
+                cur.close(); db.close()
+                return jsonify({'success': False, 'error': 'Not a member'}), 403
+
+            cur.execute("SELECT user_id FROM chat_room_members WHERE room_id = %s AND user_id != %s", (room_id, request.mobile_user_id))
+            other_ids = [r[0] for r in cur.fetchall()]
+            for other_id in other_ids:
+                cur.execute("""
+                    INSERT INTO blocked_users (blocker_id, blocked_id) VALUES (%s, %s)
+                    ON CONFLICT DO NOTHING
+                """, (request.mobile_user_id, other_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms/<int:room_id>/unblock', methods=['POST'])
+@mobile_auth
+def unblock_chat_room_member(room_id):
+    """Undo a block for every other member of this room."""
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT user_id FROM chat_room_members WHERE room_id = %s AND user_id != %s", (room_id, request.mobile_user_id))
+            other_ids = [r[0] for r in cur.fetchall()]
+            for other_id in other_ids:
+                cur.execute("DELETE FROM blocked_users WHERE blocker_id = %s AND blocked_id = %s", (request.mobile_user_id, other_id))
+            db.commit(); cur.close()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/chat/rooms/<int:room_id>/report', methods=['POST'])
+@mobile_auth
+def report_chat_room(room_id):
+    """Log an abuse report against every other member of this room for manual review."""
+    try:
+        body = request.get_json() or {}
+        reason = (body.get('reason') or 'Not specified').strip()[:500]
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT user_id FROM chat_room_members WHERE room_id = %s AND user_id != %s", (room_id, request.mobile_user_id))
+            other_ids = [r[0] for r in cur.fetchall()]
+            for other_id in other_ids:
+                cur.execute("""
+                    INSERT INTO user_reports (reporter_id, reported_id, room_id, reason)
+                    VALUES (%s, %s, %s, %s)
+                """, (request.mobile_user_id, other_id, room_id, reason))
             db.commit(); cur.close()
         db.close()
         return jsonify({'success': True})
