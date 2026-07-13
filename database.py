@@ -305,6 +305,53 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # Verified buyers (CardConnect) — server-driven so new buyers don't
+        # require an app build. tags/sports stored comma-separated.
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS buyers (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    handle TEXT,
+                    instagram TEXT NOT NULL,
+                    tags TEXT,
+                    sports TEXT DEFAULT 'football,basketball,baseball,hockey,soccer',
+                    min_value FLOAT DEFAULT 0,
+                    max_value FLOAT DEFAULT 999999,
+                    logo_url TEXT,
+                    active BOOLEAN DEFAULT TRUE,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # One-time seed from the buyers that used to be hardcoded in the app
+        try:
+            cur.execute("SELECT COUNT(*) FROM buyers")
+            if cur.fetchone()[0] == 0:
+                seed_buyers = [
+                    ('Milo Cards', '@milo.cards', 'milo.cards', 'All Ranges,Paying Strong', None, 0, 999999, '/static/buyers/milo.cards.png', 1),
+                    ('Sunset Sports Cards', '@sunsetsports_cards', 'sunsetsports_cards', 'All Sports,$10–$25,000 Range,90% Payouts', None, 10, 25000, '/static/buyers/sunsetsports_cards.png', 2),
+                    ('Trev Sports Cards', '@trevsportscards01', 'trevsportscards01', 'All Sports,$10–$20,000 Range,90–100% Payouts,Strong on Case Hits', None, 10, 20000, '/static/buyers/trevsportscards01.png', 3),
+                    ('HTX Cards', '@htxcards7', 'htxcards7', 'All Sports,$10–$50,000 Range,Strong Payouts', None, 10, 50000, '/static/buyers/htxcards.png', 4),
+                    ('OMO Sports Cards', '@omo.sportscards', 'omo.sportscards', 'Hockey,Buying Hockey', 'hockey', 0, 999999, '/static/buyers/omo.sportscards.png', 5),
+                    ("Nate's Cards", '@natescards_', 'natescards_', 'All Sports,$20–$150 Range,Strongest in Range', None, 20, 150, '/static/buyers/natescards.png', 6),
+                    ('Aidan | Sport Cards Collector', '@sportcardscollector', 'sportcardscollector', 'All Sports,Paying Strong', None, 0, 999999, '/static/buyers/sportcardscollector.png', 7),
+                    ('ATL Cardz', '@atl_sportcardz', 'atl_sportcardz', 'All Sports,$10–$10,000 Range,Paying Strong', None, 10, 10000, '/static/buyers/atl_sportcardz.jpg', 8),
+                    ('Mason | Small Town Sportscards', '@smalltown.sportscards', 'smalltown.sportscards', 'All Sports,$10–$50,000 Range,Slabs & Sealed', None, 10, 50000, '/static/buyers/smalltown.sportscards.jpg', 9),
+                ]
+                for name, handle, instagram, tags, sports, min_v, max_v, logo, order in seed_buyers:
+                    cur.execute("""
+                        INSERT INTO buyers (name, handle, instagram, tags, sports, min_value, max_value, logo_url, sort_order)
+                        VALUES (%s, %s, %s, %s, COALESCE(%s, 'football,basketball,baseball,hockey,soccer'), %s, %s, %s, %s)
+                    """, (name, handle, instagram, tags, sports, min_v, max_v, logo, order))
+                conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Profile columns on users table
         for col, definition in [
             ("username", "TEXT"),

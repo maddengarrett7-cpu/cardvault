@@ -1257,6 +1257,143 @@ def admin_set_free(secret):
         return f"Error: {str(e)}", 500
     return f"✅ {OWNER_EMAIL} is now Free (remember to flip back to Pro after your screenshot)."
 
+
+@app.route('/admin/buyers/<secret>', methods=['GET'])
+def admin_buyers(secret):
+    """Simple page to add/remove CardConnect verified buyers without
+    touching the database directly or shipping an app build."""
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    rows = []
+    if DATABASE_URL:
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM buyers ORDER BY sort_order ASC, id ASC")
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+    db.close()
+
+    def buyer_row(b):
+        status = '🟢 Active' if b['active'] else '⚪ Inactive'
+        toggle_label = 'Deactivate' if b['active'] else 'Activate'
+        logo = b.get('logo_url') or ''
+        logo_full = f"{APP_BASE_URL}{logo}" if logo.startswith('/') else logo
+        logo_img = f'<img src="{logo_full}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;">' if logo else ''
+        return f'''
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:8px">{logo_img}{b['name']}</td>
+          <td style="padding:8px;color:#888">@{b['instagram']}</td>
+          <td style="padding:8px;color:#888">{b.get('tags') or ''}</td>
+          <td style="padding:8px;color:#888">${b.get('min_value') or 0:.0f}–${b.get('max_value') or 0:.0f}</td>
+          <td style="padding:8px">{status}</td>
+          <td style="padding:8px">
+            <form method="POST" action="/admin/buyers/{secret}/toggle/{b['id']}" style="display:inline">
+              <button style="background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:4px 10px;cursor:pointer">{toggle_label}</button>
+            </form>
+          </td>
+        </tr>'''
+
+    rows_html = ''.join(buyer_row(b) for b in rows)
+
+    return f'''
+    <html><head><title>SlabVault — Manage Buyers</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {{ background:#0a0a0a; color:#fff; font-family:-apple-system,sans-serif; padding:24px; }}
+      h1 {{ font-size:20px; }}
+      table {{ width:100%; border-collapse:collapse; margin-top:20px; font-size:13px; }}
+      th {{ text-align:left; padding:8px; color:#666; border-bottom:1px solid #333; }}
+      input, select {{ background:#111; border:1px solid #333; color:#fff; border-radius:6px; padding:8px; margin:4px 0; width:100%; box-sizing:border-box; }}
+      label {{ font-size:12px; color:#888; }}
+      .row {{ display:flex; gap:12px; flex-wrap:wrap; }}
+      .row > div {{ flex:1; min-width:180px; }}
+      button[type=submit] {{ background:#00e676; color:#000; border:none; border-radius:8px; padding:12px 20px; font-weight:800; cursor:pointer; margin-top:12px; }}
+    </style>
+    </head><body>
+      <h1>🟢 SlabVault — Manage Verified Buyers</h1>
+      <p style="color:#666">Adding a buyer here shows up in the app immediately — no build needed.</p>
+
+      <form method="POST" action="/admin/buyers/{secret}/add" enctype="multipart/form-data" style="background:#111;border:1px solid #222;border-radius:12px;padding:16px;margin-top:16px">
+        <div class="row">
+          <div><label>Name</label><input name="name" required placeholder="e.g. Milo Cards"></div>
+          <div><label>Instagram handle (no @)</label><input name="instagram" required placeholder="milo.cards"></div>
+        </div>
+        <div class="row">
+          <div><label>Tags (comma separated)</label><input name="tags" placeholder="All Ranges, Paying Strong"></div>
+          <div><label>Sports (comma separated, blank = all)</label><input name="sports" placeholder="football, basketball"></div>
+        </div>
+        <div class="row">
+          <div><label>Min value ($)</label><input name="min_value" type="number" value="0"></div>
+          <div><label>Max value ($)</label><input name="max_value" type="number" value="999999"></div>
+        </div>
+        <div><label>Logo image</label><input name="logo" type="file" accept="image/*"></div>
+        <button type="submit">+ Add Buyer</button>
+      </form>
+
+      <table>
+        <tr><th>Buyer</th><th>Instagram</th><th>Tags</th><th>Value Range</th><th>Status</th><th></th></tr>
+        {rows_html}
+      </table>
+    </body></html>
+    '''
+
+
+@app.route('/admin/buyers/<secret>/add', methods=['POST'])
+def admin_add_buyer(secret):
+    if not check_admin(secret):
+        return "Forbidden", 403
+    try:
+        name = request.form.get('name', '').strip()
+        instagram = request.form.get('instagram', '').strip().lstrip('@')
+        tags = request.form.get('tags', '').strip()
+        sports = request.form.get('sports', '').strip()
+        min_value = float(request.form.get('min_value') or 0)
+        max_value = float(request.form.get('max_value') or 999999)
+        if not name or not instagram:
+            return "Name and Instagram handle are required. <a href='/admin/buyers/{}'>Back</a>".format(secret), 400
+
+        logo_url = None
+        logo_file = request.files.get('logo')
+        if logo_file and logo_file.filename:
+            import uuid
+            ext = os.path.splitext(logo_file.filename)[1] or '.jpg'
+            filename = f"{instagram}_{uuid.uuid4().hex[:8]}{ext}"
+            path = os.path.join(UPLOAD_ROOT, 'buyers', filename)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            logo_file.save(path)
+            logo_url = f"/uploads/buyers/{filename}"
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("""
+                INSERT INTO buyers (name, handle, instagram, tags, sports, min_value, max_value, logo_url, sort_order)
+                VALUES (%s, %s, %s, %s, COALESCE(NULLIF(%s, ''), 'football,basketball,baseball,hockey,soccer'), %s, %s, %s,
+                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM buyers))
+            """, (name, f"@{instagram}", instagram, tags, sports, min_value, max_value, logo_url))
+            db.commit(); cur.close()
+        db.close()
+        return redirect(f"/admin/buyers/{secret}")
+    except Exception as e:
+        return f"Error: {str(e)} <a href='/admin/buyers/{secret}'>Back</a>", 500
+
+
+@app.route('/admin/buyers/<secret>/toggle/<int:buyer_id>', methods=['POST'])
+def admin_toggle_buyer(secret, buyer_id):
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    if DATABASE_URL:
+        cur = db.cursor()
+        cur.execute("UPDATE buyers SET active = NOT active WHERE id = %s", (buyer_id,))
+        db.commit(); cur.close()
+    db.close()
+    return redirect(f"/admin/buyers/{secret}")
+
+
 @app.route('/mission')
 def mission():
     return render_template('mission.html')
@@ -4511,6 +4648,44 @@ def revenuecat_webhook():
             db.close()
 
         return jsonify({'success': True}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/buyers', methods=['GET'])
+@mobile_auth
+def get_buyers():
+    """Verified CardConnect buyers, server-driven so new buyers can be added
+    from /admin/buyers without shipping a new app build."""
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        buyers = []
+        if DATABASE_URL:
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT id, name, handle, instagram, tags, sports, min_value, max_value, logo_url
+                FROM buyers WHERE active = TRUE ORDER BY sort_order ASC, id ASC
+            """)
+            rows = [dict(r) for r in cur.fetchall()]
+            cur.close()
+            for r in rows:
+                logo = r.get('logo_url')
+                if logo and logo.startswith('/'):
+                    logo = f"{APP_BASE_URL}{logo}"
+                buyers.append({
+                    'id': r['id'],
+                    'name': r['name'],
+                    'handle': r.get('handle') or f"@{r['instagram']}",
+                    'instagram': r['instagram'],
+                    'tags': [t.strip() for t in (r.get('tags') or '').split(',') if t.strip()],
+                    'sports': [s.strip() for s in (r.get('sports') or '').split(',') if s.strip()],
+                    'minValue': r.get('min_value') or 0,
+                    'maxValue': r.get('max_value') or 999999,
+                    'logoUrl': logo,
+                })
+        db.close()
+        return jsonify({'success': True, 'buyers': buyers})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
