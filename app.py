@@ -3977,6 +3977,31 @@ def mobile_clear_collection():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/mobile/account', methods=['DELETE'])
+@mobile_auth
+def mobile_delete_account():
+    """Permanently delete the signed-in user's account (Apple 5.1.1(v)).
+    Every other table references users(id) with ON DELETE CASCADE, so
+    deleting this one row cleans up sessions, scan history, marketplace
+    listings/likes, chat memberships + messages, ratings, blocks, and
+    reports automatically."""
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("DELETE FROM users WHERE id = %s", (request.mobile_user_id,))
+            db.commit()
+            cur.close()
+        else:
+            db.execute("DELETE FROM users WHERE id = ?", (request.mobile_user_id,))
+            db.commit()
+        db.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/mobile/sheet-preview', methods=['GET'])
 @mobile_auth
 def mobile_sheet_preview():
