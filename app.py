@@ -3981,20 +3981,41 @@ def mobile_clear_collection():
 @mobile_auth
 def mobile_delete_account():
     """Permanently delete the signed-in user's account (Apple 5.1.1(v)).
-    Every other table references users(id) with ON DELETE CASCADE, so
-    deleting this one row cleans up sessions, scan history, marketplace
-    listings/likes, chat memberships + messages, ratings, blocks, and
-    reports automatically."""
+    Explicitly deletes from every table that references users(id) instead
+    of relying on ON DELETE CASCADE -- some of these tables were created
+    before that clause existed in this file, and CREATE TABLE IF NOT EXISTS
+    doesn't retroactively add constraints to an already-existing table."""
     try:
         from database import get_db, DATABASE_URL
+        uid = request.mobile_user_id
         db = get_db()
         if DATABASE_URL:
             cur = db.cursor()
-            cur.execute("DELETE FROM users WHERE id = %s", (request.mobile_user_id,))
+            for stmt in [
+                "DELETE FROM user_sessions WHERE user_id = %s",
+                "DELETE FROM deals WHERE user_id = %s",
+                "DELETE FROM scan_history WHERE user_id = %s",
+                "DELETE FROM marketplace_likes WHERE user_id = %s",
+                "DELETE FROM chat_room_members WHERE user_id = %s",
+                "DELETE FROM chat_messages WHERE sender_id = %s",
+                "DELETE FROM marketplace_messages WHERE sender_id = %s OR receiver_id = %s",
+                "DELETE FROM seller_ratings WHERE seller_id = %s OR rater_id = %s",
+                "DELETE FROM blocked_users WHERE blocker_id = %s OR blocked_id = %s",
+                "DELETE FROM user_reports WHERE reporter_id = %s OR reported_id = %s",
+                "DELETE FROM marketplace_listings WHERE user_id = %s",
+                "UPDATE chat_rooms SET created_by = NULL WHERE created_by = %s",
+            ]:
+                try:
+                    param_count = stmt.count('%s')
+                    cur.execute(stmt, (uid,) * param_count)
+                except Exception:
+                    db.rollback()
+                    cur = db.cursor()
+            cur.execute("DELETE FROM users WHERE id = %s", (uid,))
             db.commit()
             cur.close()
         else:
-            db.execute("DELETE FROM users WHERE id = ?", (request.mobile_user_id,))
+            db.execute("DELETE FROM users WHERE id = ?", (uid,))
             db.commit()
         db.close()
         return jsonify({'success': True})
