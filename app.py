@@ -3562,7 +3562,9 @@ def mobile_scan():
                         if raw_data.get(field): data[field] = raw_data[field]
                     for field in ['set', 'parallel', 'serial', 'card_number', 'sport']:
                         if raw_data.get(field) and not data.get(field): data[field] = raw_data[field]
-                except Exception: pass
+                except Exception as e:
+                    app.logger.error(f"mobile_scan failed: {e}")
+                    pass
 
             # Scan back and merge
             if back_bytes:
@@ -3577,7 +3579,9 @@ def mobile_scan():
                             data[field] = back_data[field]
                     if back_data.get('rookie'):
                         data['rookie'] = True
-                except Exception: pass
+                except Exception as e:
+                    app.logger.error(f"mobile_scan failed: {e}")
+                    pass
 
             # Fix year for known rookies
             if data.get("name"):
@@ -3615,7 +3619,9 @@ def mobile_scan():
                 ebay_result, _ = search_ebay_sold(' '.join(query_parts))
                 if ebay_result and ebay_result.get('avg'):
                     data['ebay_avg'] = ebay_result['avg']
-            except Exception: pass
+            except Exception as e:
+                app.logger.error(f"mobile_scan failed: {e}")
+                pass
 
             save_scan(request.mobile_user_id, data)
             data['success'] = True
@@ -3671,13 +3677,17 @@ def mobile_scan():
                         if raw_data.get(field): data[field] = raw_data[field]
                     for field in ['set', 'parallel', 'serial', 'card_number', 'sport']:
                         if raw_data.get(field) and not data.get(field): data[field] = raw_data[field]
-                except Exception: pass
+                except Exception as e:
+                    app.logger.error(f"mobile_scan failed: {e}")
+                    pass
                 # Last resort: if year still missing, crop bottom strip and read copyright line directly
                 if not data.get('year'):
                     try:
                         year = extract_year_from_copyright(raw_image_bytes)
                         if year: data['year'] = year
-                    except Exception: pass
+                    except Exception as e:
+                        app.logger.error(f"mobile_scan failed: {e}")
+                        pass
 
         # ── Post-scan corrections (all scan modes) ──────────────────────────
 
@@ -3726,13 +3736,16 @@ def mobile_scan():
             if ebay_result and ebay_result.get('avg'):
                 data['ebay_avg'] = ebay_result['avg']
                 data['ebay_sales'] = ebay_result.get('sales', [])
-        except Exception: pass
+        except Exception as e:
+            app.logger.error(f"mobile_scan failed: {e}")
+            pass
 
         save_scan(request.mobile_user_id, data)
         data['success'] = True
         data['scans_left'] = max(0, limit - scans_used) if limit else 999
         return jsonify(data)
     except Exception as e:
+        app.logger.error(f"mobile_scan failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -3746,6 +3759,7 @@ def mobile_add_to_sheet():
         append_to_sheet(body, user=user)
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"mobile_add_to_sheet failed: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 
@@ -3773,6 +3787,7 @@ def mobile_collection():
             })
         return jsonify({'success': True, 'cards': cards, 'total': total})
     except Exception as e:
+        app.logger.error(f"mobile_collection failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -3817,7 +3832,8 @@ def mobile_create_deal_payment():
                 db.commit()
                 cur.close()
             db.close()
-        except Exception:
+        except Exception as e:
+            app.logger.error(f"mobile_create_deal_payment failed: {e}")
             pass
 
         session_obj = stripe.checkout.Session.create(
@@ -3845,6 +3861,7 @@ def mobile_create_deal_payment():
         )
         return jsonify({'success': True, 'checkout_url': session_obj.url, 'deal_id': deal_id})
     except Exception as e:
+        app.logger.error(f"mobile_create_deal_payment failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -3938,6 +3955,7 @@ def mobile_report_deal():
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"mobile_report_deal failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -3958,6 +3976,7 @@ def mobile_delete_card(card_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"mobile_delete_card failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -3978,6 +3997,7 @@ def mobile_clear_collection():
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"mobile_clear_collection failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4012,7 +4032,8 @@ def mobile_delete_account():
                 try:
                     param_count = stmt.count('%s')
                     cur.execute(stmt, (uid,) * param_count)
-                except Exception:
+                except Exception as e:
+                    app.logger.error(f"mobile_delete_account failed: {e}")
                     db.rollback()
                     cur = db.cursor()
             cur.execute("DELETE FROM users WHERE id = %s", (uid,))
@@ -4024,6 +4045,7 @@ def mobile_delete_account():
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"mobile_delete_account failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4078,7 +4100,8 @@ def mobile_sheet_preview():
             if value_str:
                 try:
                     total_value += float(value_str.replace('$', '').replace(',', ''))
-                except Exception:
+                except Exception as e:
+                    app.logger.error(f"mobile_sheet_preview failed: {e}")
                     pass
 
         return jsonify({
@@ -4094,6 +4117,7 @@ def mobile_sheet_preview():
             },
         })
     except Exception as e:
+        app.logger.error(f"mobile_sheet_preview failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4128,7 +4152,8 @@ def mobile_user():
         referral_code = email.split('@')[0].upper()[:6] + str(user['id'])
         try:
             _db_set_referral_code(user['id'], referral_code)
-        except Exception:
+        except Exception as e:
+            app.logger.error(f"mobile_user failed: {e}")
             referral_code = ''  # don't surface a code we failed to persist
 
     return jsonify({
@@ -4156,6 +4181,7 @@ def mobile_register_push():
         conn.commit(); cur.close(); conn.close()
         return jsonify({"success": True})
     except Exception as e:
+        app.logger.error(f"mobile_register_push failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/mobile/sheet-tabs", methods=["GET"])
@@ -4188,6 +4214,7 @@ def mobile_set_sheet_tab():
         conn.commit(); cur.close(); conn.close()
         return jsonify({"success": True, "tab": tab})
     except Exception as e:
+        app.logger.error(f"mobile_set_sheet_tab failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/mobile/sheet-service-email", methods=["GET"])
@@ -4294,6 +4321,7 @@ def mobile_scan_back():
             'merged': merged,
         })
     except Exception as e:
+        app.logger.error(f"mobile_scan_back failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4329,6 +4357,7 @@ def mobile_refresh_card_value(card_id):
         db.close()
         return jsonify({'success': True, 'ebay_avg': new_avg})
     except Exception as e:
+        app.logger.error(f"mobile_refresh_card_value failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4362,7 +4391,8 @@ def mobile_refresh_all_values():
                     else:
                         db.execute("UPDATE scan_history SET ebay_avg = ? WHERE id = ?", (avg, card['id']))
                     updated += 1
-            except Exception:
+            except Exception as e:
+                app.logger.error(f"mobile_refresh_all_values failed: {e}")
                 continue
         if DATABASE_URL:
             db.commit()
@@ -4372,6 +4402,7 @@ def mobile_refresh_all_values():
         db.close()
         return jsonify({'success': True, 'updated': updated})
     except Exception as e:
+        app.logger.error(f"mobile_refresh_all_values failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4425,6 +4456,7 @@ def get_profile():
             }
         })
     except Exception as e:
+        app.logger.error(f"get_profile failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4529,6 +4561,7 @@ def update_profile():
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"update_profile failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4561,6 +4594,7 @@ def upload_profile_pic():
         db.close()
         return jsonify({'success': True, 'url': url})
     except Exception as e:
+        app.logger.error(f"upload_profile_pic failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4624,6 +4658,7 @@ def get_or_create_buyer_user():
 
         return jsonify({'success': True, 'user_id': user['id'], 'username': instagram})
     except Exception as e:
+        app.logger.error(f"get_or_create_buyer_user failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4665,6 +4700,7 @@ def sync_subscription():
 
         return jsonify({'success': True, 'subscription_status': new_status})
     except Exception as e:
+        app.logger.error(f"sync_subscription failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4700,6 +4736,7 @@ def revenuecat_webhook():
 
         return jsonify({'success': True}), 200
     except Exception as e:
+        app.logger.error(f"revenuecat_webhook failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4738,6 +4775,7 @@ def get_buyers():
         db.close()
         return jsonify({'success': True, 'buyers': buyers})
     except Exception as e:
+        app.logger.error(f"get_buyers failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4775,6 +4813,7 @@ def get_chat_rooms():
         db.close()
         return jsonify({'success': True, 'rooms': rooms})
     except Exception as e:
+        app.logger.error(f"get_chat_rooms failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4840,6 +4879,7 @@ def create_chat_room():
         db.close()
         return jsonify({'success': True, 'room_id': room_id})
     except Exception as e:
+        app.logger.error(f"create_chat_room failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4872,6 +4912,7 @@ def get_chat_messages(room_id):
         db.close()
         return jsonify({'success': True, 'messages': messages})
     except Exception as e:
+        app.logger.error(f"get_chat_messages failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4963,6 +5004,7 @@ def add_chat_member(room_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"add_chat_member failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -4979,6 +5021,7 @@ def leave_chat_room(room_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"leave_chat_room failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5009,6 +5052,7 @@ def block_chat_room_member(room_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"block_chat_room_member failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5029,6 +5073,7 @@ def unblock_chat_room_member(room_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"unblock_chat_room_member failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5055,6 +5100,7 @@ def report_chat_room(room_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"report_chat_room failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5114,6 +5160,7 @@ def marketplace_get_listings():
 
         return jsonify({'success': True, 'listings': listings})
     except Exception as e:
+        app.logger.error(f"marketplace_get_listings failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5138,6 +5185,7 @@ def marketplace_upload_image():
         url = f"{APP_BASE_URL}/uploads/marketplace/{filename}"
         return jsonify({'success': True, 'url': url})
     except Exception as e:
+        app.logger.error(f"marketplace_upload_image failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5176,6 +5224,7 @@ def marketplace_create_listing():
 
         return jsonify({'success': True, 'listing_id': listing_id})
     except Exception as e:
+        app.logger.error(f"marketplace_create_listing failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5214,6 +5263,7 @@ def marketplace_update_listing(listing_id):
 
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"marketplace_update_listing failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5238,6 +5288,7 @@ def marketplace_my_listings():
 
         return jsonify({'success': True, 'listings': listings})
     except Exception as e:
+        app.logger.error(f"marketplace_my_listings failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5254,6 +5305,7 @@ def marketplace_delete_listing(listing_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"marketplace_delete_listing failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5270,6 +5322,7 @@ def marketplace_mark_sold(listing_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"marketplace_mark_sold failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5286,7 +5339,8 @@ def marketplace_like(listing_id):
                 cur.execute("INSERT INTO marketplace_likes (user_id, listing_id) VALUES (%s, %s)", (request.mobile_user_id, listing_id))
                 cur.execute("UPDATE marketplace_listings SET likes = likes + 1 WHERE id = %s", (listing_id,))
                 liked = True
-            except Exception:
+            except Exception as e:
+                app.logger.error(f"marketplace_like failed: {e}")
                 db.rollback()
                 cur.execute("DELETE FROM marketplace_likes WHERE user_id = %s AND listing_id = %s", (request.mobile_user_id, listing_id))
                 cur.execute("UPDATE marketplace_listings SET likes = GREATEST(likes - 1, 0) WHERE id = %s", (listing_id,))
@@ -5295,6 +5349,7 @@ def marketplace_like(listing_id):
         db.close()
         return jsonify({'success': True, 'liked': liked})
     except Exception as e:
+        app.logger.error(f"marketplace_like failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5311,6 +5366,7 @@ def marketplace_view(listing_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"marketplace_view failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5377,6 +5433,7 @@ def marketplace_get_messages(listing_id):
         db.close()
         return jsonify({'success': True, 'messages': messages})
     except Exception as e:
+        app.logger.error(f"marketplace_get_messages failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5393,6 +5450,7 @@ def marketplace_boost(listing_id):
         )
         return jsonify({'success': True, 'client_secret': intent.client_secret})
     except Exception as e:
+        app.logger.error(f"marketplace_boost failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5414,6 +5472,7 @@ def marketplace_boost_confirm(listing_id):
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"marketplace_boost_confirm failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5436,6 +5495,7 @@ def marketplace_rate_seller():
         db.close()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"marketplace_rate_seller failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
