@@ -3339,7 +3339,11 @@ def mobile_auth(f):
                     import psycopg2.extras
                     cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                     cur.execute("SELECT user_id FROM user_sessions WHERE session_token = %s", (token,))
-                    row = cur.fetchone(); cur.close()
+                    row = cur.fetchone()
+                    if row:
+                        cur.execute("UPDATE user_sessions SET last_seen = NOW() WHERE session_token = %s", (token,))
+                        db.commit()
+                    cur.close()
                 else:
                     row = db.execute("SELECT user_id FROM user_sessions WHERE session_token = ?", (token,)).fetchone()
                 if row:
@@ -4225,7 +4229,8 @@ def mobile_set_sheet():
             svc = build("sheets", "v4", credentials=creds)
             meta = svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
             sheet_title = meta.get("properties", {}).get("title", "Your Sheet")
-        except Exception:
+        except Exception as e:
+            app.logger.error(f"set-sheet access check failed for sheet_id={sheet_id}: {e}")
             return jsonify({"success": False, "error": "Could not access this sheet. Make sure you shared it with the CardScan service account email."}), 400
         save_google_sheet_id(request.mobile_user_id, sheet_id)
         return jsonify({"success": True, "sheet_id": sheet_id, "sheet_title": sheet_title})
