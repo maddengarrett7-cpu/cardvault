@@ -3388,6 +3388,21 @@ def mobile_debug():
     return jsonify(result)
 
 
+@app.route('/api/mobile/log-crash', methods=['POST'])
+def mobile_log_crash():
+    """Unprotected -- a crash can happen before login. Just logs the report."""
+    try:
+        body = request.get_json(force=True) or {}
+        app.logger.error(
+            f"CLIENT CRASH: {body.get('message')}\n"
+            f"Component stack: {body.get('componentStack')}\n"
+            f"Stack: {body.get('stack')}"
+        )
+    except Exception as e:
+        app.logger.error(f"mobile_log_crash failed: {e}")
+    return jsonify({'success': True})
+
+
 @app.route('/api/mobile/send-otp', methods=['POST'])
 def mobile_send_otp():
     """Send a 6-digit OTP to the user's email for password reset."""
