@@ -1,6 +1,6 @@
 {
-  "name": "CardScan — Sports Card Scanner",
-  "short_name": "CardScan",
+  "name": "SlabVault — Sports Card Scanner",
+  "short_name": "SlabVault",
   "description": "Scan and value your sports cards instantly with AI",
   "start_url": "/",
   "display": "standalone",
