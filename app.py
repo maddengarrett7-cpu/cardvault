@@ -1296,6 +1296,8 @@ def admin_buyers(secret):
               <form method="POST" action="/admin/buyers/{secret}/edit/{b['id']}" style="background:#161616;border:1px solid #333;border-radius:10px;padding:12px;margin-top:8px;min-width:280px;">
                 <label style="font-size:11px;color:#888;">Name</label>
                 <input name="name" value="{b['name']}" required>
+                <label style="font-size:11px;color:#888;">Instagram handle (no @)</label>
+                <input name="instagram" value="{b['instagram']}" required>
                 <label style="font-size:11px;color:#888;">Tags (comma separated)</label>
                 <input name="tags" value="{b.get('tags') or ''}">
                 <label style="font-size:11px;color:#888;">Sports (comma separated, blank = all)</label>
@@ -1416,23 +1418,24 @@ def admin_edit_buyer(secret, buyer_id):
         return "Forbidden", 403
     try:
         name = request.form.get('name', '').strip()
+        instagram = request.form.get('instagram', '').strip().lstrip('@')
         tags = request.form.get('tags', '').strip()
         sports = request.form.get('sports', '').strip()
         min_value = float(request.form.get('min_value') or 0)
         max_value = float(request.form.get('max_value') or 999999)
-        if not name:
-            return f"Name is required. <a href='/admin/buyers/{secret}'>Back</a>", 400
+        if not name or not instagram:
+            return f"Name and Instagram handle are required. <a href='/admin/buyers/{secret}'>Back</a>", 400
 
         from database import get_db, DATABASE_URL
         db = get_db()
         if DATABASE_URL:
             cur = db.cursor()
             cur.execute("""
-                UPDATE buyers SET name = %s, tags = %s,
+                UPDATE buyers SET name = %s, handle = %s, instagram = %s, tags = %s,
                     sports = COALESCE(NULLIF(%s, ''), 'football,basketball,baseball,hockey,soccer'),
                     min_value = %s, max_value = %s
                 WHERE id = %s
-            """, (name, tags, sports, min_value, max_value, buyer_id))
+            """, (name, f"@{instagram}", instagram, tags, sports, min_value, max_value, buyer_id))
             db.commit(); cur.close()
         db.close()
         return redirect(f"/admin/buyers/{secret}")
