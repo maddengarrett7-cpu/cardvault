@@ -1291,6 +1291,22 @@ def admin_buyers(secret):
             <form method="POST" action="/admin/buyers/{secret}/toggle/{b['id']}" style="display:inline">
               <button style="background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:4px 10px;cursor:pointer">{toggle_label}</button>
             </form>
+            <details style="display:inline-block;margin-left:6px;">
+              <summary style="cursor:pointer;color:#88aaff;display:inline;list-style:none;font-size:13px;">✎ Edit</summary>
+              <form method="POST" action="/admin/buyers/{secret}/edit/{b['id']}" style="background:#161616;border:1px solid #333;border-radius:10px;padding:12px;margin-top:8px;min-width:280px;">
+                <label style="font-size:11px;color:#888;">Name</label>
+                <input name="name" value="{b['name']}" required>
+                <label style="font-size:11px;color:#888;">Tags (comma separated)</label>
+                <input name="tags" value="{b.get('tags') or ''}">
+                <label style="font-size:11px;color:#888;">Sports (comma separated, blank = all)</label>
+                <input name="sports" value="{b.get('sports') or ''}">
+                <div style="display:flex;gap:8px;">
+                  <div style="flex:1;"><label style="font-size:11px;color:#888;">Min value ($)</label><input name="min_value" type="number" value="{b.get('min_value') or 0:.0f}"></div>
+                  <div style="flex:1;"><label style="font-size:11px;color:#888;">Max value ($)</label><input name="max_value" type="number" value="{b.get('max_value') or 0:.0f}"></div>
+                </div>
+                <button type="submit" style="background:#00e676;color:#000;border:none;border-radius:8px;padding:8px 16px;font-weight:800;cursor:pointer;margin-top:8px;">Save</button>
+              </form>
+            </details>
           </td>
         </tr>'''
 
@@ -1392,6 +1408,36 @@ def admin_toggle_buyer(secret, buyer_id):
         db.commit(); cur.close()
     db.close()
     return redirect(f"/admin/buyers/{secret}")
+
+
+@app.route('/admin/buyers/<secret>/edit/<int:buyer_id>', methods=['POST'])
+def admin_edit_buyer(secret, buyer_id):
+    if not check_admin(secret):
+        return "Forbidden", 403
+    try:
+        name = request.form.get('name', '').strip()
+        tags = request.form.get('tags', '').strip()
+        sports = request.form.get('sports', '').strip()
+        min_value = float(request.form.get('min_value') or 0)
+        max_value = float(request.form.get('max_value') or 999999)
+        if not name:
+            return f"Name is required. <a href='/admin/buyers/{secret}'>Back</a>", 400
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("""
+                UPDATE buyers SET name = %s, tags = %s,
+                    sports = COALESCE(NULLIF(%s, ''), 'football,basketball,baseball,hockey,soccer'),
+                    min_value = %s, max_value = %s
+                WHERE id = %s
+            """, (name, tags, sports, min_value, max_value, buyer_id))
+            db.commit(); cur.close()
+        db.close()
+        return redirect(f"/admin/buyers/{secret}")
+    except Exception as e:
+        return f"Error: {str(e)} <a href='/admin/buyers/{secret}'>Back</a>", 500
 
 
 @app.route('/mission')
@@ -2547,6 +2593,37 @@ def admin_dashboard():
     deal_buyer_rows = ''.join([f"<tr><td>{r[0]}</td><td style='color:#aaa'>@{r[1]}</td><td style='color:#00ff87;font-weight:700'>{r[2]}</td><td style='color:#ffd700'>${float(r[3]):.0f}</td></tr>" for r in deal_by_buyer])
     deal_recent_rows = ''.join([f"<tr><td>{r[0]}</td><td style='color:#aaa'>{r[1]}</td><td style='color:#00ff87'>${float(r[2]):.0f}</td><td style='color:#555'>{str(r[3])[:10]}</td></tr>" for r in deal_recent])
 
+    # Verified buyers roster
+    from database import DATABASE_URL
+    all_buyers = []
+    try:
+        db4 = get_db()
+        if DATABASE_URL:
+            cur4 = db4.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur4.execute("SELECT * FROM buyers ORDER BY sort_order ASC, id ASC")
+            all_buyers = [dict(r) for r in cur4.fetchall()]
+            cur4.close()
+        db4.close()
+    except Exception:
+        pass
+    total_buyers = len(all_buyers)
+    active_buyers = len([b for b in all_buyers if b.get('active')])
+
+    def buyer_dash_row(b):
+        status = '🟢 Active' if b.get('active') else '⚪ Inactive'
+        toggle_label = 'Deactivate' if b.get('active') else 'Activate'
+        logo = b.get('logo_url') or ''
+        logo_full = f"{APP_BASE_URL}{logo}" if logo.startswith('/') else logo
+        logo_img = f'<img src="{logo_full}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;">' if logo else ''
+        return (
+            f"<tr><td>{logo_img}{b['name']}</td><td style='color:#888'>@{b['instagram']}</td>"
+            f"<td style='color:#888'>{b.get('tags') or ''}</td><td>{status}</td>"
+            f"<td><form method='POST' action='/admin/buyers/{secret}/toggle/{b['id']}' style='display:inline'>"
+            f"<button style='background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;'>{toggle_label}</button></form></td></tr>"
+        )
+
+    buyer_rows_html = ''.join(buyer_dash_row(b) for b in all_buyers)
+
     return f"""<!DOCTYPE html><html>
 <head><title>CardScan Admin</title>
 <style>
@@ -2612,6 +2689,8 @@ td{{padding:9px 8px;border-bottom:1px solid #1a1a1a;font-size:13px}}
   <div class="stat"><div class="stat-num">{total_scans_ever}</div><div class="stat-label">Total Scans Ever</div></div>
   <div class="stat blue"><div class="stat-num">{new_this_week}</div><div class="stat-label">New This Week</div></div>
   <div class="stat blue"><div class="stat-num">{new_this_month}</div><div class="stat-label">New This Month</div></div>
+  <div class="stat"><div class="stat-num">{total_buyers}</div><div class="stat-label">Verified Buyers</div></div>
+  <div class="stat"><div class="stat-num">{active_buyers}</div><div class="stat-label">Active Buyers</div></div>
 </div>
 
 <div class="two-col">
@@ -2727,6 +2806,15 @@ async function sendBroadcast() {{
   <table style="width:100%;border-collapse:collapse">
     <tr style="color:#555;font-size:12px;text-align:left"><th style="padding:8px">Card</th><th>Buyer</th><th>Price</th><th>Date</th></tr>
     {deal_recent_rows if deal_recent_rows else '<tr><td colspan=4 style="color:#555;padding:12px">No deals reported yet</td></tr>'}
+  </table>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:28px;">
+    <h2 style="margin:0;">Verified Buyers</h2>
+    <a href="/admin/buyers/{secret}" style="color:#00ff87;font-size:13px;text-decoration:none;">+ Manage / Add Buyer →</a>
+  </div>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="color:#555;font-size:12px;text-align:left"><th style="padding:8px">Buyer</th><th>Instagram</th><th>Tags</th><th>Status</th><th></th></tr>
+    {buyer_rows_html if buyer_rows_html else '<tr><td colspan=5 style="color:#555;padding:12px">No buyers yet</td></tr>'}
   </table>
 
 </body></html>"""
