@@ -4277,6 +4277,7 @@ def mobile_user():
 def mobile_register_push():
     """Store the user's Expo push token for price alert notifications."""
     try:
+        from database import get_db
         body = request.get_json(force=True) or {}
         token = (body.get("token") or "").strip()
         if not token:
@@ -4563,6 +4564,48 @@ def get_profile():
         })
     except Exception as e:
         app.logger.error(f"get_profile failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/users/<int:user_id>/profile', methods=['GET'])
+@mobile_auth
+def get_public_profile(user_id):
+    """Public-safe profile view for any user, used by the seller-profile
+    screen. Deliberately excludes email and total collection value --
+    only fields safe to show to strangers browsing the marketplace."""
+    try:
+        user = get_user_by_id(user_id)
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        listings_count = 0
+        collection_count = 0
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("SELECT COUNT(*) FROM marketplace_listings WHERE user_id = %s AND status = 'active'", (user_id,))
+            listings_count = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM scan_history WHERE user_id = %s", (user_id,))
+            collection_count = cur.fetchone()[0] or 0
+            cur.close()
+        db.close()
+
+        return jsonify({
+            'success': True,
+            'profile': {
+                'id': user.get('id'),
+                'username': user.get('username'),
+                'profile_pic_url': user.get('profile_pic_url'),
+                'bio': user.get('bio'),
+                'created_at': str(user.get('created_at', '')),
+                'collection_count': collection_count,
+                'listings_count': listings_count,
+                'subscription_status': user.get('subscription_status', 'free'),
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"get_public_profile failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5188,14 +5231,22 @@ def marketplace_get_listings():
         grade  = request.args.get('grade', '')
         max_price = request.args.get('max_price', '')
         search = request.args.get('search', '')
+        seller_id = request.args.get('seller_id', '')
 
         from database import get_db, DATABASE_URL
         db = get_db()
 
         if DATABASE_URL:
             cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            where = ["l.status = 'active'", "l.sold = FALSE", "(l.expires_at IS NULL OR l.expires_at > NOW())"]
-            params = []
+            if seller_id:
+                # Profile grid view: show the seller's full listing history
+                # (including sold items, tagged with the existing "SOLD"
+                # badge client-side) rather than just what's currently for sale.
+                where = ["l.status = 'active'", "l.user_id = %s"]
+                params = [int(seller_id)]
+            else:
+                where = ["l.status = 'active'", "l.sold = FALSE", "(l.expires_at IS NULL OR l.expires_at > NOW())"]
+                params = []
             if sport:
                 where.append("l.sport ILIKE %s"); params.append(f'%{sport}%')
             if grade:
