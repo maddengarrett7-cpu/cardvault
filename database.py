@@ -523,7 +523,7 @@ if DATABASE_URL:
         if user['subscription_status'] == 'pro' or on_trial:
             # Pro users: always allowed, but still track counts
             cur.execute(
-                "UPDATE users SET scans_today = %s, scans_date = %s, total_scans = COALESCE(total_scans, 0) + 1 WHERE id = %s",
+                "UPDATE users SET scans_today = %s, scans_date = %s, total_scans = COALESCE(total_scans, 0) + 1, career_scans = COALESCE(career_scans, 0) + 1 WHERE id = %s",
                 (scans_today + 1, today, user_id)
             )
             conn.commit()
@@ -544,7 +544,7 @@ if DATABASE_URL:
             return False, scans_today, FREE_LIMIT
 
         cur.execute(
-            "UPDATE users SET scans_today = %s, scans_date = %s, total_scans = COALESCE(total_scans, 0) + 1 WHERE id = %s",
+            "UPDATE users SET scans_today = %s, scans_date = %s, total_scans = COALESCE(total_scans, 0) + 1, career_scans = COALESCE(career_scans, 0) + 1 WHERE id = %s",
             (scans_today + 1, today, user_id)
         )
         conn.commit()
