@@ -472,7 +472,10 @@ def analyze_bulk(image_data):
         "- set: product name e.g. Prizm, Chrome, Select, Mosaic, Optic, Donruss, Bowman\n"
         "- parallel: color finish e.g. Silver, Gold, Blue, Green. null for plain base\n"
         "- grade: 'Raw' for ungraded, or 'PSA 10' / 'BGS 9.5' etc for slabs\n"
-        "- cert: cert number from grading label, null if raw\n"
+        "- cert: cert number from the grading label. This is the single most important field to get exactly "
+        "right, since it's used to verify the card -- a wrong number is worse than no number. Read every digit "
+        "individually and re-check it before answering. If even one digit is genuinely unclear (small, blurry, "
+        "or partially blocked), return null for cert rather than guessing.\n"
         "- card: short description e.g. '2022 Panini Prizm Patrick Mahomes Silver'\n\n"
         "Return ONLY a valid JSON array. No markdown, no code fences, no extra text."
     )
@@ -3739,16 +3742,20 @@ def mobile_scan():
 
         elif scan_mode == 'bulk':
             try:
-                # Resize bulk image to max 1200px before sending to Gemini — reduces timeout risk
+                # Resize bulk image before sending to Gemini -- balances timeout
+                # risk against readability. 1200px was too aggressive: with up
+                # to 15 slabs in one photo, each cert number label shrinks to a
+                # handful of pixels and gets misread. 2000px keeps requests
+                # fast while giving small print (cert numbers) a real chance.
                 if frame is not None:
                     h, w = frame.shape[:2]
-                    max_dim = 1200
+                    max_dim = 2000
                     if max(h, w) > max_dim:
                         scale = max_dim / max(h, w)
                         frame_small = cv2.resize(frame, (int(w * scale), int(h * scale)))
                     else:
                         frame_small = frame
-                    _, buf = cv2.imencode('.jpg', frame_small, [cv2.IMWRITE_JPEG_QUALITY, 82])
+                    _, buf = cv2.imencode('.jpg', frame_small, [cv2.IMWRITE_JPEG_QUALITY, 92])
                     bulk_image_bytes = buf.tobytes()
                 else:
                     bulk_image_bytes = raw_image_bytes
