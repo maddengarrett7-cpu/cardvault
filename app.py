@@ -3711,9 +3711,12 @@ def mobile_scan():
                 if val and isinstance(val, str):
                     data[field] = val.replace('!', '').strip()
 
-            # Rebuild card description
+            # Rebuild card description -- include the grade for graded cards,
+            # matching the web /scan route's behavior.
             parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',
                      data.get('name') or '', data.get('parallel') or '']
+            if not is_raw:
+                parts.append(data.get('grade') or '')
             data['card'] = ' '.join(p for p in parts if p).strip()
 
             allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
@@ -3826,9 +3829,13 @@ def mobile_scan():
             if val and isinstance(val, str):
                 data[field] = val.replace('!', '').strip()
 
-        # Rebuild card description with corrected fields
+        # Rebuild card description with corrected fields -- include the grade
+        # for graded cards, matching the web /scan route's behavior.
+        is_raw_card = (not data.get('grade') or data.get('grade', '').lower() == 'raw')
         parts = [str(data.get('year') or ''), data.get('brand') or '', data.get('set') or '',
                  data.get('name') or '', data.get('parallel') or '']
+        if not is_raw_card:
+            parts.append(data.get('grade') or '')
         data['card'] = ' '.join(p for p in parts if p).strip()
 
         allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
