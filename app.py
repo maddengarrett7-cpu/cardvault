@@ -207,7 +207,7 @@ def gemini_generate(client, model, contents, retries=3):
         except Exception as e:
             last_err = e
             err_str = str(e)
-            is_overload = any(x in err_str for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded", "quota"))
+            is_overload = any(x in err_str for x in ("503", "429", "504", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "DEADLINE_EXCEEDED", "overloaded", "quota"))
             if attempt < retries and is_overload:
                 wait = min(2 ** attempt, 8)
                 _time.sleep(wait)
