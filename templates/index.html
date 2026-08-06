@@ -714,6 +714,24 @@
     <div id="onboard-step-2" style="display:none;">
       <div style="font-size:36px; text-align:center; margin-bottom:12px;">📊</div>
       <h3 style="font-size:18px; font-weight:800; margin-bottom:6px; text-align:center;">Connect your Google Sheet</h3>
+      {% if sheet_templates %}
+      <div style="background:var(--surface2); border-radius:10px; padding:12px; margin-bottom:12px;">
+        <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:8px;">New to SlabVault? Start from a template</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          {% for tpl in sheet_templates %}
+          <a href="{{ tpl.copy_url }}" target="_blank" style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--text); font-size:12px;">
+            <span>{{ tpl.emoji }}</span>
+            <span style="flex:1;">
+              <span style="font-weight:700;">{{ tpl.name }}</span><br>
+              <span style="color:var(--muted); font-size:11px;">{{ tpl.description }}</span>
+            </span>
+            <span style="color:var(--green);">↗</span>
+          </a>
+          {% endfor %}
+        </div>
+        <div style="font-size:11px; color:var(--muted); margin-top:8px;">Opens a copy in your own Drive — then share &amp; paste its URL below.</div>
+      </div>
+      {% endif %}
       <p style="font-size:13px; color:var(--muted); margin-bottom:6px; line-height:1.6;">
         1. Open or create a <a href="https://sheets.google.com" target="_blank" style="color:var(--green);">Google Sheet</a><br>
         2. Copy the URL from your browser<br>
@@ -795,6 +813,24 @@
     <p style="font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6;">
       Every card you scan will automatically sync to your sheet. Two quick steps:
     </p>
+
+    {% if sheet_templates %}
+    <div style="background:var(--surface2); border-radius:10px; padding:14px; margin-bottom:12px;">
+      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px;">Don't have a sheet yet? Start from a template</div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        {% for tpl in sheet_templates %}
+        <a href="{{ tpl.copy_url }}" target="_blank" style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--text); font-size:12px;">
+          <span>{{ tpl.emoji }}</span>
+          <span style="flex:1;">
+            <span style="font-weight:700;">{{ tpl.name }}</span> —
+            <span style="color:var(--muted);">{{ tpl.description }}</span>
+          </span>
+          <span style="color:var(--green);">↗</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Step 1: Share -->
     <div style="background:var(--surface2); border-radius:10px; padding:14px; margin-bottom:12px;">

@@ -112,12 +112,40 @@ if DATABASE_URL:
             ("push_token", "TEXT"),
             ("price_alerts_enabled", "BOOLEAN DEFAULT TRUE"),
             ("sheet_tab", "TEXT"),
+            ("referral_reward_granted", "BOOLEAN DEFAULT FALSE"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
                 conn.commit()
             except Exception:
                 conn.rollback()
+
+        # Offer code pool for referral rewards — Apple doesn't have an API to
+        # mint these on demand, so we pre-load batches exported from App Store
+        # Connect. 'kind' separates the two campaigns so they don't mix:
+        #   referrer_reward   — free month, handed to a referrer once their
+        #                       referral actually converts to Pro
+        #   referee_discount  — first-month discount, handed to a new user
+        #                       right when they sign up with a valid ref code
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS offer_codes (
+                    id SERIAL PRIMARY KEY,
+                    code TEXT UNIQUE NOT NULL,
+                    kind TEXT NOT NULL DEFAULT 'referrer_reward',
+                    assigned_to_user_id INTEGER REFERENCES users(id),
+                    assigned_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            cur.execute("ALTER TABLE offer_codes ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'referrer_reward'")
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         for col, definition in [
             ("cl_value", "FLOAT"),
@@ -393,6 +421,14 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # image_url on scan_history -- server-hosted photo so other users'
+        # phones can display it (regular scans used to be local-only)
+        try:
+            cur.execute("ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS image_url TEXT")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         cur.close()
         conn.close()
 
@@ -565,8 +601,8 @@ if DATABASE_URL:
         if isinstance(ebay_sales, list):
             ebay_sales = _json.dumps(ebay_sales)
         cur.execute("""
-            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, cl_value, cl_last_sale, ebay_sales)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, cl_value, cl_last_sale, ebay_sales, image_url)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
         """, (
             user_id,
@@ -576,6 +612,7 @@ if DATABASE_URL:
             data.get('card_type'), data.get('ebay_avg'),
             data.get('ebay_high'), data.get('ebay_low'),
             data.get('cl_value'), data.get('cl_last_sale'), ebay_sales,
+            data.get('image_url'),
         ))
         row = cur.fetchone()
         new_id = row[0] if row else None
@@ -649,17 +686,21 @@ else:
                 card TEXT, name TEXT, year INTEGER, brand TEXT,
                 set_name TEXT, parallel TEXT, grade TEXT, cert TEXT,
                 serial TEXT, card_type TEXT, ebay_avg REAL,
-                ebay_high REAL, ebay_low REAL
+                ebay_high REAL, ebay_low REAL, image_url TEXT
             )
         """)
+        try:
+            conn.execute("ALTER TABLE scan_history ADD COLUMN image_url TEXT")
+        except Exception:
+            pass
         conn.commit()
         conn.close()
 
     def save_scan(user_id, data):
         conn = get_db()
         conn.execute("""
-            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, image_url)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             user_id,
             data.get('card'), data.get('name'), data.get('year'),
@@ -667,6 +708,7 @@ else:
             data.get('grade'), data.get('cert'), data.get('serial'),
             data.get('card_type'), data.get('ebay_avg'),
             data.get('ebay_high'), data.get('ebay_low'),
+            data.get('image_url'),
         ))
         conn.commit(); conn.close()
 

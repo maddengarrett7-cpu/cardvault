@@ -101,6 +101,26 @@ UPLOAD_ROOT = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or os.path.join(app.ro
 def serve_upload(subpath):
     return send_from_directory(UPLOAD_ROOT, subpath)
 
+
+def save_collection_image(image_bytes, user_id):
+    """Persist a scanned card photo to disk and return its public URL.
+
+    Regular scan images previously only ever lived in local device storage,
+    so nobody but the owner could ever see them. This mirrors the marketplace
+    upload path so scan_history images are viewable from other phones too
+    (public collection grid)."""
+    try:
+        import uuid
+        filename = f"scan_{user_id}_{uuid.uuid4().hex[:8]}.jpg"
+        path = os.path.join(UPLOAD_ROOT, 'collection', filename)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(image_bytes)
+        return f"{APP_BASE_URL}/uploads/collection/{filename}"
+    except Exception as e:
+        app.logger.error(f"save_collection_image failed: {e}")
+        return None
+
 # ── Email ────────────────────────────────────────────────────────────────────
 import smtplib
 import secrets
@@ -545,75 +565,12 @@ def extract_sheet_id(sheet_url_or_id):
         return match.group(1)
     return sheet_url_or_id.strip()
 
-# Keyword map: field -> (exact_words, substring_words)
-# exact_words  — must match the full header word-for-word (e.g. "set" won't match "asset")
-# substring_kw — safe substrings that are unambiguous regardless of surrounding text
-FIELD_KEYWORDS = {
-    "card":     (["card", "description", "listing", "title", "full name", "full card"],
-                 ["card desc", "card title"]),
-    "name":     (["name", "player", "athlete", "player name"],
-                 ["player"]),
-    "year":     (["year", "yr", "season"],
-                 ["year"]),
-    "brand":    (["brand", "manufacturer", "company", "make"],
-                 ["brand", "manuf"]),
-    "set":      (["set", "set name", "product", "series", "product name"],
-                 ["set name", "product"]),
-    "parallel": (["parallel", "variant", "variation", "color", "finish", "refractor"],
-                 ["parallel", "variant"]),
-    "serial":   (["serial", "print run", "numbered", "serial #", "serial number", "#/", "print"],
-                 ["serial", "print run", "numbered"]),
-    "grade":    (["grade", "condition", "psa", "bgs", "sgc", "cgc", "slab", "graded"],
-                 ["grade", "psa", "bgs", "sgc"]),
-    "cert":     (["cert", "cert #", "cert number", "certification", "slab #", "cert no"],
-                 ["cert#", "certno"]),
-    "sport":    (["sport", "league", "category"],
-                 ["sport"]),
-    "team":     (["team", "franchise"],
-                 ["team"]),
-    "card_number": (["card #", "card number", "card no", "#"],
-                    ["card#", "cardno"]),
-    "value":    (["value", "ebay avg", "market value", "est value", "worth", "ebay value", "current value"],
-                 ["ebay", "market val", "est. val"]),
-    "paid":     (["paid", "cost", "bought for", "purchase price", "buy price", "my cost"],
-                 ["paid", "cost"]),
-    "notes":    (["notes", "note", "memo", "comments", "comment"],
-                 ["notes"]),
-    "tracking": (["tracking", "tracking #", "ship", "shipment"],
-                 ["tracking"]),
-}
-
-import re as _re
-
-def _header_matches(header_raw, exact_words, substring_kw):
-    """Return True if header matches any exact word or safe substring keyword."""
-    h = header_raw.lower().strip()
-    # Exact whole-header match first
-    if h in exact_words:
-        return True
-    # Word-boundary match for each exact word (so "set" ≠ "asset")
-    for kw in exact_words:
-        pattern = r'(?<![a-z])' + _re.escape(kw) + r'(?![a-z])'
-        if _re.search(pattern, h):
-            return True
-    # Safe substring match
-    for kw in substring_kw:
-        if kw in h:
-            return True
-    return False
-
-def detect_column_mapping(headers):
-    """Map field names to column indices based on header keywords.
-    Uses word-boundary matching so 'set' won't match 'asset' or 'reset'."""
-    mapping = {}
-    for col_idx, header in enumerate(headers):
-        for field, (exact_words, substring_kw) in FIELD_KEYWORDS.items():
-            if field not in mapping and _header_matches(header, exact_words, substring_kw):
-                mapping[field] = col_idx
-    return mapping
+from sheet_field_mapping import FIELD_KEYWORDS, detect_column_mapping
+import sheet_templates
 
 def build_row(data, mapping, num_cols):
     """Build a row array aligned to the sheet's existing columns."""
+    from datetime import date
     ebay_avg = data.get("ebay_avg")
     grade = data.get("grade") or ""
     is_raw = grade.lower() == "raw" or not grade
@@ -634,6 +591,7 @@ def build_row(data, mapping, num_cols):
         "paid":        data.get("paid")        or "",
         "notes":       data.get("notes")       or "",
         "tracking":    "",
+        "date":        data.get("date")        or date.today().strftime("%m/%d/%Y"),
     }
     row = [""] * num_cols
     for field, col_idx in mapping.items():
@@ -845,7 +803,8 @@ def index():
     # Build full sheet URL from saved sheet_id if available
     saved_sheet_id = user.get('google_sheet_id') if user else None
     saved_sheet_url = f"https://docs.google.com/spreadsheets/d/{saved_sheet_id}" if saved_sheet_id else ""
-    return render_template('index.html', user=user, saved_sheet_url=saved_sheet_url)
+    return render_template('index.html', user=user, saved_sheet_url=saved_sheet_url,
+                            sheet_templates=sheet_templates.list_templates_for_api())
 
 @app.route('/home')
 def landing():
@@ -898,6 +857,7 @@ def signup():
             referrer = _db_get_user_by_referral_code(ref_code)
             if referrer and referrer['id'] != user['id']:
                 _db_apply_referral(user['id'], referrer['id'], ref_code)
+                _grant_referee_discount(user['id'])
 
         import secrets
         token = secrets.token_hex(32)
@@ -1074,13 +1034,116 @@ def _db_apply_referral(new_user_id, referrer_id, code):
     except: pass
     finally: db.close()
 
+def _assign_offer_code(user_id, kind='referrer_reward'):
+    """Pull one unused Apple Offer Code of the given kind from the pre-loaded
+    pool and assign it to user_id. Returns the code string, or None if that
+    pool is empty (log loudly so someone tops it up in App Store Connect).
+    kind is 'referrer_reward' (free month, paid on a referral converting) or
+    'referee_discount' (first-month discount, paid at signup)."""
+    from database import get_db, DATABASE_URL
+    if not DATABASE_URL:
+        return None
+    db = get_db()
+    try:
+        cur = db.cursor()
+        # FOR UPDATE SKIP LOCKED so concurrent conversions can't both grab the same row
+        cur.execute("""
+            SELECT id, code FROM offer_codes
+            WHERE assigned_to_user_id IS NULL AND kind = %s
+            ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+        """, (kind,))
+        row = cur.fetchone()
+        if not row:
+            db.commit(); cur.close()
+            app.logger.warning(f"Offer code pool '{kind}' empty — could not reward user {user_id}. Import more codes.")
+            return None
+        code_id, code = row
+        cur.execute("UPDATE offer_codes SET assigned_to_user_id = %s, assigned_at = NOW() WHERE id = %s", (user_id, code_id))
+        db.commit(); cur.close()
+        return code
+    except Exception as e:
+        app.logger.error(f"_assign_offer_code failed: {e}")
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+def _grant_referee_discount(new_user_id):
+    """Called right when a new user signs up with a valid referral code.
+    Assigns them a first-month-discount Offer Code (separate pool from the
+    referrer's conversion reward). Returns the code, or None if the pool is
+    empty — signup still succeeds either way."""
+    return _assign_offer_code(new_user_id, kind='referee_discount')
+
+def _grant_referral_conversion_reward(referee_id):
+    """Called the first time a referred user converts to Pro. Looks up who
+    referred them, assigns that referrer an Apple Offer Code, and pushes a
+    notification. Idempotent via users.referral_reward_granted."""
+    from database import get_db, DATABASE_URL
+    if not DATABASE_URL:
+        return
+    db = get_db()
+    try:
+        import psycopg2.extras
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, referred_by, referral_reward_granted FROM users WHERE id = %s", (referee_id,))
+        referee = cur.fetchone()
+        cur.close(); db.close()
+    except Exception as e:
+        app.logger.error(f"_grant_referral_conversion_reward lookup failed: {e}")
+        db.close()
+        return
+
+    if not referee or not referee.get('referred_by') or referee.get('referral_reward_granted'):
+        return
+
+    referrer = _db_get_user_by_referral_code(referee['referred_by'])
+    if not referrer:
+        return
+
+    code = _assign_offer_code(referrer['id'], kind='referrer_reward')
+
+    # Mark granted regardless of whether a code was available, so a webhook
+    # retry/duplicate delivery can't assign a second code to the same referrer.
+    db2 = get_db()
+    try:
+        cur2 = db2.cursor()
+        cur2.execute("UPDATE users SET referral_reward_granted = TRUE WHERE id = %s", (referee_id,))
+        db2.commit(); cur2.close()
+    except Exception:
+        db2.rollback()
+    finally:
+        db2.close()
+
+    if code and referrer.get('push_token'):
+        try:
+            from price_alerts import send_expo_push
+            send_expo_push(
+                referrer['push_token'],
+                "You earned a reward! 🎉",
+                "Someone you referred just went Pro — you've got a free-month offer code waiting.",
+                {"type": "referral_reward"},
+            )
+        except Exception as e:
+            app.logger.warning(f"referral reward push failed: {e}")
+
 @app.route('/referral-info')
 @login_required
 def referral_info():
     user = get_user_by_id(session['user_id'])
     ref_code = user.get('referral_code') or ''
     ref_url = f"{APP_BASE_URL}/signup?ref={ref_code}" if ref_code else ''
-    return jsonify({'code': ref_code, 'url': ref_url, 'bonus_scans': user.get('bonus_scans', 0)})
+    from database import get_db, DATABASE_URL
+    reward_codes, discount_codes = [], []
+    if DATABASE_URL:
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("SELECT code, kind FROM offer_codes WHERE assigned_to_user_id = %s", (user['id'],))
+        for code, kind in cur.fetchall():
+            (reward_codes if kind == 'referrer_reward' else discount_codes).append(code)
+        cur.close(); db.close()
+    return jsonify({'code': ref_code, 'url': ref_url, 'bonus_scans': user.get('bonus_scans', 0),
+                     'reward_codes': reward_codes, 'discount_codes': discount_codes})
 
 @app.route('/change-password', methods=['POST'])
 @login_required
@@ -1531,6 +1594,41 @@ def admin_grant_trial():
         conn.execute("UPDATE users SET subscription_status='pro', trial_end=? WHERE email=?", (trial_end, email.lower()))
         conn.commit(); conn.close()
     return jsonify({'success': True, 'message': f'{email} granted {days}-day Pro trial until {trial_end}'})
+
+@app.route('/admin/import-offer-codes', methods=['POST'])
+def admin_import_offer_codes():
+    """Load a batch of Apple Offer Codes exported from App Store Connect into
+    the unassigned pool that _assign_offer_code hands out from. Paste codes
+    one per line (or comma/whitespace separated) in the 'codes' field, and
+    say which campaign they're for via 'kind':
+      referrer_reward  (default) — free month, paid when a referral converts
+      referee_discount            — first-month discount, paid at signup
+    Keep these as two separate Offer Code campaigns in App Store Connect —
+    this field just needs to match which batch you're importing."""
+    from database import get_db, DATABASE_URL
+    secret = request.form.get('secret') or (request.get_json(silent=True) or {}).get('secret')
+    if not check_admin(secret):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    if not DATABASE_URL:
+        return jsonify({'success': False, 'error': 'Offer code pool requires Postgres'}), 400
+    kind = request.form.get('kind') or (request.get_json(silent=True) or {}).get('kind') or 'referrer_reward'
+    if kind not in ('referrer_reward', 'referee_discount'):
+        return jsonify({'success': False, 'error': "kind must be 'referrer_reward' or 'referee_discount'"}), 400
+    raw = request.form.get('codes') or (request.get_json(silent=True) or {}).get('codes') or ''
+    codes = [c.strip() for c in raw.replace(',', '\n').split('\n') if c.strip()]
+    if not codes:
+        return jsonify({'success': False, 'error': 'No codes provided'}), 400
+    conn = get_db()
+    cur = conn.cursor()
+    inserted = 0
+    for code in codes:
+        try:
+            cur.execute("INSERT INTO offer_codes (code, kind) VALUES (%s, %s) ON CONFLICT (code) DO NOTHING", (code, kind))
+            inserted += cur.rowcount
+        except Exception:
+            conn.rollback()
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success': True, 'kind': kind, 'submitted': len(codes), 'inserted': inserted})
 
 @app.route('/account')
 @login_required
@@ -3617,11 +3715,13 @@ def mobile_signup():
     user_ref_code = email.split('@')[0].upper()[:6] + str(user['id'])
     _db_set_referral_code(user['id'], user_ref_code)
     referral_applied = False
+    discount_code = None
     if ref_code:
         referrer = _db_get_user_by_referral_code(ref_code)
         if referrer and referrer['id'] != user['id']:
             _db_apply_referral(user['id'], referrer['id'], ref_code)
             referral_applied = True
+            discount_code = _grant_referee_discount(user['id'])
 
     import secrets as _secrets
     token = _secrets.token_hex(32)
@@ -3631,6 +3731,7 @@ def mobile_signup():
         'session_token': token,
         'user': {'id': user['id'], 'email': user['email'], 'subscription_status': 'free'},
         'referral_applied': referral_applied,
+        'discount_code': discount_code,
     })
 
 
@@ -3735,6 +3836,7 @@ def mobile_scan():
                 app.logger.error(f"mobile_scan failed: {e}")
                 pass
 
+            data['image_url'] = save_collection_image(front_bytes, request.mobile_user_id)
             save_scan(request.mobile_user_id, data)
             data['success'] = True
             data['scans_left'] = max(0, limit - scans_used) if limit else 999
@@ -3771,9 +3873,13 @@ def mobile_scan():
             allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
             if not allowed:
                 return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
-            # Save each card to the DB so they appear in collection with IDs
+            # Save each card to the DB so they appear in collection with IDs.
+            # All cards in this batch share one photo (the whole lot) since
+            # per-card cropping happens on-device, not here.
+            bulk_image_url = save_collection_image(bulk_image_bytes, request.mobile_user_id)
             for card in cards:
                 try:
+                    card['image_url'] = bulk_image_url
                     card_id = save_scan(request.mobile_user_id, card)
                     if card_id:
                         card['id'] = card_id
@@ -3845,6 +3951,8 @@ def mobile_scan():
             parts.append(data.get('grade') or '')
         data['card'] = ' '.join(p for p in parts if p).strip()
 
+        data['image_url'] = save_collection_image(raw_image_bytes, request.mobile_user_id)
+
         allowed, scans_used, limit = check_and_increment_scans(request.mobile_user_id)
         if not allowed:
             return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day). Upgrade to Pro for unlimited scans.'})
@@ -3904,6 +4012,7 @@ def mobile_collection():
                 'ebay_avg': s.get('ebay_avg'),
                 'paid_price': s.get('paid_price'),
                 'scanned_at': str(s.get('scanned_at', ''))[:10],
+                'image_url': s.get('image_url'),
             })
         return jsonify({'success': True, 'cards': cards, 'total': total})
     except Exception as e:
@@ -4286,6 +4395,35 @@ def mobile_user():
         'google_sheet_id': user.get('google_sheet_id') or '',
     })
 
+@app.route("/api/mobile/referral-rewards", methods=["GET"])
+@mobile_auth
+def mobile_referral_rewards():
+    """Referral code/link, bonus scan count, any Apple Offer Codes earned from
+    referrals that converted to Pro (reward_codes — see
+    _grant_referral_conversion_reward), and any first-month discount code
+    earned from being referred (discount_codes — see _grant_referee_discount)."""
+    user = get_user_by_id(request.mobile_user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    ref_code = user.get('referral_code') or ''
+    ref_url = f"{APP_BASE_URL}/signup?ref={ref_code}" if ref_code else ''
+    reward_codes, discount_codes = [], []
+    from database import get_db, DATABASE_URL
+    if DATABASE_URL:
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("SELECT code, kind FROM offer_codes WHERE assigned_to_user_id = %s", (user['id'],))
+        for code, kind in cur.fetchall():
+            (reward_codes if kind == 'referrer_reward' else discount_codes).append(code)
+        cur.close(); db.close()
+    return jsonify({
+        'code': ref_code,
+        'url': ref_url,
+        'bonus_scans': user.get('bonus_scans', 0),
+        'reward_codes': reward_codes,
+        'discount_codes': discount_codes,
+    })
+
 @app.route("/api/mobile/register-push", methods=["POST"])
 @mobile_auth
 def mobile_register_push():
@@ -4357,6 +4495,12 @@ def mobile_sheet_service_email():
     except Exception as e:
         app.logger.error(f"sheet-service-email error: {e}")
         return jsonify({"email": ""}), 500
+
+@app.route("/api/mobile/sheet-templates", methods=["GET"])
+def mobile_sheet_templates():
+    """Starter Google Sheet templates users can copy before connecting. Static
+    config (no user data), so no auth needed — see sheet_templates.py."""
+    return jsonify({"templates": sheet_templates.list_templates_for_api()})
 
 @app.route("/api/mobile/set-sheet", methods=["POST"])
 @mobile_auth
@@ -4623,6 +4767,33 @@ def get_public_profile(user_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/mobile/users/<int:user_id>/collection', methods=['GET'])
+@mobile_auth
+def get_public_collection(user_id):
+    """Public-safe collection grid for the seller-profile screen. Deliberately
+    excludes value/price fields, same reasoning as get_public_profile
+    excluding total_value -- a stranger can browse what someone owns without
+    seeing what it's worth."""
+    try:
+        user = get_user_by_id(user_id)
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        scans, total = get_scan_history(user_id, limit=60, offset=0)
+        cards = [{
+            'id': s.get('id'),
+            'name': s.get('name'),
+            'card': s.get('card'),
+            'grade': s.get('grade'),
+            'image_url': s.get('image_url'),
+        } for s in scans]
+
+        return jsonify({'success': True, 'cards': cards, 'total': total})
+    except Exception as e:
+        app.logger.error(f"get_public_collection failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def _claim_buyer_placeholder_pg(cur, placeholder_id, real_user_id):
     """Move a placeholder Connect-buyer account's chat rooms/messages onto the
     real user_id claiming that username. Leaves the placeholder user row in
@@ -4861,6 +5032,11 @@ def revenuecat_webhook():
                 cur.execute("UPDATE users SET subscription_status = %s WHERE id = %s", (new_status, int(app_user_id)))
                 db.commit(); cur.close()
             db.close()
+
+        # First-ever paid conversion (not renewals/product changes) is what
+        # triggers the referrer's reward — see _grant_referral_conversion_reward.
+        if event_type == 'INITIAL_PURCHASE':
+            _grant_referral_conversion_reward(int(app_user_id))
 
         return jsonify({'success': True}), 200
     except Exception as e:
