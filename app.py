@@ -863,7 +863,7 @@ def signup():
             referrer = _db_get_user_by_referral_code(ref_code)
             if referrer and referrer['id'] != user['id']:
                 _db_apply_referral(user['id'], referrer['id'], ref_code)
-                _grant_referee_pro_trial(user['id'])
+                _grant_pro_trial(user['id'])
 
         import secrets
         token = secrets.token_hex(32)
@@ -1078,13 +1078,14 @@ def _grant_referee_discount(new_user_id):
     """Unused for now — kept in case Apple Offer Codes are wanted again later.
     Assigns a first-month-discount Offer Code from the referee_discount pool,
     which requires the user to manually redeem it in the App Store. Superseded
-    by _grant_referee_pro_trial below, which grants Pro instantly with no
+    by _grant_pro_trial below, which grants Pro instantly with no
     App Store interaction."""
     return _assign_offer_code(new_user_id, kind='referee_discount')
 
-def _grant_referee_pro_trial(user_id, days=30):
-    """Instantly grant Pro for `days` when someone signs up with a valid
-    referral code — no App Store interaction needed. Just sets
+def _grant_pro_trial(user_id, days=30):
+    """Instantly grant Pro for `days` — no App Store interaction needed. Used
+    for both sides of the referral reward (referee at signup/apply-referral,
+    referrer when their referral converts to Pro). Just sets
     subscription_status/trial_end directly, same mechanism /admin/grant-trial
     already uses. expire_stale_trial() (called from check_and_increment_scans
     and mobile_user) reverts this back to 'free' once trial_end passes; real
@@ -1101,15 +1102,16 @@ def _grant_referee_pro_trial(user_id, days=30):
         else:
             db.execute("UPDATE users SET subscription_status='pro', trial_end=? WHERE id=?", (trial_end, user_id)); db.commit()
     except Exception as e:
-        app.logger.error(f"_grant_referee_pro_trial failed: {e}")
+        app.logger.error(f"_grant_pro_trial failed: {e}")
     finally:
         db.close()
     return trial_end
 
 def _grant_referral_conversion_reward(referee_id):
     """Called the first time a referred user converts to Pro. Looks up who
-    referred them, assigns that referrer an Apple Offer Code, and pushes a
-    notification. Idempotent via users.referral_reward_granted."""
+    referred them and instantly grants that referrer a Pro trial too (same
+    mechanism as the referee's signup reward — no Apple Offer Code/redemption
+    involved). Idempotent via users.referral_reward_granted."""
     from database import get_db, DATABASE_URL
     if not DATABASE_URL:
         return
@@ -1132,10 +1134,10 @@ def _grant_referral_conversion_reward(referee_id):
     if not referrer:
         return
 
-    code = _assign_offer_code(referrer['id'], kind='referrer_reward')
+    _grant_pro_trial(referrer['id'])
 
-    # Mark granted regardless of whether a code was available, so a webhook
-    # retry/duplicate delivery can't assign a second code to the same referrer.
+    # Mark granted so a webhook retry/duplicate delivery can't grant a
+    # second trial to the same referrer.
     db2 = get_db()
     try:
         cur2 = db2.cursor()
@@ -1146,13 +1148,13 @@ def _grant_referral_conversion_reward(referee_id):
     finally:
         db2.close()
 
-    if code and referrer.get('push_token'):
+    if referrer.get('push_token'):
         try:
             from price_alerts import send_expo_push
             send_expo_push(
                 referrer['push_token'],
                 "You earned a reward! 🎉",
-                "Someone you referred just went Pro — you've got a free-month offer code waiting.",
+                "Someone you referred just went Pro — you just got a free month of Pro too!",
                 {"type": "referral_reward"},
             )
         except Exception as e:
@@ -3782,7 +3784,7 @@ def mobile_signup():
         if referrer and referrer['id'] != user['id']:
             _db_apply_referral(user['id'], referrer['id'], ref_code)
             referral_applied = True
-            pro_trial_end = _grant_referee_pro_trial(user['id'])
+            pro_trial_end = _grant_pro_trial(user['id'])
 
     import secrets as _secrets
     token = _secrets.token_hex(32)
@@ -4515,7 +4517,7 @@ def mobile_apply_referral():
         return jsonify({'success': False, 'error': 'Invalid referral code'}), 400
 
     _db_apply_referral(user['id'], referrer['id'], ref_code)
-    pro_trial_end = _grant_referee_pro_trial(user['id'])
+    pro_trial_end = _grant_pro_trial(user['id'])
     return jsonify({'success': True, 'pro_trial_end': pro_trial_end, 'bonus_scans_added': 20})
 
 @app.route("/api/mobile/register-push", methods=["POST"])
