@@ -191,6 +191,10 @@ if DATABASE_URL:
             ("is_bulk_lot", "BOOLEAN DEFAULT FALSE"),
             ("lot_card_count", "INTEGER"),
             ("lot_contents", "TEXT"),
+            # Links a listing back to the collection card (scan_history row)
+            # it was created from, so a stranger browsing that card in the
+            # public collection grid can see it's for sale and at what price.
+            ("card_id", "INTEGER REFERENCES scan_history(id) ON DELETE SET NULL"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS {col} {definition}")

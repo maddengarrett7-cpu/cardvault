@@ -3901,7 +3901,7 @@ def mobile_scan():
                 pass
 
             data['image_url'] = save_collection_image(front_bytes, request.mobile_user_id)
-            save_scan(request.mobile_user_id, data)
+            data['id'] = save_scan(request.mobile_user_id, data)
             data['success'] = True
             data['scans_left'] = max(0, limit - scans_used) if limit else 999
             return jsonify(data)
@@ -4033,7 +4033,7 @@ def mobile_scan():
             app.logger.error(f"mobile_scan failed: {e}")
             pass
 
-        save_scan(request.mobile_user_id, data)
+        data['id'] = save_scan(request.mobile_user_id, data)
         data['success'] = True
         data['scans_left'] = max(0, limit - scans_used) if limit else 999
         return jsonify(data)
@@ -4912,21 +4912,39 @@ def get_public_profile(user_id):
 @mobile_auth
 def get_public_collection(user_id):
     """Public-safe collection grid for the seller-profile screen. Deliberately
-    excludes value/price fields, same reasoning as get_public_profile
-    excluding total_value -- a stranger can browse what someone owns without
-    seeing what it's worth."""
+    excludes estimated value (ebay_avg) -- same reasoning as get_public_profile
+    excluding total_value, a stranger can browse what someone owns without
+    seeing what it's worth. A marketplace LISTING price is different: the
+    owner made that public on purpose by listing it, so it's shown per-card
+    (via the card_id link) when one exists -- otherwise the card just reads
+    as not for sale."""
     try:
         user = get_user_by_id(user_id)
         if not user:
             return jsonify({'success': False, 'error': 'User not found'}), 404
 
         scans, total = get_scan_history(user_id, limit=60, offset=0)
+
+        from database import get_db, DATABASE_URL
+        listing_prices = {}
+        if DATABASE_URL:
+            db = get_db()
+            cur = db.cursor()
+            cur.execute("""
+                SELECT card_id, price FROM marketplace_listings
+                WHERE user_id = %s AND card_id IS NOT NULL AND status = 'active' AND sold = FALSE
+            """, (user_id,))
+            listing_prices = {row[0]: row[1] for row in cur.fetchall()}
+            cur.close(); db.close()
+
         cards = [{
             'id': s.get('id'),
             'name': s.get('name'),
             'card': s.get('card'),
             'grade': s.get('grade'),
             'image_url': s.get('image_url'),
+            'for_sale': s.get('id') in listing_prices,
+            'price': listing_prices.get(s.get('id')),
         } for s in scans]
 
         return jsonify({'success': True, 'cards': cards, 'total': total})
@@ -5653,12 +5671,20 @@ def marketplace_create_listing():
 
         if DATABASE_URL:
             cur = db.cursor()
+            # Only trust card_id if it's actually a card this user owns --
+            # otherwise a listing could be linked to (and show a price
+            # against) a stranger's collection card.
+            card_id = body.get('card_id')
+            if card_id:
+                cur.execute("SELECT 1 FROM scan_history WHERE id = %s AND user_id = %s", (card_id, request.mobile_user_id))
+                if not cur.fetchone():
+                    card_id = None
             cur.execute("""
                 INSERT INTO marketplace_listings
                 (user_id, name, year, brand, set_name, parallel, grade, cert, serial,
                  sport, price, open_to_offers, description, seller_instagram, image_urls,
-                 is_bulk_lot, lot_card_count, lot_contents)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                 is_bulk_lot, lot_card_count, lot_contents, card_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
             """, (
                 request.mobile_user_id,
@@ -5668,7 +5694,7 @@ def marketplace_create_listing():
                 body.get('price'), body.get('open_to_offers', True),
                 body.get('description'), body.get('seller_instagram'),
                 body.get('image_urls'), body.get('is_bulk_lot', False),
-                body.get('lot_card_count'), body.get('lot_contents'),
+                body.get('lot_card_count'), body.get('lot_contents'), card_id,
             ))
             listing_id = cur.fetchone()[0]
             db.commit(); cur.close(); db.close()
