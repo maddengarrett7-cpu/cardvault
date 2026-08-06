@@ -32,7 +32,7 @@ from database import init_db, get_user_by_email, get_user_by_id, create_user, \
     save_google_tokens, save_google_sheet_id, clear_google_tokens, \
     create_session, validate_session, delete_session, \
     save_reset_token, get_reset_token, delete_reset_token, update_password, \
-    DATABASE_URL, save_scan, get_scan_history
+    DATABASE_URL, save_scan, get_scan_history, expire_stale_trial
 
 # ── Config ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
@@ -857,7 +857,7 @@ def signup():
             referrer = _db_get_user_by_referral_code(ref_code)
             if referrer and referrer['id'] != user['id']:
                 _db_apply_referral(user['id'], referrer['id'], ref_code)
-                _grant_referee_discount(user['id'])
+                _grant_referee_pro_trial(user['id'])
 
         import secrets
         token = secrets.token_hex(32)
@@ -1069,11 +1069,36 @@ def _assign_offer_code(user_id, kind='referrer_reward'):
         db.close()
 
 def _grant_referee_discount(new_user_id):
-    """Called right when a new user signs up with a valid referral code.
-    Assigns them a first-month-discount Offer Code (separate pool from the
-    referrer's conversion reward). Returns the code, or None if the pool is
-    empty — signup still succeeds either way."""
+    """Unused for now — kept in case Apple Offer Codes are wanted again later.
+    Assigns a first-month-discount Offer Code from the referee_discount pool,
+    which requires the user to manually redeem it in the App Store. Superseded
+    by _grant_referee_pro_trial below, which grants Pro instantly with no
+    App Store interaction."""
     return _assign_offer_code(new_user_id, kind='referee_discount')
+
+def _grant_referee_pro_trial(user_id, days=30):
+    """Instantly grant Pro for `days` when someone signs up with a valid
+    referral code — no App Store interaction needed. Just sets
+    subscription_status/trial_end directly, same mechanism /admin/grant-trial
+    already uses. expire_stale_trial() (called from check_and_increment_scans
+    and mobile_user) reverts this back to 'free' once trial_end passes; real
+    Apple subscriptions are untouched since they never have trial_end set."""
+    from database import get_db, DATABASE_URL
+    from datetime import date, timedelta
+    trial_end = str(date.today() + timedelta(days=days))
+    db = get_db()
+    try:
+        if DATABASE_URL:
+            cur = db.cursor()
+            cur.execute("UPDATE users SET subscription_status='pro', trial_end=%s WHERE id=%s", (trial_end, user_id))
+            db.commit(); cur.close()
+        else:
+            db.execute("UPDATE users SET subscription_status='pro', trial_end=? WHERE id=?", (trial_end, user_id)); db.commit()
+    except Exception as e:
+        app.logger.error(f"_grant_referee_pro_trial failed: {e}")
+    finally:
+        db.close()
+    return trial_end
 
 def _grant_referral_conversion_reward(referee_id):
     """Called the first time a referred user converts to Pro. Looks up who
@@ -3715,13 +3740,13 @@ def mobile_signup():
     user_ref_code = email.split('@')[0].upper()[:6] + str(user['id'])
     _db_set_referral_code(user['id'], user_ref_code)
     referral_applied = False
-    discount_code = None
+    pro_trial_end = None
     if ref_code:
         referrer = _db_get_user_by_referral_code(ref_code)
         if referrer and referrer['id'] != user['id']:
             _db_apply_referral(user['id'], referrer['id'], ref_code)
             referral_applied = True
-            discount_code = _grant_referee_discount(user['id'])
+            pro_trial_end = _grant_referee_pro_trial(user['id'])
 
     import secrets as _secrets
     token = _secrets.token_hex(32)
@@ -3729,9 +3754,9 @@ def mobile_signup():
     return jsonify({
         'success': True,
         'session_token': token,
-        'user': {'id': user['id'], 'email': user['email'], 'subscription_status': 'free'},
+        'user': {'id': user['id'], 'email': user['email'], 'subscription_status': 'pro' if pro_trial_end else 'free'},
         'referral_applied': referral_applied,
-        'discount_code': discount_code,
+        'pro_trial_end': pro_trial_end,
     })
 
 
@@ -4370,6 +4395,7 @@ def mobile_user():
     user = get_user_by_id(request.mobile_user_id)
     if not user:
         return jsonify({'error': 'User not found'}), 404
+    user = expire_stale_trial(user)
     email = user.get('email', '')
     is_pro = user.get('subscription_status') == 'pro'
     name = email.split('@')[0].capitalize() if email else 'User'

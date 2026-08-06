@@ -523,6 +523,34 @@ if DATABASE_URL:
         cur.close()
         conn.close()
 
+    def expire_stale_trial(user, conn=None):
+        """Downgrade a user back to 'free' if a granted Pro trial (referral
+        signup bonus, admin-granted trial, etc.) has passed its trial_end.
+        Real Apple subscriptions never have trial_end set, so this only ever
+        touches trial grants — actual purchases stay governed by the
+        RevenueCat webhook. Mutates and returns `user`; opens/closes its own
+        connection unless one is passed in."""
+        trial_end = user.get('trial_end')
+        if user.get('subscription_status') != 'pro' or not trial_end:
+            return user
+        try:
+            expired = date.fromisoformat(str(trial_end)[:10]) < date.today()
+        except Exception:
+            return user
+        if not expired:
+            return user
+        owns_conn = conn is None
+        conn = conn or get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET subscription_status = 'free', trial_end = NULL WHERE id = %s", (user['id'],))
+        conn.commit()
+        cur.close()
+        if owns_conn:
+            conn.close()
+        user['subscription_status'] = 'free'
+        user['trial_end'] = None
+        return user
+
     def check_and_increment_scans(user_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -534,6 +562,7 @@ if DATABASE_URL:
             return False, 0, 0
 
         user = dict(user)
+        user = expire_stale_trial(user, conn=conn)
         today = str(date.today())
         bonus = user.get('bonus_scans') or 0
 
@@ -784,6 +813,11 @@ else:
             conn.execute("UPDATE users SET subscription_status = ? WHERE stripe_customer_id = ?", (status, customer_id))
         conn.commit()
         conn.close()
+
+    def expire_stale_trial(user, conn=None):
+        """SQLite dev fallback doesn't have a trial_end column, so there's
+        nothing to expire — kept as a no-op so app.py can call it uniformly."""
+        return user
 
     def check_and_increment_scans(user_id):
         conn = get_db()
