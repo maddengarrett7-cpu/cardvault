@@ -122,17 +122,31 @@ def save_collection_image(image_bytes, user_id):
         return None
 
 # ── Email ────────────────────────────────────────────────────────────────────
-import smtplib
+# Was raw SMTP to Gmail -- Railway's network can't reach smtp.gmail.com at all
+# ("Network is unreachable"), so every email silently failed for as long as
+# this ran there. Resend's HTTP API goes over normal HTTPS instead.
 import secrets
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
 
+RESEND_API_KEY   = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "SlabVault <onboarding@resend.dev>")
+
+def send_email(to_email, subject, html_body):
+    """Send an email via Resend. Raises on failure -- callers should let that
+    surface as a real error rather than swallowing it, since a silently
+    failed email (the old SMTP bug) is worse than a visible one."""
+    if not RESEND_API_KEY:
+        raise Exception("RESEND_API_KEY not configured")
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        json={"from": RESEND_FROM_EMAIL, "to": [to_email], "subject": subject, "html": html_body},
+        timeout=15,
+    )
+    if not resp.ok:
+        raise Exception(f"Resend API error {resp.status_code}: {resp.text[:200]}")
+
 def send_reset_email(to_email, reset_url):
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = 'CardScan — Reset Your Password'
-    msg['From'] = f'CardScan <{GMAIL_USER}>'
-    msg['To'] = to_email
     body = f"""
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0a0a0a;color:#fff;">
       <h2 style="font-size:22px;font-weight:800;margin-bottom:8px;">Card<span style="color:#00e676;">Scan</span></h2>
@@ -142,10 +156,7 @@ def send_reset_email(to_email, reset_url):
       <p style="color:#666;font-size:12px;margin-top:32px;">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
     </div>
     """
-    msg.attach(MIMEText(body, 'html'))
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, to_email, msg.as_string())
+    send_email(to_email, 'CardScan — Reset Your Password', body)
 
 # ── Rate limiting ────────────────────────────────────────────────────────────
 _login_attempts = defaultdict(list)  # ip -> [timestamps]
@@ -886,11 +897,11 @@ def logout():
 def admin_test_email(secret):
     if not check_admin(secret):
         return "Forbidden", 403
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        return f"❌ Missing env vars — GMAIL_USER='{GMAIL_USER}' GMAIL_APP_PASSWORD={'set' if GMAIL_APP_PASSWORD else 'NOT SET'}"
+    if not RESEND_API_KEY:
+        return "❌ RESEND_API_KEY not set"
     try:
-        send_reset_email(GMAIL_USER, "https://cardscan.live/test")
-        return f"✅ Test email sent to {GMAIL_USER} — check your inbox"
+        send_reset_email("maddengarrett7@gmail.com", "https://cardscan.live/test")
+        return "✅ Test email sent via Resend — check your inbox"
     except Exception as e:
         return f"❌ Email failed: {str(e)}"
 
@@ -2524,16 +2535,8 @@ def admin_send_email():
     if not to or not subject or not message:
         return jsonify({'success': False, 'error': 'Missing fields'})
     try:
-        send_reset_email.__module__  # just to confirm import works
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = f'CardScan <{GMAIL_USER}>'
-        msg['To'] = to
         html = f'<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0a0a0a;color:#fff;"><h2>Card<span style="color:#00e676;">Scan</span></h2><div style="color:#ccc;line-height:1.7;margin-top:16px;">{message.replace(chr(10), "<br>")}</div><p style="color:#555;font-size:12px;margin-top:32px;">Sent from CardScan Admin</p></div>'
-        msg.attach(MIMEText(html, 'html'))
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_USER, to, msg.as_string())
+        send_email(to, subject, html)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -2572,14 +2575,7 @@ def admin_broadcast():
 
     for email in emails:
         try:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = f'CardScan <{GMAIL_USER}>'
-            msg['To'] = email
-            msg.attach(MIMEText(html, 'html'))
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                server.sendmail(GMAIL_USER, email, msg.as_string())
+            send_email(email, subject, html)
             sent += 1
         except Exception as e:
             failed.append(f"{email}: {str(e)}")
@@ -3677,7 +3673,9 @@ def mobile_send_otp():
             save_reset_token(email, otp, expires_at)
         except Exception:
             pass
-        # Send email
+        # Send email -- unlike the "user not found" case above, a send
+        # failure here is an infrastructure problem, not something that
+        # reveals account existence, so it's fine (and important) to surface.
         try:
             msg_body = f"""
             <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0a0a0a;color:#fff;">
@@ -3690,19 +3688,10 @@ def mobile_send_otp():
               <p style="color:#666;font-size:12px;">Expires in 15 minutes. If you didn't request this, ignore this email.</p>
             </div>
             """
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = 'CardScan — Your Reset Code'
-            msg['From'] = f'CardScan <{GMAIL_USER}>'
-            msg['To'] = email
-            msg.attach(MIMEText(msg_body, 'html'))
-            import smtplib
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                server.sendmail(GMAIL_USER, email, msg.as_string())
-        except Exception:
-            pass  # OTP is stored; email failure is silent
+            send_email(email, 'CardScan — Your Reset Code', msg_body)
+        except Exception as e:
+            app.logger.error(f"mobile_send_otp email failed: {e}")
+            return jsonify({'success': False, 'error': 'Could not send the code right now. Please try again shortly.'}), 502
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
