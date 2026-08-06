@@ -278,6 +278,12 @@ def analyze_card(frame, quality=85, year_hint=None, sport_hint=None, is_raw=True
     prompt = (
         "Identify this trading card by reading the PRINTED TEXT on it. "
         "Do not guess the player name from the photo — read the name that is printed on the card.\n\n"
+        "IMPORTANT: Many card designs (e.g. Prizm, Chrome) are reused across different players "
+        "and years, and you may recognize the template/layout from other cards you've seen. "
+        "Ignore that pattern-recognition entirely — base the name ONLY on the literal letters "
+        "printed on THIS specific card. If glare, blur, or a holographic surface makes the name "
+        "text genuinely unreadable, return null for name rather than guessing which player usually "
+        "appears on cards with this layout.\n\n"
         "Return ONLY a valid JSON object with these keys (null if not visible):\n"
         "  card_type   - 'sports' or 'tcg'\n"
         "  name        - player name exactly as printed (read the text, ignore the photo)\n"
