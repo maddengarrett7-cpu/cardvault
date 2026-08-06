@@ -1729,58 +1729,81 @@ def search_ebay_sold(query, limit=10):
         except Exception:
             pass
 
-    # Fallback: scrape with improved headers
+    # Fallback: scrape with improved headers. eBay's bot detection can return
+    # a 200 with zero real .s-item results (looks identical to "no sold
+    # comps exist" otherwise), so retry once with a different header set/UA
+    # before giving up, and log every outcome — this path had zero
+    # visibility before, which made "values missing" impossible to diagnose.
     from bs4 import BeautifulSoup
     import re as re2
-    try:
-        headers = {
+
+    HEADER_SETS = [
+        {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
-        }
-        resp = requests.get(search_url, headers=headers, timeout=12)
-        if not resp.ok:
-            return {"sales": [], "avg": None, "high": None, "low": None, "count": 0}, f"eBay returned {resp.status_code}"
-        soup = BeautifulSoup(resp.text, "lxml")
-        prices, sales = [], []
-        for item in soup.select(".s-item"):
-            title_el = item.select_one(".s-item__title")
-            price_el = item.select_one(".s-item__price")
-            date_el  = item.select_one(".s-item__ended-date, .POSITIVE")
-            link_el  = item.select_one("a.s-item__link")
-            if not title_el or not price_el:
+        },
+        {
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Connection": "keep-alive",
+        },
+    ]
+
+    last_err = None
+    for attempt, headers in enumerate(HEADER_SETS, start=1):
+        try:
+            resp = requests.get(search_url, headers=headers, timeout=12)
+            if not resp.ok:
+                last_err = f"eBay returned {resp.status_code}"
+                app.logger.warning(f"eBay scrape attempt {attempt} for {query!r}: {last_err}")
                 continue
-            title = title_el.get_text(strip=True)
-            if title.lower().startswith("shop on ebay"):
+            soup = BeautifulSoup(resp.text, "lxml")
+            prices, sales = [], []
+            for item in soup.select(".s-item"):
+                title_el = item.select_one(".s-item__title")
+                price_el = item.select_one(".s-item__price")
+                date_el  = item.select_one(".s-item__ended-date, .POSITIVE")
+                link_el  = item.select_one("a.s-item__link")
+                if not title_el or not price_el:
+                    continue
+                title = title_el.get_text(strip=True)
+                if title.lower().startswith("shop on ebay"):
+                    continue
+                price_text = price_el.get_text(strip=True)
+                price_match = re2.search(r"[\d,]+\.?\d*", price_text.replace(",", ""))
+                if not price_match:
+                    continue
+                price = float(price_match.group().replace(",", ""))
+                prices.append(price)
+                sales.append({
+                    "title": title,
+                    "price": price,
+                    "date": date_el.get_text(strip=True) if date_el else None,
+                    "url": link_el["href"] if link_el else None,
+                })
+                if len(sales) >= limit:
+                    break
+            if not prices:
+                app.logger.warning(f"eBay scrape attempt {attempt} for {query!r}: 200 OK but 0 matching listings (likely blocked/CAPTCHA'd or no comps)")
                 continue
-            price_text = price_el.get_text(strip=True)
-            price_match = re2.search(r"[\d,]+\.?\d*", price_text.replace(",", ""))
-            if not price_match:
-                continue
-            price = float(price_match.group().replace(",", ""))
-            prices.append(price)
-            sales.append({
-                "title": title,
-                "price": price,
-                "date": date_el.get_text(strip=True) if date_el else None,
-                "url": link_el["href"] if link_el else None,
-            })
-            if len(sales) >= limit:
-                break
-        if not prices:
-            return {"sales": [], "avg": None, "high": None, "low": None, "count": 0}, None
-        return {
-            "sales": sales[:5],
-            "avg": round(sum(prices) / len(prices), 2),
-            "high": round(max(prices), 2),
-            "low": round(min(prices), 2),
-            "count": len(prices),
-            "search_url": search_url,
-        }, None
-    except Exception as e:
-        return None, str(e)
+            app.logger.info(f"eBay scrape attempt {attempt} for {query!r}: {len(prices)} sold listings")
+            return {
+                "sales": sales[:5],
+                "avg": round(sum(prices) / len(prices), 2),
+                "high": round(max(prices), 2),
+                "low": round(min(prices), 2),
+                "count": len(prices),
+                "search_url": search_url,
+            }, None
+        except Exception as e:
+            last_err = str(e)
+            app.logger.warning(f"eBay scrape attempt {attempt} for {query!r} raised: {last_err}")
+
+    return {"sales": [], "avg": None, "high": None, "low": None, "count": 0}, last_err
 
 _ebay_token_cache = {"token": None, "expires": 0}
 
@@ -1851,8 +1874,10 @@ def value():
     card  = body.get("card", "")
     cl_token = body.get("cl_token", "")
 
+    # Prefer the full card description (includes brand/set/parallel) over the
+    # narrower year+name+grade combo, which can match the wrong parallel.
     query_parts = [p for p in [str(year) if year else "", name, grade] if p]
-    query = " ".join(query_parts) if query_parts else card
+    query = card.strip() or (" ".join(query_parts) if query_parts else "")
 
     if not query.strip():
         return jsonify({"success": False, "error": "No card data to search"})
@@ -2156,10 +2181,15 @@ def scan():
                 data.get("parallel", ""),
             ] if p]
         else:
-            # Sports graded: year + player + grade
+            # Sports graded: year + brand + set + player + parallel + grade.
+            # Previously dropped brand/set/parallel, which could match sold
+            # comps for the wrong parallel/base variant of the same player+year.
             query_parts = [p for p in [
                 str(data.get("year", "")),
+                data.get("brand", ""),
+                data.get("set", ""),
                 data.get("name", ""),
+                data.get("parallel", ""),
                 data.get("grade", ""),
             ] if p]
 
@@ -3853,8 +3883,11 @@ def mobile_scan():
                 return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day).'})
 
             try:
-                query_parts = [p for p in [str(data.get('year') or ''), data.get('name', ''), data.get('grade', '')] if p]
-                ebay_result, _ = search_ebay_sold(' '.join(query_parts))
+                # data['card'] (built just above) already includes brand/set/
+                # parallel/grade -- reuse it instead of rebuilding a narrower
+                # year+name+grade query that can match the wrong parallel.
+                ebay_query = data.get('card') or ' '.join(p for p in [str(data.get('year') or ''), data.get('name', ''), data.get('grade', '')] if p)
+                ebay_result, _ = search_ebay_sold(ebay_query)
                 if ebay_result and ebay_result.get('avg'):
                     data['ebay_avg'] = ebay_result['avg']
             except Exception as e:
@@ -3982,10 +4015,11 @@ def mobile_scan():
         if not allowed:
             return jsonify({'success': False, 'limit_reached': True, 'error': f'Free limit reached ({limit} scans/day). Upgrade to Pro for unlimited scans.'})
 
-        # eBay value lookup
+        # eBay value lookup — reuse data['card'] (built just above, includes
+        # brand/set/parallel/grade) instead of a narrower rebuilt query.
         try:
-            query_parts = [p for p in [str(data.get('year') or ''), data.get('name', ''), data.get('grade', '')] if p]
-            ebay_result, _ = search_ebay_sold(' '.join(query_parts))
+            ebay_query = data.get('card') or ' '.join(p for p in [str(data.get('year') or ''), data.get('name', ''), data.get('grade', '')] if p)
+            ebay_result, _ = search_ebay_sold(ebay_query)
             if ebay_result and ebay_result.get('avg'):
                 data['ebay_avg'] = ebay_result['avg']
                 data['ebay_sales'] = ebay_result.get('sales', [])
@@ -4659,8 +4693,10 @@ def mobile_refresh_card_value(card_id):
         if not row:
             return jsonify({'success': False, 'error': 'Card not found'}), 404
         card = dict(row) if hasattr(row, 'keys') else dict(zip([d[0] for d in (cur if DATABASE_URL else db).description], row))
+        # card['card'] (SELECT * includes it) already has brand/set/parallel/
+        # grade -- prefer it over the narrower rebuilt query.
         query_parts = [str(card.get('year') or ''), card.get('name') or '', card.get('set_name') or '', card.get('grade') or '']
-        q = ' '.join(p for p in query_parts if p).strip()
+        q = (card.get('card') or '').strip() or ' '.join(p for p in query_parts if p).strip()
         new_avg = None
         if q:
             ebay_result, _ = search_ebay_sold(q)
@@ -4686,19 +4722,22 @@ def mobile_refresh_all_values():
     try:
         from database import get_db, DATABASE_URL
         db = get_db()
+        # Fetch card (full description w/ brand/set/parallel/grade) too --
+        # previously only fetched year/name/set_name/grade, which could
+        # match the wrong parallel on refresh.
         if DATABASE_URL:
             cur = db.cursor()
-            cur.execute("SELECT id, name, year, set_name, grade FROM scan_history WHERE user_id = %s", (request.mobile_user_id,))
+            cur.execute("SELECT id, name, year, set_name, grade, card FROM scan_history WHERE user_id = %s", (request.mobile_user_id,))
             rows = cur.fetchall()
             cols = [d[0] for d in cur.description]
         else:
-            rows = db.execute("SELECT id, name, year, set_name, grade FROM scan_history WHERE user_id = ?", (request.mobile_user_id,)).fetchall()
-            cols = ['id', 'name', 'year', 'set_name', 'grade']
+            rows = db.execute("SELECT id, name, year, set_name, grade, card FROM scan_history WHERE user_id = ?", (request.mobile_user_id,)).fetchall()
+            cols = ['id', 'name', 'year', 'set_name', 'grade', 'card']
         updated = 0
         for row in rows:
             card = dict(zip(cols, row))
             query_parts = [str(card.get('year') or ''), card.get('name') or '', card.get('set_name') or '', card.get('grade') or '']
-            q = ' '.join(p for p in query_parts if p).strip()
+            q = (card.get('card') or '').strip() or ' '.join(p for p in query_parts if p).strip()
             if not q:
                 continue
             try:
