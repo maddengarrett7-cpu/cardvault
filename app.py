@@ -4417,6 +4417,7 @@ def mobile_user():
         'is_pro': is_pro,
         'subscription_status': user.get('subscription_status', 'free'),
         'referral_code': referral_code,
+        'referred_by': user.get('referred_by') or None,
         'google_connected': bool(user.get('google_access_token')),
         'google_sheet_id': user.get('google_sheet_id') or '',
     })
@@ -4449,6 +4450,33 @@ def mobile_referral_rewards():
         'reward_codes': reward_codes,
         'discount_codes': discount_codes,
     })
+
+@app.route("/api/mobile/apply-referral", methods=["POST"])
+@mobile_auth
+def mobile_apply_referral():
+    """Let an already-registered user redeem a referral code after the fact —
+    signup is the only other place this can happen. Same rewards as signup:
+    +20/+20 bonus scans and an instant 30-day Pro trial for this user."""
+    user = get_user_by_id(request.mobile_user_id)
+    if not user:
+        return jsonify({'success': False, 'error': 'User not found'}), 404
+    if user.get('referred_by'):
+        return jsonify({'success': False, 'error': 'You already used a referral code.'}), 400
+
+    body = request.get_json(force=True) or {}
+    ref_code = (body.get('ref_code') or '').strip().upper()
+    if not ref_code:
+        return jsonify({'success': False, 'error': 'No code provided'}), 400
+    if user.get('referral_code') and ref_code == user['referral_code'].upper():
+        return jsonify({'success': False, 'error': "You can't use your own code."}), 400
+
+    referrer = _db_get_user_by_referral_code(ref_code)
+    if not referrer or referrer['id'] == user['id']:
+        return jsonify({'success': False, 'error': 'Invalid referral code'}), 400
+
+    _db_apply_referral(user['id'], referrer['id'], ref_code)
+    pro_trial_end = _grant_referee_pro_trial(user['id'])
+    return jsonify({'success': True, 'pro_trial_end': pro_trial_end, 'bonus_scans_added': 20})
 
 @app.route("/api/mobile/register-push", methods=["POST"])
 @mobile_auth
