@@ -4824,6 +4824,48 @@ def get_profile():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/mobile/users/search', methods=['GET'])
+@mobile_auth
+def search_users():
+    """Username search so Collection can link out to another collector's
+    public profile (SellerProfileScreen) without first stumbling on their
+    marketplace listing or a chat. Same public-safe fields as
+    get_public_profile below -- no email, no collection value."""
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify({'success': True, 'users': []})
+    try:
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        results = []
+        if DATABASE_URL:
+            import psycopg2.extras
+            cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT id, username, profile_pic_url, subscription_status
+                FROM users
+                WHERE username ILIKE %s AND id != %s
+                ORDER BY username
+                LIMIT 20
+            """, (f"%{q}%", request.mobile_user_id))
+            results = [dict(r) for r in cur.fetchall()]
+            cur.close()
+        else:
+            rows = db.execute("""
+                SELECT id, username, profile_pic_url, subscription_status
+                FROM users
+                WHERE username LIKE ? AND id != ?
+                ORDER BY username
+                LIMIT 20
+            """, (f"%{q}%", request.mobile_user_id)).fetchall()
+            results = [dict(r) for r in rows]
+        db.close()
+        return jsonify({'success': True, 'users': results})
+    except Exception as e:
+        app.logger.error(f"search_users failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/mobile/users/<int:user_id>/profile', methods=['GET'])
 @mobile_auth
 def get_public_profile(user_id):
