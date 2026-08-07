@@ -1736,9 +1736,10 @@ def admin_import_offer_codes():
     the unassigned pool that _assign_offer_code hands out from. Paste codes
     one per line (or comma/whitespace separated) in the 'codes' field, and
     say which campaign they're for via 'kind':
-      referrer_reward  (default) — free month, paid when a referral converts
-      referee_discount            — first-month discount, paid at signup
-    Keep these as two separate Offer Code campaigns in App Store Connect —
+      twenty_percent_off — current referee reward, 20% off, Pay As You Go
+      referrer_reward    — dormant, was the referrer's free-month reward
+      referee_discount   — dormant, was the referee's free-month reward
+    Keep these as separate Offer Code campaigns in App Store Connect —
     this field just needs to match which batch you're importing."""
     from database import get_db, DATABASE_URL
     secret = request.form.get('secret') or (request.get_json(silent=True) or {}).get('secret')
@@ -1746,9 +1747,10 @@ def admin_import_offer_codes():
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     if not DATABASE_URL:
         return jsonify({'success': False, 'error': 'Offer code pool requires Postgres'}), 400
-    kind = request.form.get('kind') or (request.get_json(silent=True) or {}).get('kind') or 'referrer_reward'
-    if kind not in ('referrer_reward', 'referee_discount'):
-        return jsonify({'success': False, 'error': "kind must be 'referrer_reward' or 'referee_discount'"}), 400
+    VALID_KINDS = ('twenty_percent_off', 'referrer_reward', 'referee_discount')
+    kind = request.form.get('kind') or (request.get_json(silent=True) or {}).get('kind') or 'twenty_percent_off'
+    if kind not in VALID_KINDS:
+        return jsonify({'success': False, 'error': f"kind must be one of {VALID_KINDS}"}), 400
     raw = request.form.get('codes') or (request.get_json(silent=True) or {}).get('codes') or ''
     codes = [c.strip() for c in raw.replace(',', '\n').split('\n') if c.strip()]
     if not codes:
