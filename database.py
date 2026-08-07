@@ -147,6 +147,29 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # Creator commission ledger: 30% of list price, per renewal, for
+        # whoever referred a paying subscriber. Tracked here so the app owner
+        # can pay creators manually (Venmo/PayPal) -- not an automated payout
+        # system. revenuecat_event_id dedupes retried webhook deliveries.
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS referral_commissions (
+                    id SERIAL PRIMARY KEY,
+                    creator_id INTEGER REFERENCES users(id),
+                    referee_id INTEGER REFERENCES users(id),
+                    event_type TEXT,
+                    product_id TEXT,
+                    amount FLOAT,
+                    revenuecat_event_id TEXT UNIQUE,
+                    paid BOOLEAN DEFAULT FALSE,
+                    paid_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         for col, definition in [
             ("cl_value", "FLOAT"),
             ("cl_last_sale", "FLOAT"),

@@ -874,7 +874,7 @@ def signup():
             referrer = _db_get_user_by_referral_code(ref_code)
             if referrer and referrer['id'] != user['id']:
                 _db_apply_referral(user['id'], referrer['id'], ref_code)
-                _grant_pro_trial(user['id'])
+                _assign_offer_code(user['id'], kind='twenty_percent_off')
 
         import secrets
         token = secrets.token_hex(32)
@@ -1119,57 +1119,71 @@ def _grant_pro_trial(user_id, days=30):
     return trial_end
 
 def _grant_referral_conversion_reward(referee_id):
-    """Called the first time a referred user converts to Pro. Looks up who
-    referred them and instantly grants that referrer a Pro trial too (same
-    mechanism as the referee's signup reward — no Apple Offer Code/redemption
-    involved). Idempotent via users.referral_reward_granted."""
+    """Superseded by _track_referral_commission — kept only so old code
+    referencing it doesn't break. The referrer's reward is now a recurring
+    30% commission per renewal, not a one-time free month."""
+    return
+
+# List prices used for creator commission math -- the referee's ACTUAL
+# charge is 20% less than this (their Offer Code discount), but the 20% off
+# / 30% commission / 50% margin split is defined against the full list
+# price, not the discounted amount: on a $7.99 card, the customer pays
+# $6.39, the creator earns $2.40 (30% of $7.99), you keep $5.59.
+PRODUCT_LIST_PRICES = {
+    'com.cardscan.live.pro.monthly': 7.99,
+    'com.cardscan.live.pro.annual': 59.00,
+}
+COMMISSION_RATE = 0.30
+
+def _track_referral_commission(referee_id, event_type, product_id, revenuecat_event_id):
+    """Called on every INITIAL_PURCHASE/RENEWAL for a paying user who was
+    referred. Logs 30% of the product's list price as owed to their
+    referrer -- this is a ledger only (see /admin/commissions); payout is
+    manual (Venmo/PayPal), not automated. revenuecat_event_id dedupes
+    retried webhook deliveries via the table's unique constraint."""
     from database import get_db, DATABASE_URL
     if not DATABASE_URL:
+        return
+    list_price = PRODUCT_LIST_PRICES.get(product_id)
+    if not list_price:
+        app.logger.warning(f"_track_referral_commission: unknown product_id {product_id!r} for user {referee_id}, skipping")
         return
     db = get_db()
     try:
         import psycopg2.extras
         cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, referred_by, referral_reward_granted FROM users WHERE id = %s", (referee_id,))
+        cur.execute("SELECT id, referred_by FROM users WHERE id = %s", (referee_id,))
         referee = cur.fetchone()
-        cur.close(); db.close()
+        cur.close()
+        if not referee or not referee.get('referred_by'):
+            return
+        referrer = _db_get_user_by_referral_code(referee['referred_by'])
+        if not referrer:
+            return
+        amount = round(list_price * COMMISSION_RATE, 2)
+        cur2 = db.cursor()
+        cur2.execute("""
+            INSERT INTO referral_commissions (creator_id, referee_id, event_type, product_id, amount, revenuecat_event_id)
+            VALUES (%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (revenuecat_event_id) DO NOTHING
+        """, (referrer['id'], referee_id, event_type, product_id, amount, revenuecat_event_id))
+        db.commit(); cur2.close()
+
+        if referrer.get('push_token'):
+            try:
+                from price_alerts import send_expo_push
+                send_expo_push(
+                    referrer['push_token'],
+                    "You earned a commission! 💰",
+                    f"Someone you referred just paid for Pro — you earned ${amount:.2f}.",
+                    {"type": "referral_commission"},
+                )
+            except Exception as e:
+                app.logger.warning(f"referral commission push failed: {e}")
     except Exception as e:
-        app.logger.error(f"_grant_referral_conversion_reward lookup failed: {e}")
-        db.close()
-        return
-
-    if not referee or not referee.get('referred_by') or referee.get('referral_reward_granted'):
-        return
-
-    referrer = _db_get_user_by_referral_code(referee['referred_by'])
-    if not referrer:
-        return
-
-    _grant_pro_trial(referrer['id'])
-
-    # Mark granted so a webhook retry/duplicate delivery can't grant a
-    # second trial to the same referrer.
-    db2 = get_db()
-    try:
-        cur2 = db2.cursor()
-        cur2.execute("UPDATE users SET referral_reward_granted = TRUE WHERE id = %s", (referee_id,))
-        db2.commit(); cur2.close()
-    except Exception:
-        db2.rollback()
+        app.logger.error(f"_track_referral_commission failed: {e}")
     finally:
-        db2.close()
-
-    if referrer.get('push_token'):
-        try:
-            from price_alerts import send_expo_push
-            send_expo_push(
-                referrer['push_token'],
-                "You earned a reward! 🎉",
-                "Someone you referred just went Pro — you just got a free month of Pro too!",
-                {"type": "referral_reward"},
-            )
-        except Exception as e:
-            app.logger.warning(f"referral reward push failed: {e}")
+        db.close()
 
 @app.route('/referral-info')
 @login_required
@@ -1551,6 +1565,83 @@ def admin_edit_buyer(secret, buyer_id):
         return redirect(f"/admin/buyers/{secret}")
     except Exception as e:
         return f"Error: {str(e)} <a href='/admin/buyers/{secret}'>Back</a>", 500
+
+
+@app.route('/admin/commissions/<secret>', methods=['GET'])
+def admin_commissions(secret):
+    """What each creator is owed from their referral code's 30% recurring
+    commission — a ledger to pay out manually (Venmo/PayPal), not an
+    automated payout system."""
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    rows = []
+    if DATABASE_URL:
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT u.id AS creator_id, u.username, u.email,
+                   COUNT(*) FILTER (WHERE NOT rc.paid) AS unpaid_count,
+                   COALESCE(SUM(rc.amount) FILTER (WHERE NOT rc.paid), 0) AS owed,
+                   COALESCE(SUM(rc.amount) FILTER (WHERE rc.paid), 0) AS paid_total
+            FROM referral_commissions rc
+            JOIN users u ON u.id = rc.creator_id
+            GROUP BY u.id, u.username, u.email
+            ORDER BY owed DESC
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+    db.close()
+
+    def creator_row(r):
+        name = r.get('username') or r['email']
+        mark_paid = f'''
+        <form method="POST" action="/admin/commissions/{secret}/mark-paid/{r['creator_id']}" style="display:inline">
+          <button style="background:#00e676;color:#000;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;">Mark paid</button>
+        </form>''' if r['owed'] > 0 else ''
+        return f'''
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:8px">{name}</td>
+          <td style="padding:8px;color:#888">{r['unpaid_count']} unpaid</td>
+          <td style="padding:8px;color:#00e676;font-weight:800;">${r['owed']:.2f}</td>
+          <td style="padding:8px;color:#666;">${r['paid_total']:.2f} paid so far</td>
+          <td style="padding:8px">{mark_paid}</td>
+        </tr>'''
+
+    rows_html = ''.join(creator_row(r) for r in rows) or '<tr><td colspan="5" style="padding:16px;color:#555;">No commissions logged yet.</td></tr>'
+    total_owed = sum(r['owed'] for r in rows)
+
+    return f'''
+    <html><head><title>SlabVault — Creator Commissions</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {{ background:#0a0a0a; color:#fff; font-family:-apple-system,sans-serif; padding:24px; }}
+      h1 {{ font-size:20px; }}
+      table {{ width:100%; border-collapse:collapse; margin-top:20px; font-size:13px; }}
+      th {{ text-align:left; padding:8px; color:#666; border-bottom:1px solid #333; }}
+    </style>
+    </head><body>
+      <h1>Creator Commissions</h1>
+      <p style="color:#888;">Total currently owed across all creators: <strong style="color:#00e676;">${total_owed:.2f}</strong></p>
+      <table>
+        <tr><th>Creator</th><th>Unpaid renewals</th><th>Owed now</th><th>Paid history</th><th></th></tr>
+        {rows_html}
+      </table>
+    </body></html>'''
+
+
+@app.route('/admin/commissions/<secret>/mark-paid/<int:creator_id>', methods=['POST'])
+def admin_mark_commissions_paid(secret, creator_id):
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    if DATABASE_URL:
+        cur = db.cursor()
+        cur.execute("UPDATE referral_commissions SET paid = TRUE, paid_at = NOW() WHERE creator_id = %s AND paid = FALSE", (creator_id,))
+        db.commit(); cur.close()
+    db.close()
+    return redirect(f"/admin/commissions/{secret}")
 
 
 @app.route('/mission')
@@ -3767,13 +3858,13 @@ def mobile_signup():
     user_ref_code = email.split('@')[0].upper()[:6] + str(user['id'])
     _db_set_referral_code(user['id'], user_ref_code)
     referral_applied = False
-    pro_trial_end = None
+    discount_code = None
     if ref_code:
         referrer = _db_get_user_by_referral_code(ref_code)
         if referrer and referrer['id'] != user['id']:
             _db_apply_referral(user['id'], referrer['id'], ref_code)
             referral_applied = True
-            pro_trial_end = _grant_pro_trial(user['id'])
+            discount_code = _assign_offer_code(user['id'], kind='twenty_percent_off')
 
     import secrets as _secrets
     token = _secrets.token_hex(32)
@@ -3781,9 +3872,9 @@ def mobile_signup():
     return jsonify({
         'success': True,
         'session_token': token,
-        'user': {'id': user['id'], 'email': user['email'], 'subscription_status': 'pro' if pro_trial_end else 'free'},
+        'user': {'id': user['id'], 'email': user['email'], 'subscription_status': 'free'},
         'referral_applied': referral_applied,
-        'pro_trial_end': pro_trial_end,
+        'discount_code': discount_code,
     })
 
 
@@ -4487,7 +4578,7 @@ def mobile_referral_rewards():
 def mobile_apply_referral():
     """Let an already-registered user redeem a referral code after the fact —
     signup is the only other place this can happen. Same rewards as signup:
-    +20/+20 bonus scans and an instant 30-day Pro trial for this user."""
+    +20/+20 bonus scans and a 20%-off Offer Code for this user."""
     user = get_user_by_id(request.mobile_user_id)
     if not user:
         return jsonify({'success': False, 'error': 'User not found'}), 404
@@ -4506,8 +4597,8 @@ def mobile_apply_referral():
         return jsonify({'success': False, 'error': 'Invalid referral code'}), 400
 
     _db_apply_referral(user['id'], referrer['id'], ref_code)
-    pro_trial_end = _grant_pro_trial(user['id'])
-    return jsonify({'success': True, 'pro_trial_end': pro_trial_end, 'bonus_scans_added': 20})
+    discount_code = _assign_offer_code(user['id'], kind='twenty_percent_off')
+    return jsonify({'success': True, 'discount_code': discount_code, 'bonus_scans_added': 20})
 
 @app.route("/api/mobile/register-push", methods=["POST"])
 @mobile_auth
@@ -5183,10 +5274,10 @@ def revenuecat_webhook():
                 db.commit(); cur.close()
             db.close()
 
-        # First-ever paid conversion (not renewals/product changes) is what
-        # triggers the referrer's reward — see _grant_referral_conversion_reward.
-        if event_type == 'INITIAL_PURCHASE':
-            _grant_referral_conversion_reward(int(app_user_id))
+        # Every payment (first purchase AND each renewal) earns the referrer
+        # a commission for as long as this customer stays subscribed.
+        if event_type in ('INITIAL_PURCHASE', 'RENEWAL'):
+            _track_referral_commission(int(app_user_id), event_type, event.get('product_id'), event.get('id'))
 
         return jsonify({'success': True}), 200
     except Exception as e:
