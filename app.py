@@ -2591,6 +2591,34 @@ def admin_reset_user_password(secret, email):
         return f"❌ No user found with email: {email}"
     return f"✅ Password reset for {email} — temp password: <strong>CardScan123!</strong> — tell them to change it after logging in."
 
+@app.route('/admin/backfill-referral-code/<secret>/<email>')
+def admin_backfill_referral_code(secret, email):
+    """Some accounts never triggered the /api/mobile/user backfill (e.g.
+    they haven't opened Profile/Settings since signing up), so they show
+    no referral_code in the admin listing. Generate and persist one now."""
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db, DATABASE_URL
+    email = email.lower()
+    db = get_db()
+    if DATABASE_URL:
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, referral_code FROM users WHERE email = %s", (email,))
+        user = cur.fetchone()
+        cur.close()
+    else:
+        row = db.execute("SELECT id, referral_code FROM users WHERE email = ?", (email,)).fetchone()
+        user = dict(row) if row else None
+    db.close()
+    if not user:
+        return f"❌ No user found with email: {email}"
+    code = user.get('referral_code') or ''
+    if code:
+        return f"Already has a code: <strong>{code}</strong> — nothing to do."
+    code = email.split('@')[0].upper()[:6] + str(user['id'])
+    _db_set_referral_code(user['id'], code)
+    return f"✅ Generated and saved code for {email}: <strong>{code}</strong>"
+
 @app.route('/admin/reset-password/<secret>')
 def admin_reset_password(secret):
     if not check_admin(secret):
