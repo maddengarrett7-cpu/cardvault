@@ -1125,10 +1125,11 @@ def _grant_referral_conversion_reward(referee_id):
     return
 
 # List prices used for creator commission math -- the referee's ACTUAL
-# charge is 20% less than this (their Offer Code discount), but the 20% off
-# / 30% commission / 50% margin split is defined against the full list
-# price, not the discounted amount: on a $7.99 card, the customer pays
-# $6.39, the creator earns $2.40 (30% of $7.99), you keep $5.59.
+# charge is 25% less than this (the live Offer Code discount, $5.99 vs
+# $7.99 -- originally targeted 20%/$6.39 but $5.99 was the closest real
+# Apple price tier). Commission is computed against the list price, not
+# the discounted amount: creator earns $2.40 (30% of $7.99) regardless of
+# what the customer actually paid; you keep whatever's left after that.
 PRODUCT_LIST_PRICES = {
     'com.cardscan.live.pro.monthly': 7.99,
     'com.cardscan.live.pro.annual': 59.00,
@@ -1644,6 +1645,70 @@ def admin_mark_commissions_paid(secret, creator_id):
     return redirect(f"/admin/commissions/{secret}")
 
 
+@app.route('/admin/referral-codes/<secret>', methods=['GET'])
+def admin_referral_codes(secret):
+    """Every user's referral code plus how many signups it's driven --
+    for picking who to premake creator graphics for."""
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    rows = []
+    q = (request.args.get('q') or '').strip()
+    if DATABASE_URL:
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        sql = """
+            SELECT u.id, u.username, u.email, u.referral_code,
+                   COUNT(r.id) AS referred_count
+            FROM users u
+            LEFT JOIN users r ON r.referred_by = u.referral_code
+            WHERE u.referral_code IS NOT NULL AND u.referral_code != ''
+        """
+        params = []
+        if q:
+            sql += " AND (u.username ILIKE %s OR u.email ILIKE %s OR u.referral_code ILIKE %s)"
+            params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+        sql += " GROUP BY u.id, u.username, u.email, u.referral_code ORDER BY referred_count DESC, u.id DESC"
+        cur.execute(sql, params)
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+    db.close()
+
+    def code_row(r):
+        name = r.get('username') or r['email']
+        return f'''
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:8px">{name}</td>
+          <td style="padding:8px;color:#666;">{r['email']}</td>
+          <td style="padding:8px;color:#00e676;font-weight:800;font-family:monospace;">{r['referral_code']}</td>
+          <td style="padding:8px;color:#888;">{r['referred_count']} signups</td>
+        </tr>'''
+
+    rows_html = ''.join(code_row(r) for r in rows) or '<tr><td colspan="4" style="padding:16px;color:#555;">No matching users.</td></tr>'
+
+    return f'''
+    <html><head><title>SlabVault — Referral Codes</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {{ background:#0a0a0a; color:#fff; font-family:-apple-system,sans-serif; padding:24px; }}
+      h1 {{ font-size:20px; }}
+      input {{ background:#151515; border:1px solid #333; color:#fff; border-radius:6px; padding:8px 12px; font-size:14px; width:280px; }}
+      table {{ width:100%; border-collapse:collapse; margin-top:20px; font-size:13px; }}
+      th {{ text-align:left; padding:8px; color:#666; border-bottom:1px solid #333; }}
+    </style>
+    </head><body>
+      <h1>Referral Codes ({len(rows)})</h1>
+      <form method="GET" style="margin-top:12px;">
+        <input type="text" name="q" placeholder="Search username, email, or code..." value="{q}">
+        <button style="background:#00e676;color:#000;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:700;">Search</button>
+      </form>
+      <table>
+        <tr><th>Username</th><th>Email</th><th>Code</th><th>Referred</th></tr>
+        {rows_html}
+      </table>
+    </body></html>'''
+
+
 @app.route('/mission')
 def mission():
     return render_template('mission.html')
@@ -1736,7 +1801,9 @@ def admin_import_offer_codes():
     the unassigned pool that _assign_offer_code hands out from. Paste codes
     one per line (or comma/whitespace separated) in the 'codes' field, and
     say which campaign they're for via 'kind':
-      twenty_percent_off — current referee reward, 20% off, Pay As You Go
+      twenty_percent_off — current referee reward, 25% off (Pay As You Go,
+                            $5.99/mo -- name is legacy, kept so it matches
+                            the already-imported pool's kind value)
       referrer_reward    — dormant, was the referrer's free-month reward
       referee_discount   — dormant, was the referee's free-month reward
     Keep these as separate Offer Code campaigns in App Store Connect —
@@ -4580,7 +4647,7 @@ def mobile_referral_rewards():
 def mobile_apply_referral():
     """Let an already-registered user redeem a referral code after the fact —
     signup is the only other place this can happen. Same rewards as signup:
-    +20/+20 bonus scans and a 20%-off Offer Code for this user."""
+    +20/+20 bonus scans and a 25%-off Offer Code for this user."""
     user = get_user_by_id(request.mobile_user_id)
     if not user:
         return jsonify({'success': False, 'error': 'User not found'}), 404
