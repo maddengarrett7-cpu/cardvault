@@ -5306,6 +5306,7 @@ def sync_subscription():
     (never trust a client-claimed status) and update our own subscription_status.
     Called right after a purchase/restore so the app reflects Pro instantly
     instead of waiting on the webhook."""
+    from datetime import date
     try:
         if not REVENUECAT_SECRET_KEY:
             return jsonify({'success': False, 'error': 'RevenueCat not configured'}), 503
@@ -5326,9 +5327,25 @@ def sync_subscription():
             expires = pro_entitlement.get('expires_date')
             is_active = expires is None or datetime.fromisoformat(expires.replace('Z', '+00:00')) > datetime.now(timezone.utc)
 
-        new_status = 'pro' if is_active else 'free'
         from database import get_db, DATABASE_URL
         db = get_db()
+
+        if not is_active:
+            # RevenueCat has no real purchase on file, but don't let that stomp
+            # a still-valid dashboard-granted trial (admin/grant-trial) -- only
+            # RevenueCat webhooks/purchases should ever downgrade those early.
+            trial_end = None
+            if DATABASE_URL:
+                cur = db.cursor()
+                cur.execute("SELECT trial_end FROM users WHERE id = %s", (user_id,))
+                row = cur.fetchone()
+                cur.close()
+                trial_end = row[0] if row else None
+            if trial_end and date.fromisoformat(str(trial_end)[:10]) >= date.today():
+                db.close()
+                return jsonify({'success': True, 'subscription_status': 'pro'})
+
+        new_status = 'pro' if is_active else 'free'
         if DATABASE_URL:
             cur = db.cursor()
             cur.execute("UPDATE users SET subscription_status = %s WHERE id = %s", (new_status, user_id))
