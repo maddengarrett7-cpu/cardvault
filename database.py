@@ -979,7 +979,7 @@ def update_password(email, new_hash):
         conn.close()
 
 
-MAX_SESSIONS = 2
+MAX_SESSIONS = 5
 
 def create_session(user_id, session_token):
     """Create a new session, removing oldest if over limit."""
