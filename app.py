@@ -1645,6 +1645,71 @@ def admin_mark_commissions_paid(secret, creator_id):
     return redirect(f"/admin/commissions/{secret}")
 
 
+@app.route('/admin/crashes/<secret>', methods=['GET'])
+def admin_crashes(secret):
+    """Crash reports from App.js's ErrorBoundary, grouped by message so a
+    repeated crash (the ones actually worth fixing) is obvious at a glance
+    instead of buried in a flat timeline."""
+    if not check_admin(secret):
+        return "Forbidden", 403
+    from database import get_db, DATABASE_URL
+    db = get_db()
+    groups = []
+    if DATABASE_URL:
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(cr.message, ''), '(no message)') AS message,
+                COUNT(*) AS occurrences,
+                COUNT(DISTINCT cr.user_id) AS distinct_users,
+                MAX(cr.created_at) AS last_seen,
+                (ARRAY_AGG(cr.stack ORDER BY cr.created_at DESC))[1] AS sample_stack,
+                (ARRAY_AGG(cr.component_stack ORDER BY cr.created_at DESC))[1] AS sample_component_stack,
+                (ARRAY_AGG(u.email ORDER BY cr.created_at DESC))[1] AS last_email
+            FROM crash_reports cr
+            LEFT JOIN users u ON u.id = cr.user_id
+            GROUP BY message
+            ORDER BY last_seen DESC
+        """)
+        groups = [dict(r) for r in cur.fetchall()]
+        cur.close()
+    db.close()
+
+    def esc(s):
+        return (s or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+    def crash_row(g):
+        return f'''
+        <div style="background:#141414;border:1px solid #262626;border-radius:10px;padding:16px 18px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+            <div style="font-weight:700;font-size:14px;color:#fff;">{esc(g['message'])}</div>
+            <div style="white-space:nowrap;color:#00e676;font-weight:800;font-size:13px;">{g['occurrences']}× · {g['distinct_users']} user(s)</div>
+          </div>
+          <div style="color:#666;font-size:12px;margin-top:6px;">last seen {g['last_seen']} · last from {esc(g['last_email']) or 'not logged in'}</div>
+          <details style="margin-top:8px;">
+            <summary style="color:#888;font-size:12px;cursor:pointer;">stack trace</summary>
+            <pre style="white-space:pre-wrap;color:#aaa;font-size:11px;margin-top:8px;">{esc(g['sample_stack'])}</pre>
+            <pre style="white-space:pre-wrap;color:#666;font-size:11px;margin-top:4px;">{esc(g['sample_component_stack'])}</pre>
+          </details>
+        </div>'''
+
+    rows_html = ''.join(crash_row(g) for g in groups) or '<p style="color:#555;">No crashes reported yet.</p>'
+    total = sum(g['occurrences'] for g in groups)
+
+    return f'''
+    <html><head><title>SlabVault — Crash Reports</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {{ background:#0a0a0a; color:#fff; font-family:-apple-system,sans-serif; padding:24px; max-width:900px; margin:0 auto; }}
+      h1 {{ font-size:20px; }}
+    </style>
+    </head><body>
+      <h1>Crash Reports</h1>
+      <p style="color:#888;font-size:13px;">{len(groups)} distinct crash message(s), {total} report(s) total.</p>
+      {rows_html}
+    </body></html>'''
+
+
 @app.route('/admin/referral-codes/<secret>', methods=['GET'])
 def admin_referral_codes(secret):
     """Every user's referral code plus how many signups it's driven --
@@ -3829,14 +3894,38 @@ def mobile_debug():
 
 @app.route('/api/mobile/log-crash', methods=['POST'])
 def mobile_log_crash():
-    """Unprotected -- a crash can happen before login. Just logs the report."""
+    """Unprotected -- a crash can happen before login. Persists the report
+    to crash_reports (previously this only logged to Railway's console,
+    which meant every crash was thrown away as soon as the server
+    restarted -- there was no way to see what was actually breaking)."""
     try:
         body = request.get_json(force=True) or {}
-        app.logger.error(
-            f"CLIENT CRASH: {body.get('message')}\n"
-            f"Component stack: {body.get('componentStack')}\n"
-            f"Stack: {body.get('stack')}"
-        )
+        message = body.get('message')
+        stack = body.get('stack')
+        component_stack = body.get('componentStack')
+        app.logger.error(f"CLIENT CRASH: {message}\nComponent stack: {component_stack}\nStack: {stack}")
+
+        # Best-effort user id -- crashes can happen before login, so a
+        # missing/invalid token just means user_id stays NULL.
+        user_id = None
+        token = request.headers.get('X-Session-Token')
+        from database import get_db, DATABASE_URL
+        db = get_db()
+        try:
+            if DATABASE_URL:
+                cur = db.cursor()
+                if token:
+                    cur.execute("SELECT user_id FROM user_sessions WHERE session_token = %s", (token,))
+                    row = cur.fetchone()
+                    user_id = row[0] if row else None
+                cur.execute(
+                    "INSERT INTO crash_reports (user_id, message, stack, component_stack) VALUES (%s, %s, %s, %s)",
+                    (user_id, message, stack, component_stack)
+                )
+                db.commit()
+                cur.close()
+        finally:
+            db.close()
     except Exception as e:
         app.logger.error(f"mobile_log_crash failed: {e}")
     return jsonify({'success': True})

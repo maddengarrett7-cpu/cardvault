@@ -360,6 +360,26 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # Client-reported crashes (App.js ErrorBoundary posts here on every
+        # uncaught render error). Previously this endpoint only logged to
+        # Railway's console -- every crash report was thrown away as soon as
+        # the server restarted. user_id is best-effort (crashes can happen
+        # before login, so it's nullable).
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS crash_reports (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    message TEXT,
+                    stack TEXT,
+                    component_stack TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Verified buyers (CardConnect) — server-driven so new buyers don't
         # require an app build. tags/sports stored comma-separated.
         try:
