@@ -1,13 +1,13 @@
 # Product Marketing Context
 
-*Last updated: 2026-06-09*
+*Last updated: 2026-08-11*
 
 ## Product Overview
-**One-liner:** SlabScan is a mobile-first card scanner that instantly identifies sports cards and Pokémon/TCG cards — graded or raw — and pulls live eBay market values.
-**What it does:** Point your phone camera at any graded sports card slab and SlabScan uses AI to read the player, year, brand, and grade — then fetches real eBay sold prices (avg/high/low + recent sales) so you know exactly what it's worth. Syncs your collection to Google Sheets automatically.
+**One-liner:** SlabVault (rebranded from SlabScan, June 2026) is a mobile-first card scanner that instantly identifies sports cards — graded or raw — and pulls live eBay market values.
+**What it does:** Point your phone camera at any graded sports card slab (or a raw card) and SlabVault uses AI to read the player, year, brand, and grade — then fetches real eBay sold prices (avg/high/low + recent sales) so you know exactly what it's worth. Bulk-scans a whole binder page at once. Syncs your collection to Google Sheets automatically, with a Discover Collectors tab to browse other users' public collections.
 **Product category:** Sports card collection management / card valuation tool
-**Product type:** PWA (installable web app), SaaS
-**Business model:** Freemium subscription — Free tier (10 scans/day), Pro at $7.99/mo or $59/yr (unlimited scans + full eBay data)
+**Product type:** Native iOS app (App Store, live since 2026-07-27) — not a PWA anymore
+**Business model:** Freemium subscription — Free tier (10 scans/day), Pro at $7.99/mo or $59/yr (unlimited scans + full eBay data). Referral program: referee gets 25% off Pro (offer code, ~$5.99/mo), referring creator earns 30% recurring commission on that customer for as long as they stay subscribed.
 
 ## Target Audience
 **Target users:** Sports card collectors, hobbyists, flippers, and dealers — anyone who buys, sells, or manages a graded card collection
@@ -48,9 +48,10 @@
 **Key differentiators:**
 - Camera scan → AI reads slab label automatically (no manual typing)
 - Live eBay sold comps (avg/high/low) pulled instantly
-- Google Sheets sync with smart column detection
-- PWA — works on any phone, no app store needed
-- Built specifically for graded slabs (PSA, BGS, SGC, etc.)
+- Google Sheets sync with smart column detection — pick from starter templates (Basic Collection, Reseller/Inventory) or the sheet's own headers
+- Bulk scan — one photo of a binder page, multiple cards identified and logged at once
+- Works on raw (ungraded) cards too, not just slabs
+- Built specifically for graded slabs (PSA, BGS, SGC, etc.) but not limited to them
 **How we do it differently:** Combine AI vision (Gemini) + eBay scraping in a single tap — no manual entry required
 **Why that's better:** Faster decisions, less friction, works hands-free at a show
 **Why customers choose us:** Speed + accuracy — know what a card is worth before the seller finishes their pitch
@@ -99,9 +100,9 @@
 |-------|-------|
 | Speed | One tap to full eBay comps |
 | Accuracy | AI reads player, year, brand, grade from slab label |
-| Convenience | PWA — no app store, works on any phone |
+| Convenience | Native iOS app, bulk scan a whole binder page at once |
 
 ## Goals
-**Business goal:** Grow Pro subscriber base ($9.99/mo recurring)
+**Business goal:** Grow Pro subscriber base ($7.99/mo or $59/yr recurring, via App Store IAP/RevenueCat)
 **Conversion action:** Upgrade to Pro after hitting 10 scan/day free limit
-**Current metrics:** Free (10 scans/day) vs Pro (unlimited) — Stripe subscription active
+**Current metrics (2026-08-11):** 67 total users, 4 Pro (~6%), 28 of those signups came in the single week the App Store listing went live (2026-07-27) vs. 2-4/week organically otherwise. **Known bottleneck: ~60% of real signups never complete a single scan** — this is the priority to fix before scaling acquisition spend (ads), since ads would just pour more people into the same broken activation funnel.
