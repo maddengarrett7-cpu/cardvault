@@ -585,6 +585,16 @@ def extract_sheet_id(sheet_url_or_id):
 from sheet_field_mapping import FIELD_KEYWORDS, detect_column_mapping
 import sheet_templates
 
+def load_saved_mapping(user):
+    """Return the user's manually-confirmed column mapping, if they've set
+    one, else None (falls back to detect_column_mapping's auto-guess)."""
+    if not user or not user.get('sheet_column_mapping'):
+        return None
+    try:
+        return json.loads(user['sheet_column_mapping'])
+    except Exception:
+        return None
+
 def build_row(data, mapping, num_cols):
     """Build a row array aligned to the sheet's existing columns."""
     from datetime import date
@@ -631,9 +641,9 @@ def get_first_sheet_tab(sheet_id, svc, preferred_tab=None):
         return preferred_tab
     return tabs[0] if tabs else SHEET_TAB
 
-def get_sheet_headers(sheet_id, svc):
+def get_sheet_headers(sheet_id, svc, preferred_tab=None):
     """Read the first row of the sheet to detect headers."""
-    tab = get_first_sheet_tab(sheet_id, svc)
+    tab = get_first_sheet_tab(sheet_id, svc, preferred_tab=preferred_tab)
     try:
         result = svc.spreadsheets().values().get(
             spreadsheetId=sheet_id,
@@ -697,7 +707,7 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
     try:
         preferred_tab = user.get("sheet_tab") if user else None
         tab = get_first_sheet_tab(sheet_id, svc, preferred_tab=preferred_tab)
-        headers = get_sheet_headers(sheet_id, svc)
+        headers = get_sheet_headers(sheet_id, svc, preferred_tab=preferred_tab)
     except Exception as e:
         err = str(e)
         if "403" in err or "permission" in err.lower():
@@ -727,7 +737,7 @@ def append_to_sheet(data, custom_sheet_id=None, user=None):
     ]
 
     if headers:
-        mapping = detect_column_mapping(headers)
+        mapping = load_saved_mapping(user) or detect_column_mapping(headers)
         if mapping:
             # Use column mapping whenever at least 1 header was recognized —
             # unrecognized columns simply stay blank rather than misaligning data
@@ -4317,6 +4327,11 @@ def mobile_add_to_sheet():
     try:
         body = request.get_json()
         user = get_user_by_id(request.mobile_user_id)
+        if not user or not user.get('google_sheet_id'):
+            # Don't silently fall back to the shared default SPREADSHEET_ID —
+            # a user who hasn't connected their own sheet should get a clear
+            # "not connected" response, not a false "success".
+            return jsonify({'success': False, 'error': "No Google Sheet connected. Tap 'Connect Sheets' in the menu to set one up."})
         append_to_sheet(body, user=user)
         return jsonify({'success': True})
     except Exception as e:
@@ -4622,7 +4637,7 @@ def mobile_sheet_preview():
             return jsonify({'success': False, 'error': 'No sheet connected'})
 
         svc = get_user_sheets_service(user)
-        tab = get_first_sheet_tab(sheet_id, svc)
+        tab = get_first_sheet_tab(sheet_id, svc, preferred_tab=user.get('sheet_tab'))
         result = svc.spreadsheets().values().get(
             spreadsheetId=sheet_id, range=f"{tab}!A:Z"
         ).execute()
@@ -4631,7 +4646,7 @@ def mobile_sheet_preview():
             return jsonify({'success': True, 'rows': [], 'stats': {}, 'sheet_url': f'https://docs.google.com/spreadsheets/d/{sheet_id}'})
 
         headers = all_rows[0]
-        mapping = detect_column_mapping(headers)
+        mapping = load_saved_mapping(user) or detect_column_mapping(headers)
         data_rows = all_rows[1:]
 
         def cell(row, field):
@@ -4831,11 +4846,54 @@ def mobile_set_sheet_tab():
             return jsonify({"success": False, "error": "No tab name provided"}), 400
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("UPDATE users SET sheet_tab = %s WHERE id = %s", (tab, request.mobile_user_id))
+        # A different tab likely has different headers — clear any confirmed
+        # column mapping so the user re-confirms for this tab.
+        cur.execute("UPDATE users SET sheet_tab = %s, sheet_column_mapping = NULL WHERE id = %s", (tab, request.mobile_user_id))
         conn.commit(); cur.close(); conn.close()
         return jsonify({"success": True, "tab": tab})
     except Exception as e:
         app.logger.error(f"mobile_set_sheet_tab failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/mobile/sheet-headers", methods=["GET"])
+@mobile_auth
+def mobile_sheet_headers():
+    """Return the connected sheet's real header row, plus the auto-detected
+    and (if the user already confirmed one) saved column mapping — powers
+    the 'Confirm Your Columns' screen."""
+    try:
+        user = get_user_by_id(request.mobile_user_id)
+        sheet_id = user.get("google_sheet_id") if user else None
+        if not sheet_id:
+            return jsonify({"headers": [], "num_cols": 0, "suggested_mapping": {}, "saved_mapping": None})
+        svc = get_user_sheets_service(user)
+        headers = get_sheet_headers(sheet_id, svc, preferred_tab=user.get("sheet_tab"))
+        suggested_mapping = detect_column_mapping(headers) if headers else {}
+        return jsonify({
+            "headers": headers,
+            "num_cols": len(headers),
+            "suggested_mapping": suggested_mapping,
+            "saved_mapping": load_saved_mapping(user),
+        })
+    except Exception as e:
+        return jsonify({"headers": [], "num_cols": 0, "suggested_mapping": {}, "saved_mapping": None, "error": str(e)})
+
+@app.route("/api/mobile/sheet-mapping", methods=["POST"])
+@mobile_auth
+def mobile_set_sheet_mapping():
+    """Save the user's manually-confirmed column mapping."""
+    try:
+        body = request.get_json(force=True) or {}
+        mapping = body.get("mapping")
+        if not isinstance(mapping, dict):
+            return jsonify({"success": False, "error": "No mapping provided"}), 400
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET sheet_column_mapping = %s WHERE id = %s", (json.dumps(mapping), request.mobile_user_id))
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({"success": True, "mapping": mapping})
+    except Exception as e:
+        app.logger.error(f"mobile_set_sheet_mapping failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/mobile/sheet-service-email", methods=["GET"])
@@ -4921,6 +4979,9 @@ def mobile_scan_back():
             'set':    set_ or back_data.get('set', ''),
             'grade':  grade,
             'serial': serial or back_data.get('serial', ''),
+            'card_number': back_data.get('card_number', ''),
+            'brand':  back_data.get('brand', ''),
+            'team':   back_data.get('team', ''),
         }
         if back_data.get('rookie'):
             merged['rookie'] = True

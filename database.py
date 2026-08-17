@@ -113,6 +113,7 @@ if DATABASE_URL:
             ("price_alerts_enabled", "BOOLEAN DEFAULT TRUE"),
             ("sheet_tab", "TEXT"),
             ("referral_reward_granted", "BOOLEAN DEFAULT FALSE"),
+            ("sheet_column_mapping", "TEXT"),
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
@@ -529,7 +530,9 @@ if DATABASE_URL:
     def save_google_sheet_id(user_id, sheet_id):
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("UPDATE users SET google_sheet_id = %s WHERE id = %s", (sheet_id, user_id))
+        # A new sheet almost certainly has a different layout — clear any
+        # confirmed column mapping from the old one so the user re-confirms.
+        cur.execute("UPDATE users SET google_sheet_id = %s, sheet_column_mapping = NULL WHERE id = %s", (sheet_id, user_id))
         conn.commit()
         cur.close()
         conn.close()
@@ -749,6 +752,8 @@ else:
             ("google_access_token", "TEXT"),
             ("google_refresh_token", "TEXT"),
             ("google_sheet_id", "TEXT"),
+            ("sheet_tab", "TEXT"),
+            ("sheet_column_mapping", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -833,7 +838,7 @@ else:
 
     def save_google_sheet_id(user_id, sheet_id):
         conn = get_db()
-        conn.execute("UPDATE users SET google_sheet_id = ? WHERE id = ?", (sheet_id, user_id))
+        conn.execute("UPDATE users SET google_sheet_id = ?, sheet_column_mapping = NULL WHERE id = ?", (sheet_id, user_id))
         conn.commit()
         conn.close()
 
