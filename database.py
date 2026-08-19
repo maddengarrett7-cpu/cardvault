@@ -477,6 +477,15 @@ if DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # back_image_url -- the back-of-card photo, saved for raw scans (now
+        # mandatory front+back) and optional post-hoc back scans, so the
+        # collection view can show both sides instead of just the front.
+        try:
+            cur.execute("ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS back_image_url TEXT")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         cur.close()
         conn.close()
 
@@ -680,8 +689,8 @@ if DATABASE_URL:
         if isinstance(ebay_sales, list):
             ebay_sales = _json.dumps(ebay_sales)
         cur.execute("""
-            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, cl_value, cl_last_sale, ebay_sales, image_url)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, cl_value, cl_last_sale, ebay_sales, image_url, back_image_url)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
         """, (
             user_id,
@@ -691,7 +700,7 @@ if DATABASE_URL:
             data.get('card_type'), data.get('ebay_avg'),
             data.get('ebay_high'), data.get('ebay_low'),
             data.get('cl_value'), data.get('cl_last_sale'), ebay_sales,
-            data.get('image_url'),
+            data.get('image_url'), data.get('back_image_url'),
         ))
         row = cur.fetchone()
         new_id = row[0] if row else None
@@ -767,11 +776,16 @@ else:
                 card TEXT, name TEXT, year INTEGER, brand TEXT,
                 set_name TEXT, parallel TEXT, grade TEXT, cert TEXT,
                 serial TEXT, card_type TEXT, ebay_avg REAL,
-                ebay_high REAL, ebay_low REAL, image_url TEXT
+                ebay_high REAL, ebay_low REAL, image_url TEXT,
+                back_image_url TEXT
             )
         """)
         try:
             conn.execute("ALTER TABLE scan_history ADD COLUMN image_url TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE scan_history ADD COLUMN back_image_url TEXT")
         except Exception:
             pass
         conn.commit()
@@ -780,8 +794,8 @@ else:
     def save_scan(user_id, data):
         conn = get_db()
         conn.execute("""
-            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, image_url)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO scan_history (user_id, card, name, year, brand, set_name, parallel, grade, cert, serial, card_type, ebay_avg, ebay_high, ebay_low, image_url, back_image_url)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             user_id,
             data.get('card'), data.get('name'), data.get('year'),
@@ -789,7 +803,7 @@ else:
             data.get('grade'), data.get('cert'), data.get('serial'),
             data.get('card_type'), data.get('ebay_avg'),
             data.get('ebay_high'), data.get('ebay_low'),
-            data.get('image_url'),
+            data.get('image_url'), data.get('back_image_url'),
         ))
         conn.commit(); conn.close()
 

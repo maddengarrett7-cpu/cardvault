@@ -246,6 +246,43 @@ def gemini_generate(client, model, contents, retries=3):
             raise
     raise last_err
 
+def check_image_quality(frame):
+    """Cheap pre-Gemini sanity check on a decoded cv2 frame (BGR ndarray).
+
+    Catches the two most common causes of bad reads -- a blurry/out-of-focus
+    photo and a blown-out glare spot from a glossy slab holder or raw-card
+    sleeve -- before spending a Gemini call (or a user's daily scan) on an
+    image that was never going to read correctly. Returns (ok, reason) where
+    reason is None when ok, else 'blurry' or 'glare'.
+    """
+    if frame is None or frame.size == 0:
+        return True, None
+    try:
+        import numpy as np
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Normalize the blur measurement against a fixed scale -- Laplacian
+        # variance scales with resolution, so compare at a consistent width
+        # rather than letting a large photo look artificially "sharp".
+        h, w = gray.shape[:2]
+        target_w = 800
+        if w != target_w:
+            gray = cv2.resize(gray, (target_w, int(h * target_w / w)))
+        blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
+        if blur_score < 35:
+            return False, 'blurry'
+
+        # Glare: a large solid patch of near-blown-out pixels (glossy holder
+        # reflection) rather than scattered bright highlights.
+        overexposed = np.mean(gray > 248)
+        if overexposed > 0.12:
+            return False, 'glare'
+
+        return True, None
+    except Exception as e:
+        app.logger.error(f"check_image_quality failed: {e}")
+        return True, None  # never block a scan on the quality check itself
+
+
 def analyze_label(image_data):
     """Second pass focused specifically on reading PSA/BGS/SGC label text."""
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -4093,11 +4130,34 @@ def mobile_scan():
         nparr = np.frombuffer(raw_image_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR) if raw_image_bytes else None
 
+        RETAKE_MESSAGES = {
+            'blurry': 'Photo is too blurry to read — hold steady and retake.',
+            'glare': 'Glare is washing out the photo — tilt the card or move out of direct light and retake.',
+        }
+
+        # Pre-Gemini quality gate -- catch a blurry or glare-blown photo
+        # before spending a Gemini call (or a daily scan) on an image that
+        # was never going to read correctly. Bulk is exempt: it's a single
+        # wide shot of many small cards with its own tolerance built in, and
+        # per-card cropping happens after Gemini's bounding-box pass.
+        if scan_mode != 'bulk':
+            ok, reason = check_image_quality(frame)
+            if not ok:
+                return jsonify({'success': False, 'retake': True, 'reason': reason,
+                                 'error': RETAKE_MESSAGES[reason]})
+
         if scan_mode == 'front_and_back':
             # Accept front + back images, merge results
             front_bytes = raw_image_bytes
             back_b64 = (request.get_json(force=True) or {}).get('back_image', '')
             back_bytes = base64.b64decode(back_b64) if back_b64 else None
+
+            if back_bytes:
+                back_frame = cv2.imdecode(np.frombuffer(back_bytes, np.uint8), cv2.IMREAD_COLOR)
+                ok, reason = check_image_quality(back_frame)
+                if not ok:
+                    return jsonify({'success': False, 'retake': True, 'reason': reason,
+                                     'error': RETAKE_MESSAGES[reason] + ' (back photo)'})
 
             # Scan front
             data = analyze_card(frame, quality=95)
@@ -4179,6 +4239,8 @@ def mobile_scan():
                 pass
 
             data['image_url'] = save_collection_image(front_bytes, request.mobile_user_id)
+            if back_bytes:
+                data['back_image_url'] = save_collection_image(back_bytes, request.mobile_user_id)
             data['id'] = save_scan(request.mobile_user_id, data)
             data['success'] = True
             data['scans_left'] = max(0, limit - scans_used) if limit else 999
@@ -4961,6 +5023,16 @@ def mobile_scan_back():
             return jsonify({'success': False, 'error': 'No image provided'}), 400
 
         image_bytes = base64.b64decode(image_b64)
+
+        import numpy as np
+        back_frame = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        ok, reason = check_image_quality(back_frame)
+        if not ok:
+            messages = {
+                'blurry': 'Photo is too blurry to read — hold steady and retake.',
+                'glare': 'Glare is washing out the photo — tilt the card or move out of direct light and retake.',
+            }
+            return jsonify({'success': False, 'retake': True, 'reason': reason, 'error': messages[reason]})
 
         # Hints from the front scan
         name  = body.get('name', '')
