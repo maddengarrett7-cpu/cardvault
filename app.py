@@ -444,6 +444,27 @@ def extract_year_from_copyright(image_data):
         return None
 
 
+def verify_year_from_copyright(data, raw_image_bytes):
+    """Always cross-check a raw card's year against a focused, cropped read
+    of the copyright line -- not just when year is missing. A full-card read
+    can confidently return the WRONG year by pattern-matching a familiar
+    design template (e.g. reading a 2025 Topps Chrome Refractor as 2022,
+    because that's the year Gemini has seen that exact template most) even
+    though the actual printed year is right there. The cropped copyright
+    strip is a narrow, mechanical OCR task with far less template-matching
+    surface, so it's trusted over the general read when the two disagree.
+    """
+    try:
+        crop_year = extract_year_from_copyright(raw_image_bytes)
+    except Exception as e:
+        app.logger.warning(f"Year crop pass failed: {e}")
+        return data
+    if crop_year and str(crop_year) != str(data.get("year") or ""):
+        data["year"] = crop_year
+        data["year_corrected"] = True
+    return data
+
+
 def analyze_raw_card(image_data, year_hint=None, sport_hint=None):
     """Second pass for raw (ungraded) cards — focused on fine-print details
     that the general first pass tends to miss: year, set, parallel, card number."""
@@ -2390,14 +2411,10 @@ def scan():
             except Exception as raw_err:
                 app.logger.warning(f"Raw second pass failed: {raw_err}")
 
-            # Third pass — crop bottom strip for year if still missing
-            if not data.get("year"):
-                try:
-                    year = extract_year_from_copyright(raw_image_bytes)
-                    if year:
-                        data["year"] = year
-                except Exception as yr_err:
-                    app.logger.warning(f"Year crop pass failed: {yr_err}")
+            # Third pass — always cross-check year against a focused crop of
+            # the copyright line, not just when year is missing (see
+            # verify_year_from_copyright's docstring for why).
+            data = verify_year_from_copyright(data, raw_image_bytes)
 
         # Sanity check: if player is a known rookie, their card year can't be
         # before their draft year. Catches Gemini hallucinating college years.
@@ -4214,6 +4231,11 @@ def mobile_scan():
                 except Exception as e:
                     app.logger.error(f"mobile_scan failed: {e}")
                     pass
+                # Always cross-check year against a focused crop of the
+                # copyright line -- a full-card read can confidently return
+                # the wrong year by pattern-matching a familiar design
+                # template even when the printed year says otherwise.
+                data = verify_year_from_copyright(data, front_bytes)
 
             # Scan back and merge
             if back_bytes:
@@ -4347,14 +4369,11 @@ def mobile_scan():
                 except Exception as e:
                     app.logger.error(f"mobile_scan failed: {e}")
                     pass
-                # Last resort: if year still missing, crop bottom strip and read copyright line directly
-                if not data.get('year'):
-                    try:
-                        year = extract_year_from_copyright(raw_image_bytes)
-                        if year: data['year'] = year
-                    except Exception as e:
-                        app.logger.error(f"mobile_scan failed: {e}")
-                        pass
+                # Always cross-check year against a focused crop of the
+                # copyright line -- a full-card read can confidently return
+                # the wrong year by pattern-matching a familiar design
+                # template even when the printed year says otherwise.
+                data = verify_year_from_copyright(data, raw_image_bytes)
 
         # ── Post-scan corrections (all scan modes) ──────────────────────────
 
