@@ -4241,8 +4241,20 @@ def mobile_scan():
             if back_bytes:
                 try:
                     back_data = analyze_card_back(back_bytes, year_hint=data.get('year'), sport_hint=data.get('sport'))
-                    # Back fills in missing fields
-                    for field in ['year', 'brand', 'set', 'name']:
+                    # Year: the back's copyright line is the authoritative
+                    # source -- always prefer it over the front's read when
+                    # the back actually finds one, rather than only filling
+                    # a gap. A front-only read can confidently return the
+                    # WRONG year by pattern-matching a familiar design
+                    # template even when no year is printed on the front at
+                    # all (e.g. many Chrome autograph/relic parallels only
+                    # print the copyright line on the back).
+                    if back_data.get('year'):
+                        if str(back_data['year']) != str(data.get('year') or ''):
+                            data['year_corrected'] = True
+                        data['year'] = back_data['year']
+                    # Everything else: back fills in what the front missed.
+                    for field in ['brand', 'set', 'name']:
                         if back_data.get(field) and not data.get(field):
                             data[field] = back_data[field]
                     for field in ['card_number', 'team', 'serial']:
