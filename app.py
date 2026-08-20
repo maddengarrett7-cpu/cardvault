@@ -830,6 +830,45 @@ def lookup_psa_cert(cert_number):
         return None, str(e)
 
 
+def apply_psa_verification(data):
+    """Cross-check a graded card's cert number against PSA's real public cert
+    database and use it as ground truth. PSA-graded cards are the one place
+    we can verify a scan against real data instead of trusting a single
+    Gemini read -- if the cert resolves, correct grade/name/year/brand/
+    card_number from PSA's own record and mark psa_verified. If it doesn't
+    resolve, flag cert_unverified so the app can prompt a re-check instead of
+    silently trusting a possible cert misread. Only attempted for PSA grades
+    -- BGS/SGC/CGC cert numbers use different numbering schemes and would
+    just waste the lookup.
+    """
+    cert = data.get('cert')
+    grade = (data.get('grade') or '').strip().upper()
+    if not cert or not str(cert).strip() or not grade.startswith('PSA'):
+        return data
+    try:
+        psa_data, err = lookup_psa_cert(str(cert))
+    except Exception as e:
+        app.logger.error(f"apply_psa_verification failed: {e}")
+        return data
+    if psa_data:
+        data['psa_verified'] = True
+        data['psa_cert_url'] = psa_data.get('cert_url')
+        if psa_data.get('grade'):
+            data['grade'] = f"PSA {psa_data['grade']}"
+        if psa_data.get('subject'):
+            data['name'] = psa_data['subject']
+        if psa_data.get('year'):
+            data['year'] = psa_data['year']
+        if psa_data.get('brand'):
+            data['brand'] = psa_data['brand']
+        if psa_data.get('card_number'):
+            data['card_number'] = psa_data['card_number']
+    else:
+        data['psa_verified'] = False
+        data['cert_unverified'] = True
+    return data
+
+
 @app.route('/sheet/headers', methods=['POST'])
 def sheet_headers():
     body = request.get_json()
@@ -2319,6 +2358,7 @@ def scan():
             # Graded mode — only run label analysis, skip general card scan
             data = analyze_label(raw_image_bytes)
             data['grade'] = data.get('grade') or 'Unknown'
+            data = apply_psa_verification(data)
             is_raw_card = False
 
         elif is_upload and raw_image_bytes:
@@ -4293,6 +4333,7 @@ def mobile_scan():
         elif scan_mode == 'graded':
             data = analyze_label(raw_image_bytes)
             data['grade'] = data.get('grade') or 'Unknown'
+            data = apply_psa_verification(data)
         else:
             data = analyze_card(frame, quality=95)
             is_raw = (not data.get('grade') or data.get('grade', '').lower() == 'raw')
