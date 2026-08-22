@@ -571,7 +571,10 @@ def analyze_bulk(image_data):
         "right, since it's used to verify the card -- a wrong number is worse than no number. Read every digit "
         "individually and re-check it before answering. If even one digit is genuinely unclear (small, blurry, "
         "or partially blocked), return null for cert rather than guessing.\n"
-        "- card: short description e.g. '2022 Panini Prizm Patrick Mahomes Silver'\n\n"
+        "- card: short description e.g. '2022 Panini Prizm Patrick Mahomes Silver'\n"
+        "- bbox: this card's bounding box as [x, y, w, h] fractions (0.0-1.0) of the FULL image -- x,y is the "
+        "top-left corner, w,h is the width/height. Cover the whole card including any slab/holder edges. This is "
+        "used to match this card to the same physical card in a second photo later, so it must be accurate.\n\n"
         "Return ONLY a valid JSON array. No markdown, no code fences, no extra text."
     )
     response = gemini_generate(client,
@@ -595,6 +598,90 @@ def analyze_bulk(image_data):
         and len(str(c.get('name', '')).strip()) > 2
     ]
     return filtered
+
+
+def analyze_bulk_back(image_data):
+    """Read the backs of multiple raw cards laid out flat, in the SAME
+    physical layout as a prior front photo (the user is asked to flip each
+    card in place, not rearrange them). Returns one entry per detected
+    card-back with a bbox so the caller can match each back to its front by
+    nearest position -- this is the bulk equivalent of analyze_card_back(),
+    covering many cards in one Gemini call instead of one crop per card.
+    """
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = (
+        "This photo contains the BACKS of multiple raw (ungraded) sports cards laid out flat "
+        "-- the same physical cards from an earlier front photo, flipped over in place.\n\n"
+        "RULES:\n"
+        "- Scan the entire image systematically left-to-right, top-to-bottom, up to 15 cards\n"
+        "- Include a card-back only if you can read at least the year or the card number on it\n"
+        "- Do NOT skip cards just because they are partially overlapping\n"
+        "- If no card-backs meet the criteria, return []\n\n"
+        "FOR EACH CARD-BACK READ:\n"
+        "  year        -- Copyright line, usually at the very bottom: '© 2021 Panini' or '2022 Topps'. "
+        "                 Return just the 4-digit number. null if genuinely unreadable.\n"
+        "  card_number -- Printed clearly on the back, often '# 301' or just '301' near the bottom.\n"
+        "  brand       -- Company name in the copyright line or logo on the back.\n"
+        "  set         -- Set/product name if printed (e.g. 'Prizm', 'Chrome').\n"
+        "  name        -- Player's full name from the bio or stats header, if present.\n"
+        "  team        -- Player's team name, if present.\n"
+        "  rookie      -- true if 'RC', 'Rookie', or 'Rookie Card' appears anywhere on the back.\n"
+        "  serial      -- If numbered (e.g. '045/199'), the print run as a string like '/199'. null if not numbered.\n"
+        "  bbox        -- this card-back's bounding box as [x, y, w, h] fractions (0.0-1.0) of the FULL image, "
+        "                 same convention as a front-photo bbox: x,y is the top-left corner, w,h is width/height.\n\n"
+        "Return ONLY a valid JSON array of objects with keys: year, card_number, brand, set, name, team, rookie, "
+        "serial, bbox. No markdown, no code fences, no extra text."
+    )
+    response = gemini_generate(client,
+        model="gemini-2.5-flash",
+        contents=[prompt, genai_types.Part.from_bytes(data=image_data, mime_type="image/jpeg")],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    backs = json.loads(text.strip())
+    return [b for b in backs if isinstance(b, dict) and isinstance(b.get('bbox'), list) and len(b['bbox']) == 4]
+
+
+def _bbox_center(bbox):
+    x, y, w, h = bbox
+    return (x + w / 2.0, y + h / 2.0)
+
+
+def match_bulk_backs_to_fronts(front_cards, back_cards, max_distance=0.35):
+    """Match each back-card to the nearest front-card by bbox-centroid
+    distance (normalized 0-1 image coordinates). Cards are matched
+    one-to-one, closest pairs first, so two backs never claim the same
+    front. A back farther than max_distance from every remaining front is
+    left unmatched rather than force-matched to the wrong card -- a missed
+    correction is far better than a wrong one.
+    """
+    front_centers = []
+    for i, c in enumerate(front_cards):
+        bbox = c.get('bbox')
+        if isinstance(bbox, list) and len(bbox) == 4:
+            front_centers.append((i, _bbox_center(bbox)))
+
+    pairs = []
+    for j, back in enumerate(back_cards):
+        bc = _bbox_center(back['bbox'])
+        for i, fc in front_centers:
+            dist = ((bc[0] - fc[0]) ** 2 + (bc[1] - fc[1]) ** 2) ** 0.5
+            if dist <= max_distance:
+                pairs.append((dist, i, j))
+    pairs.sort(key=lambda p: p[0])
+
+    matched_front, matched_back = set(), set()
+    result = {}  # front index -> back card dict
+    for dist, i, j in pairs:
+        if i in matched_front or j in matched_back:
+            continue
+        matched_front.add(i)
+        matched_back.add(j)
+        result[i] = back_cards[j]
+    return result
 
 
 def analyze_prices(image_data):
@@ -5154,6 +5241,81 @@ def mobile_scan_back():
         })
     except Exception as e:
         app.logger.error(f"mobile_scan_back failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mobile/scan-bulk-back', methods=['POST'])
+@mobile_auth
+def mobile_scan_bulk_back():
+    """Scan the backs of a bulk table of raw cards, flipped in place from a
+    prior front bulk scan, and correct each front card's year/card_number/
+    etc from its matched back -- the bulk equivalent of the mandatory
+    front+back flow for single raw scans. Only raw cards are eligible;
+    graded/slabbed cards are skipped since their backs are just the
+    holder's barcode sticker, not useful print.
+    """
+    try:
+        body = request.get_json(force=True) or {}
+        image_b64 = body.get('image', '')
+        front_cards = body.get('front_cards', [])
+        if not image_b64:
+            return jsonify({'success': False, 'error': 'No image provided'}), 400
+        if not isinstance(front_cards, list) or not front_cards:
+            return jsonify({'success': False, 'error': 'No front cards provided to match against'}), 400
+
+        image_bytes = base64.b64decode(image_b64)
+
+        import numpy as np
+        back_frame = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        ok, reason = check_image_quality(back_frame)
+        if not ok:
+            messages = {
+                'blurry': 'Photo is too blurry to read — hold steady and retake.',
+                'glare': 'Glare is washing out the photo — tilt the cards or move out of direct light and retake.',
+            }
+            return jsonify({'success': False, 'retake': True, 'reason': reason, 'error': messages[reason]})
+
+        # Only raw cards are eligible for back-matching -- graded slabs keep
+        # their front-derived data untouched.
+        raw_indices = [
+            i for i, c in enumerate(front_cards)
+            if not (c.get('grade') or '').strip() or (c.get('grade') or '').strip().lower() == 'raw'
+        ]
+        eligible_fronts = [front_cards[i] for i in raw_indices]
+
+        back_cards = analyze_bulk_back(image_bytes)
+        matches = match_bulk_backs_to_fronts(eligible_fronts, back_cards)
+
+        # matches is keyed by index into eligible_fronts -- translate back to
+        # the original front_cards index the mobile app sent.
+        corrections = []
+        for eligible_idx, back in matches.items():
+            original_idx = raw_indices[eligible_idx]
+            front = front_cards[original_idx]
+            correction = {'index': original_idx}
+            if back.get('year'):
+                if str(back['year']) != str(front.get('year') or ''):
+                    correction['year_corrected'] = True
+                correction['year'] = back['year']
+            for field in ['card_number', 'team', 'serial']:
+                if back.get(field) and not front.get(field):
+                    correction[field] = back[field]
+            for field in ['brand', 'set', 'name']:
+                if back.get(field) and not front.get(field):
+                    correction[field] = back[field]
+            if back.get('rookie'):
+                correction['rookie'] = True
+            corrections.append(correction)
+
+        return jsonify({
+            'success': True,
+            'backs_found': len(back_cards),
+            'matched': len(corrections),
+            'unmatched_raw': len(eligible_fronts) - len(corrections),
+            'corrections': corrections,
+        })
+    except Exception as e:
+        app.logger.error(f"mobile_scan_bulk_back failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
